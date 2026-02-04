@@ -94,9 +94,9 @@ jobs:
       - name: Build tessellation
         working-directory: tessellation
         run: |
+          # Note: dataL1 doesn't exist in tessellation - it's built from the metagraph (ottochain)
           sbt "sdk/publishLocal; keytool/assembly; wallet/assembly; shared/assembly; \
-               dagL0/assembly; dagL1/assembly; currencyL0/assembly; currencyL1/assembly; \
-               dataL1/assembly"
+               dagL0/assembly; dagL1/assembly; currencyL0/assembly; currencyL1/assembly"
           mkdir -p docker/jars
           cp modules/keytool/target/scala-2.13/tessellation-keytool-assembly*.jar docker/jars/keytool.jar
           cp modules/wallet/target/scala-2.13/tessellation-wallet-assembly*.jar docker/jars/wallet.jar
@@ -104,7 +104,6 @@ jobs:
           cp modules/dag-l1/target/scala-2.13/tessellation-dag-l1-assembly*.jar docker/jars/gl1.jar
           cp modules/currency-l0/target/scala-2.13/tessellation-currency-l0-assembly*.jar docker/jars/ml0.jar
           cp modules/currency-l1/target/scala-2.13/tessellation-currency-l1-assembly*.jar docker/jars/cl1.jar
-          cp modules/data-l1/target/scala-2.13/tessellation-data-l1-assembly*.jar docker/jars/dl1.jar
 
       - name: Build ottochain metagraph
         working-directory: ottochain
@@ -117,9 +116,9 @@ jobs:
           # Build docker image
           docker build -t constellationnetwork/tessellation:test -f docker/Dockerfile .
           
-          # Copy metagraph jars
-          cp ../ottochain/modules/l0/target/scala-2.13/*-assembly*.jar docker/jars/ml0.jar
-          cp ../ottochain/modules/data_l1/target/scala-2.13/*-assembly*.jar docker/jars/dl1.jar
+          # Copy metagraph jars (overwrite tessellation's ml0 with ottochain's)
+          cp ../ottochain/modules/l0/target/scala-2.13/ottochain-currency-l0-assembly*.jar docker/jars/ml0.jar
+          cp ../ottochain/modules/data_l1/target/scala-2.13/ottochain-data-l1-assembly*.jar docker/jars/dl1.jar
           
           # Generate keys and start cluster
           ./docker/bin/generate-keys.sh
