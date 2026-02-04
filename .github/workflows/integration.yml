@@ -1,0 +1,173 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:  # Manual trigger
+
+env:
+  TESSELLATION_VERSION: v4.0.0-rc.2
+  NODE_VERSION: '20'
+  JAVA_VERSION: '21'
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ottochain
+          POSTGRES_PASSWORD: ottochain
+          POSTGRES_DB: ottochain_identity
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout ottochain-services
+        uses: actions/checkout@v4
+
+      - name: Checkout ottochain
+        uses: actions/checkout@v4
+        with:
+          repository: scasplte2/ottochain
+          path: ottochain
+          ref: main
+
+      - name: Checkout tessellation
+        uses: actions/checkout@v4
+        with:
+          repository: Constellation-Labs/tessellation
+          path: tessellation
+          ref: ${{ env.TESSELLATION_VERSION }}
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: sbt
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build services
+        run: pnpm build
+
+      - name: Push database schema
+        env:
+          DATABASE_URL: postgresql://ottochain:ottochain@localhost:5432/ottochain_identity
+        run: pnpm db:push --skip-generate
+
+      - name: Cache tessellation assemblies
+        uses: actions/cache@v4
+        with:
+          path: |
+            tessellation/modules/*/target
+            tessellation/docker/jars
+          key: tessellation-${{ env.TESSELLATION_VERSION }}-${{ hashFiles('tessellation/build.sbt') }}
+          restore-keys: |
+            tessellation-${{ env.TESSELLATION_VERSION }}-
+
+      - name: Build tessellation
+        working-directory: tessellation
+        run: |
+          sbt "sdk/publishLocal; keytool/assembly; wallet/assembly; shared/assembly; \
+               dagL0/assembly; dagL1/assembly; currencyL0/assembly; currencyL1/assembly; \
+               dataL1/assembly"
+          mkdir -p docker/jars
+          cp modules/keytool/target/scala-2.13/tessellation-keytool-assembly*.jar docker/jars/keytool.jar
+          cp modules/wallet/target/scala-2.13/tessellation-wallet-assembly*.jar docker/jars/wallet.jar
+          cp modules/dag-l0/target/scala-2.13/tessellation-dag-l0-assembly*.jar docker/jars/gl0.jar
+          cp modules/dag-l1/target/scala-2.13/tessellation-dag-l1-assembly*.jar docker/jars/gl1.jar
+          cp modules/currency-l0/target/scala-2.13/tessellation-currency-l0-assembly*.jar docker/jars/ml0.jar
+          cp modules/currency-l1/target/scala-2.13/tessellation-currency-l1-assembly*.jar docker/jars/cl1.jar
+          cp modules/data-l1/target/scala-2.13/tessellation-data-l1-assembly*.jar docker/jars/dl1.jar
+
+      - name: Build ottochain metagraph
+        working-directory: ottochain
+        run: |
+          sbt "currencyL0/assembly; dataL1/assembly"
+
+      - name: Start metagraph cluster
+        working-directory: tessellation
+        run: |
+          # Build docker image
+          docker build -t constellationnetwork/tessellation:test -f docker/Dockerfile .
+          
+          # Copy metagraph jars
+          cp ../ottochain/modules/l0/target/scala-2.13/*-assembly*.jar docker/jars/ml0.jar
+          cp ../ottochain/modules/data_l1/target/scala-2.13/*-assembly*.jar docker/jars/dl1.jar
+          
+          # Generate keys and start cluster
+          ./docker/bin/generate-keys.sh
+          docker compose -f docker/docker-compose.yaml up -d gl0-0
+          sleep 10
+          docker compose -f docker/docker-compose.yaml -f docker/docker-compose.metagraph.yaml up -d ml0-0
+          sleep 15
+
+      - name: Wait for ML0 ready
+        run: |
+          for i in {1..60}; do
+            if curl -s http://localhost:9200/node/info | grep -q '"state":"Ready"'; then
+              echo "ML0 ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "ML0 failed to start"
+          docker logs tessellation-ml0-0-1 || true
+          exit 1
+
+      - name: Start indexer
+        env:
+          DATABASE_URL: postgresql://ottochain:ottochain@localhost:5432/ottochain_identity
+          METAGRAPH_ML0_URL: http://localhost:9200
+          METAGRAPH_DL1_URL: http://localhost:9400
+          INDEXER_PORT: 3031
+        run: |
+          node packages/indexer/dist/index.js &
+          sleep 3
+          curl -s http://localhost:3031/health | grep -q '"status":"ok"'
+
+      - name: Run integration tests
+        env:
+          ML0_URL: http://localhost:9200
+          INDEXER_URL: http://localhost:3031
+          HOST_IP: 127.0.0.1
+        run: npx tsx scripts/test-webhook.ts
+
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          echo "=== ML0 Logs ==="
+          docker logs tessellation-ml0-0-1 2>&1 | tail -100 || true
+          echo "=== GL0 Logs ==="
+          docker logs tessellation-gl0-0-1 2>&1 | tail -50 || true
+          echo "=== Indexer Logs ==="
+          cat /tmp/indexer.log 2>/dev/null | tail -50 || true
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose -f tessellation/docker/docker-compose.yaml \
+                        -f tessellation/docker/docker-compose.metagraph.yaml down -v || true
