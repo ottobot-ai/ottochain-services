@@ -18,6 +18,8 @@
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "test:integration": "./scripts/integration-test.sh",
+    "test:e2e": "tsx scripts/scenarios/multi-agent-sim.ts",
+    "test:webhook": "tsx scripts/test-webhook.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
@@ -28,6 +30,8 @@
   "devDependencies": {
     "@types/node": "^20.11.0",
     "prisma": "^5.9.0",
+    "tsx": "^4.7.0",
+    "tweetnacl": "^1.0.3",
     "typescript": "^5.3.0"
   },
   "dependencies": {
