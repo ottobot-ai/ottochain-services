@@ -113,6 +113,8 @@ jobs:
       - name: Start metagraph cluster
         working-directory: tessellation/docker
         run: |
+          # Ensure scripts are executable (git checkout can lose permissions)
+          chmod +x bin/*.sh
           # Use compose-runner which handles key generation, env setup, and container orchestration
           # --skip-assembly since we already built everything in prior steps
           ./bin/compose-runner.sh --up --metagraph=$(pwd)/../../ottochain --dl1 --skip-assembly
@@ -162,4 +164,5 @@ jobs:
         if: always()
         working-directory: tessellation/docker
         run: |
+          chmod +x bin/*.sh 2>/dev/null || true
           ./bin/compose-runner.sh --down || true
