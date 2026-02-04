@@ -1,5 +1,6 @@
 #!/usr/bin/env npx tsx
 import { PrismaClient } from '@prisma/client';
+import { publishEvent, CHANNELS } from '../packages/shared/src/redis.js';
 
 const prisma = new PrismaClient();
 const PLATFORMS = ['DISCORD', 'TELEGRAM', 'TWITTER', 'GITHUB'] as const;
@@ -23,7 +24,7 @@ async function main() {
     if (action < 0.4) {
       const type = randomChoice(ATTESTATION_TYPES);
       const delta = type === 'COMPLETION' ? 5 : type === 'VOUCH' ? 2 : 3;
-      await prisma.attestation.create({
+      const attestation = await prisma.attestation.create({
         data: {
           agentId: agent.id, issuerId: other.id, issuerPlatform: randomChoice(PLATFORMS),
           type, delta, reason: `${type} from ${other.displayName || 'Agent'}`,
@@ -33,8 +34,17 @@ async function main() {
       });
       await prisma.agent.update({ where: { id: agent.id }, data: { reputation: { increment: delta } } });
       console.log(`[${i}/${iterations}] ✨ ${type}: ${other.displayName||'?'} → ${agent.displayName||'?'} (+${delta})`);
+
+      // Publish event to Redis
+      await publishEvent(CHANNELS.ACTIVITY_FEED, {
+        eventType: type,
+        timestamp: new Date(),
+        agent: { address: agent.address, displayName: agent.displayName },
+        action: 'attest',
+        reputationDelta: delta,
+      });
     } else if (action < 0.7) {
-      await prisma.contract.create({
+      const contract = await prisma.contract.create({
         data: {
           contractId: `contract_${Date.now().toString(36)}`, proposerId: agent.id, counterpartyId: other.id,
           state: 'PROPOSED', terms: { task: `Task from ${agent.displayName}`, value: Math.floor(Math.random()*500)+50 },
@@ -42,22 +52,52 @@ async function main() {
         },
       });
       console.log(`[${i}/${iterations}] 📝 CONTRACT: ${agent.displayName||'?'} → ${other.displayName||'?'}`);
+
+      // Publish event to Redis
+      await publishEvent(CHANNELS.ACTIVITY_FEED, {
+        eventType: 'CONTRACT',
+        timestamp: new Date(),
+        agent: { address: agent.address, displayName: agent.displayName },
+        action: 'propose',
+      });
     } else if (action < 0.85) {
       const c = await prisma.contract.findFirst({ where: { state: 'PROPOSED' }, orderBy: { proposedAt: 'desc' } });
-      if (c) { await prisma.contract.update({ where: { id: c.id }, data: { state: 'ACTIVE', acceptedAt: new Date() } }); console.log(`[${i}/${iterations}] ✅ ACCEPTED: ${c.contractId.slice(0,20)}`); }
-      else console.log(`[${i}/${iterations}] ⏭️ No pending contracts`);
+      if (c) {
+        await prisma.contract.update({ where: { id: c.id }, data: { state: 'ACTIVE', acceptedAt: new Date() } });
+        console.log(`[${i}/${iterations}] ✅ ACCEPTED: ${c.contractId.slice(0,20)}`);
+
+        // Publish event to Redis
+        await publishEvent(CHANNELS.ACTIVITY_FEED, {
+          eventType: 'CONTRACT',
+          timestamp: new Date(),
+          agent: { address: c.proposerId, displayName: p.displayName },
+          action: 'accept',
+        });
+      } else console.log(`[${i}/${iterations}] ⏭️ No pending contracts`);
     } else {
       const c = await prisma.contract.findFirst({ where: { state: 'ACTIVE' }, orderBy: { acceptedAt: 'desc' } });
       if (c) {
         await prisma.contract.update({ where: { id: c.id }, data: { state: 'COMPLETED', completedAt: new Date() } });
-        const p = agents.find(a => a.id === c.proposerId)!, cp = agents.find(a => a.id === c.counterpartyId)!;
+        const p = agents.find(a => a.id === c.proposerId)!;
+        const cp = agents.find(a => a.id === c.counterpartyId)!;
+
         await prisma.attestation.createMany({ data: [
           { agentId: p.id, issuerId: cp.id, type: 'COMPLETION', delta: 5, reason: 'Contract done', txHash: `tx_c_${Date.now()}_a`.slice(0,64), snapshotOrdinal: BigInt(900+i) },
           { agentId: cp.id, issuerId: p.id, type: 'COMPLETION', delta: 5, reason: 'Contract done', txHash: `tx_c_${Date.now()}_b`.slice(0,64), snapshotOrdinal: BigInt(900+i) },
         ]});
+
         await prisma.agent.update({ where: { id: p.id }, data: { reputation: { increment: 5 } } });
         await prisma.agent.update({ where: { id: cp.id }, data: { reputation: { increment: 5 } } });
+
         console.log(`[${i}/${iterations}] 🎉 COMPLETED: ${c.contractId.slice(0,20)} (+5 each)`);
+
+        // Publish event to Redis
+        await publishEvent(CHANNELS.ACTIVITY_FEED, {
+          eventType: 'CONTRACT',
+          timestamp: new Date(),
+          agent: { address: p.address, displayName: p.displayName },
+          action: 'complete',
+        });
       } else console.log(`[${i}/${iterations}] ⏭️ No active contracts`);
     }
     await prisma.indexedSnapshot.create({ data: { ordinal: BigInt(900+i), hash: `snap_${900+i}`, indexedAt: new Date() } }).catch(()=>{});
