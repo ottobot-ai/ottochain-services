@@ -1,7 +1,7 @@
 // Snapshot Processor
 // Fetches full snapshot data from metagraph and indexes to Postgres
 
-import { prisma, getConfig, type SnapshotNotification } from '@ottochain/shared';
+import { prisma, getConfig, type SnapshotNotification, publishEvent, CHANNELS } from '@ottochain/shared';
 
 interface ProcessResult {
   ordinal: number;
@@ -80,11 +80,15 @@ export async function processSnapshot(notification: SnapshotNotification): Promi
     },
   });
   
-  return {
+  const result = {
     ordinal: notification.ordinal,
     agentsUpdated,
     contractsUpdated,
   };
+
+  await publishEvent(CHANNELS.STATS_UPDATED, result);
+
+  return result;
 }
 
 async function indexAgent(fiberId: string, fiber: StateMachineFiber, ordinal: number): Promise<void> {
@@ -117,6 +121,8 @@ async function indexAgent(fiberId: string, fiber: StateMachineFiber, ordinal: nu
       snapshotOrdinal: BigInt(ordinal),
     },
   });
+
+  await publishEvent(CHANNELS.AGENT_UPDATED, { address, reputation, state: agentState });
   
   // Index platform links if present
   const platforms = data.platforms as Array<{ platform: string; userId: string; username?: string }> | undefined;
@@ -180,6 +186,14 @@ async function indexAgent(fiberId: string, fiber: StateMachineFiber, ordinal: nu
               txHash: att.txHash,
               snapshotOrdinal: BigInt(ordinal),
             },
+          });
+
+          await publishEvent(CHANNELS.ACTIVITY_FEED, {
+            eventType: 'ATTESTATION',
+            timestamp: new Date().toISOString(),
+            agent: { address, displayName },
+            action: `Received ${att.type} attestation`,
+            reputationDelta: att.delta,
           });
         }
       }
