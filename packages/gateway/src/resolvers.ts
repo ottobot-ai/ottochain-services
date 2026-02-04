@@ -1,10 +1,8 @@
 // GraphQL Resolvers
 
 import { prisma } from '@ottochain/shared';
-import { PubSub } from 'graphql-subscriptions';
+import { pubsub, CHANNELS } from './pubsub.js';
 import type { Context } from './context.js';
-
-const pubsub = new PubSub();
 
 // Subscription event names
 export const EVENTS = {
@@ -309,26 +307,24 @@ export const resolvers = {
   // === Subscriptions ===
   Subscription: {
     agentUpdated: {
-      subscribe: (_: unknown, { address }: { address: string }) => {
-        return pubsub.asyncIterator([`${EVENTS.AGENT_UPDATED}.${address}`]);
-      },
+      subscribe: () => pubsub.asyncIterableIterator(CHANNELS.AGENT_UPDATED),
+      resolve: (payload: any) => payload,
     },
     newAttestation: {
-      subscribe: () => pubsub.asyncIterator([EVENTS.NEW_ATTESTATION]),
+      subscribe: () => pubsub.asyncIterableIterator(CHANNELS.ACTIVITY_FEED),
+      resolve: (payload: any) => payload,
     },
     contractUpdated: {
-      subscribe: (_: unknown, { contractId }: { contractId?: string }) => {
-        const channel = contractId
-          ? `${EVENTS.CONTRACT_UPDATED}.${contractId}`
-          : EVENTS.CONTRACT_UPDATED;
-        return pubsub.asyncIterator([channel]);
-      },
+      subscribe: () => pubsub.asyncIterableIterator(CHANNELS.CONTRACT_UPDATED),
+      resolve: (payload: any) => payload,
     },
     activityFeed: {
-      subscribe: () => pubsub.asyncIterator([EVENTS.ACTIVITY_FEED]),
+      subscribe: () => pubsub.asyncIterableIterator(CHANNELS.ACTIVITY_FEED),
+      resolve: (payload: any) => payload,
     },
     statsUpdated: {
-      subscribe: () => pubsub.asyncIterator([EVENTS.STATS_UPDATED]),
+      subscribe: () => pubsub.asyncIterableIterator(CHANNELS.STATS_UPDATED),
+      resolve: (payload: any) => payload,
     },
   },
 };
