@@ -116,9 +116,12 @@ jobs:
           # Ensure scripts are executable (git checkout can lose permissions)
           chmod +x bin/*.sh
           
-          # Enable webhook feature by setting WEBHOOK_URL env var
+          # Enable webhook feature by adding WEBHOOK_URL to ml0 environment in compose file
           # The actual callback URL is registered via API; this just enables the feature
-          echo "WEBHOOK_URL=http://webhook-enabled/" > .env
+          sed -i 's/- CL_DOCKER_ID=ml0/- WEBHOOK_URL=http:\/\/webhook-enabled\/\n      - CL_DOCKER_ID=ml0/' docker-compose.metagraph.yaml
+          
+          # Verify the change was applied
+          grep WEBHOOK_URL docker-compose.metagraph.yaml || echo "WARNING: WEBHOOK_URL not added!"
           
           # Use compose-runner which handles key generation, env setup, and container orchestration
           # --skip-assembly since we already built everything in prior steps
