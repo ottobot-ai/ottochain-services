@@ -278,15 +278,6 @@ pnpm db:studio      # Open Prisma Studio
 pnpm db:migrate     # Run migrations
 ```
 
-## Deployment
-
-### Hetzner Beta
-
-See [deployment guide](docs/deployment.md) for production setup with:
-- Kubernetes manifests
-- Helm chart
-- Monitoring dashboards
-
 ## Related Repositories
 
 - [ottochain](https://github.com/scasplte2/ottochain) — Metagraph (Scala)
