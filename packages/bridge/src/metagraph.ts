@@ -2,15 +2,22 @@
  * Metagraph Client
  * 
  * Submits properly signed transactions to OttoChain metagraph.
- * Uses Constellation's signing protocol via metakit-sdk.
+ * Uses @ottochain/sdk for signing and HTTP client.
  */
 
 import { getConfig } from '@ottochain/shared';
-import { signDataUpdate, generateKeyPair, keyPairFromPrivateKey } from './lib/metakit/index.js';
-import type { SignatureProof, KeyPair, Signed } from './lib/metakit/types.js';
+import { batchSign, generateKeyPair as sdkGenerateKeyPair, keyPairFromPrivateKey as sdkKeyPairFromPrivateKey, HttpClient } from '@ottochain/sdk';
+import type { KeyPair } from '@ottochain/sdk';
 
-// Re-export wallet utilities
-export { generateKeyPair, keyPairFromPrivateKey };
+// Re-export wallet utilities from SDK
+export function generateKeyPair(): KeyPair {
+  return sdkGenerateKeyPair();
+}
+
+export function keyPairFromPrivateKey(privateKey: string): KeyPair {
+  return sdkKeyPairFromPrivateKey(privateKey);
+}
+
 export type { KeyPair };
 
 interface TransactionResult {
@@ -31,78 +38,32 @@ export async function submitTransaction(
 ): Promise<TransactionResult> {
   const config = getConfig();
 
-  // Sign the message using Constellation's DataUpdate protocol
-  const proof = await signDataUpdate(message, privateKey);
-
-  // Build the signed message envelope
-  const signedMessage: Signed<unknown> = {
-    value: message,
-    proofs: [proof],
-  };
+  // Sign using SDK's batchSign (same as e2e tests)
+  const signed = await batchSign(message, [privateKey], { isDataUpdate: true });
 
   console.log(`[metagraph] Submitting to ${config.METAGRAPH_DL1_URL}/data`);
   console.log(`[metagraph] Message type: ${Object.keys(message as object)[0]}`);
+  console.log(`[metagraph] Signed payload (truncated): ${JSON.stringify(signed).substring(0, 300)}...`);
 
-  // Submit to DL1 data endpoint
-  const response = await fetch(`${config.METAGRAPH_DL1_URL}/data`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(signedMessage),
-  });
+  // Use SDK's HttpClient
+  const client = new HttpClient(config.METAGRAPH_DL1_URL);
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Metagraph submission failed: ${response.status} ${error}`);
+  try {
+    const result = await client.post<{ hash?: string; ordinal?: number }>('/data', signed);
+
+    console.log(`[metagraph] Success: ${JSON.stringify(result)}`);
+
+    return {
+      hash: result.hash ?? 'pending',
+      ordinal: result.ordinal,
+    };
+  } catch (err) {
+    const error = err as Error & { response?: string };
+    if (error.response) {
+      console.error(`[metagraph] Error response: ${error.response}`);
+    }
+    throw new Error(`Metagraph submission failed: ${error.message}`);
   }
-
-  const result = await response.json() as { hash?: string; ordinal?: number };
-
-  return {
-    hash: result.hash ?? 'pending',
-    ordinal: result.ordinal,
-  };
-}
-
-/**
- * Submit a pre-signed transaction
- * 
- * Use this when the signature was created externally (e.g., by a client wallet)
- * 
- * @param message - The message that was signed
- * @param proof - The signature proof
- */
-export async function submitSignedTransaction(
-  message: unknown,
-  proof: SignatureProof
-): Promise<TransactionResult> {
-  const config = getConfig();
-
-  const signedMessage: Signed<unknown> = {
-    value: message,
-    proofs: [proof],
-  };
-
-  const response = await fetch(`${config.METAGRAPH_DL1_URL}/data`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(signedMessage),
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Metagraph submission failed: ${response.status} ${error}`);
-  }
-
-  const result = await response.json() as { hash?: string; ordinal?: number };
-
-  return {
-    hash: result.hash ?? 'pending',
-    ordinal: result.ordinal,
-  };
 }
 
 /**
@@ -111,13 +72,8 @@ export async function submitSignedTransaction(
 export async function queryState(endpoint: string): Promise<unknown> {
   const config = getConfig();
 
-  const response = await fetch(`${config.METAGRAPH_ML0_URL}/data-application/v1${endpoint}`);
-
-  if (!response.ok) {
-    throw new Error(`Query failed: ${response.status}`);
-  }
-
-  return response.json();
+  const client = new HttpClient(config.METAGRAPH_ML0_URL);
+  return client.get(`/data-application/v1${endpoint}`);
 }
 
 /**

@@ -10,7 +10,7 @@ const randomChoice = <T>(arr: readonly T[] | T[]): T => arr[Math.floor(Math.rand
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 async function main() {
-  const iterations = 100; // ~5 min at 3s intervals
+  const iterations = 200; // ~5 min at 3s intervals
   console.log(`🔄 Starting 5-minute activity loop (${iterations} iterations)...\n`);
 
   const agents = await prisma.agent.findMany();
@@ -63,6 +63,7 @@ async function main() {
     } else if (action < 0.85) {
       const c = await prisma.contract.findFirst({ where: { state: 'PROPOSED' }, orderBy: { proposedAt: 'desc' } });
       if (c) {
+        const proposer = agents.find(a => a.id === c.proposerId);
         await prisma.contract.update({ where: { id: c.id }, data: { state: 'ACTIVE', acceptedAt: new Date() } });
         console.log(`[${i}/${iterations}] ✅ ACCEPTED: ${c.contractId.slice(0,20)}`);
 
@@ -70,7 +71,7 @@ async function main() {
         await publishEvent(CHANNELS.ACTIVITY_FEED, {
           eventType: 'CONTRACT',
           timestamp: new Date(),
-          agent: { address: c.proposerId, displayName: p.displayName },
+          agent: { address: proposer?.address || "unknown", displayName: proposer?.displayName || null },
           action: 'accept',
         });
       } else console.log(`[${i}/${iterations}] ⏭️ No pending contracts`);

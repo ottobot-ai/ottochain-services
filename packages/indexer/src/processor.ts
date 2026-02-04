@@ -1,10 +1,11 @@
 // Snapshot Processor
-// Fetches full snapshot data from metagraph and indexes to Postgres
+// Chain-agnostic indexing of all OttoChain state machines
 
 import { prisma, getConfig, type SnapshotNotification, publishEvent, CHANNELS } from '@ottochain/shared';
 
 interface ProcessResult {
   ordinal: number;
+  fibersUpdated: number;
   agentsUpdated: number;
   contractsUpdated: number;
 }
@@ -15,23 +16,45 @@ interface MetagraphState {
 }
 
 interface StateMachineFiber {
-  id: string;
+  fiberId: string;
   status: string;
-  state: Record<string, unknown>;
-  schema?: string;
+  currentState: { value: string };
+  stateData: Record<string, unknown>;
+  definition: {
+    states: Record<string, unknown>;
+    initialState: { value: string };
+    transitions: Array<{
+      from: { value: string };
+      to: { value: string };
+      eventName: string;
+    }>;
+    metadata?: { name?: string; description?: string };
+  };
+  owners: string[];
+  sequenceNumber: number;
+  creationOrdinal: { value: number };
+  latestUpdateOrdinal: { value: number };
+  lastReceipt?: {
+    eventName: string;
+    fromState: { value: string };
+    toState: { value: string };
+    success: boolean;
+    gasUsed: number;
+  };
 }
 
 interface ScriptFiber {
-  id: string;
+  fiberId: string;
   status: string;
-  state: Record<string, unknown>;
+  owners: string[];
 }
 
 /**
  * Process a snapshot notification:
  * 1. Fetch current state from metagraph
- * 2. Extract AgentIdentity and Contract fibers
- * 3. Upsert to Postgres
+ * 2. Index ALL state machines as generic Fibers
+ * 3. Derive Agent records for AgentIdentity workflows
+ * 4. Derive Contract records for Contract workflows
  */
 export async function processSnapshot(notification: SnapshotNotification): Promise<ProcessResult> {
   const config = getConfig();
@@ -44,22 +67,97 @@ export async function processSnapshot(notification: SnapshotNotification): Promi
     throw new Error(`Failed to fetch state: ${response.status} ${response.statusText}`);
   }
   
-  const checkpoint = await response.json() as { state: MetagraphState };
-  const { stateMachines } = checkpoint.state;
+  const checkpoint = await response.json() as { state: MetagraphState; ordinal: number };
+  const { stateMachines, scripts } = checkpoint.state;
   
+  const smCount = Object.keys(stateMachines || {}).length;
+  const scriptCount = Object.keys(scripts || {}).length;
+  console.log(`📊 Checkpoint ordinal ${checkpoint.ordinal}: ${smCount} state machines, ${scriptCount} scripts`);
+  
+  let fibersUpdated = 0;
   let agentsUpdated = 0;
   let contractsUpdated = 0;
   
-  // Process each state machine
-  for (const [fiberId, fiber] of Object.entries(stateMachines)) {
-    const schema = fiber.state?.schema as string | undefined;
+  // Index ALL state machines as generic Fibers
+  for (const [fiberId, fiber] of Object.entries(stateMachines || {})) {
+    const workflowType = fiber.definition?.metadata?.name || 'Unknown';
+    const workflowDesc = fiber.definition?.metadata?.description || null;
+    const currentState = fiber.currentState?.value || 'unknown';
+    const status = mapFiberStatus(fiber.status);
     
-    if (schema === 'AgentIdentity') {
-      await indexAgent(fiberId, fiber, notification.ordinal);
-      agentsUpdated++;
-    } else if (schema === 'Contract') {
-      await indexContract(fiberId, fiber, notification.ordinal);
-      contractsUpdated++;
+    const existingFiber = await prisma.fiber.findUnique({ where: { fiberId } });
+    
+    // Upsert the fiber (cast to Prisma.InputJsonValue)
+    await prisma.fiber.upsert({
+      where: { fiberId },
+      create: {
+        fiberId,
+        workflowType,
+        workflowDesc,
+        currentState,
+        status,
+        owners: fiber.owners || [],
+        stateData: (fiber.stateData || {}) as any,
+        definition: (fiber.definition || {}) as any,
+        sequenceNumber: fiber.sequenceNumber || 0,
+        createdOrdinal: BigInt(fiber.creationOrdinal?.value || notification.ordinal),
+        updatedOrdinal: BigInt(notification.ordinal),
+      },
+      update: {
+        currentState,
+        status,
+        stateData: (fiber.stateData || {}) as any,
+        sequenceNumber: fiber.sequenceNumber || 0,
+        updatedOrdinal: BigInt(notification.ordinal),
+      },
+    });
+    
+    fibersUpdated++;
+    
+    // Record transition if there's a new receipt
+    if (fiber.lastReceipt && fiber.lastReceipt.success) {
+      const existingTransition = await prisma.fiberTransition.findFirst({
+        where: {
+          fiberId,
+          snapshotOrdinal: BigInt(notification.ordinal),
+          eventName: fiber.lastReceipt.eventName,
+        },
+      });
+      
+      if (!existingTransition) {
+        await prisma.fiberTransition.create({
+          data: {
+            fiberId,
+            eventName: fiber.lastReceipt.eventName,
+            fromState: fiber.lastReceipt.fromState.value,
+            toState: fiber.lastReceipt.toState.value,
+            success: fiber.lastReceipt.success,
+            gasUsed: fiber.lastReceipt.gasUsed || 0,
+            snapshotOrdinal: BigInt(notification.ordinal),
+          },
+        });
+        
+        // Publish activity
+        await publishEvent(CHANNELS.ACTIVITY_FEED, {
+          eventType: 'TRANSITION',
+          timestamp: new Date().toISOString(),
+          fiberId,
+          workflowType,
+          action: `${fiber.lastReceipt.eventName}: ${fiber.lastReceipt.fromState.value} → ${fiber.lastReceipt.toState.value}`,
+        });
+      }
+    }
+    
+    // Derive Agent from AgentIdentity workflows
+    if (workflowType === 'AgentIdentity' || fiber.stateData?.schema === 'AgentIdentity') {
+      const updated = await deriveAgent(fiber, notification.ordinal);
+      if (updated) agentsUpdated++;
+    }
+    
+    // Derive Contract from Contract workflows
+    if (workflowType === 'Contract' || fiber.stateData?.schema === 'Contract') {
+      const updated = await deriveContract(fiber, notification.ordinal);
+      if (updated) contractsUpdated++;
     }
   }
   
@@ -69,204 +167,215 @@ export async function processSnapshot(notification: SnapshotNotification): Promi
     create: {
       ordinal: BigInt(notification.ordinal),
       hash: notification.hash,
+      fibersUpdated,
       agentsUpdated,
       contractsUpdated,
     },
     update: {
       hash: notification.hash,
+      fibersUpdated,
       agentsUpdated,
       contractsUpdated,
       indexedAt: new Date(),
     },
   });
   
-  const result = {
-    ordinal: notification.ordinal,
-    agentsUpdated,
-    contractsUpdated,
-  };
-
+  const result = { ordinal: notification.ordinal, fibersUpdated, agentsUpdated, contractsUpdated };
+  console.log(`✅ Indexed snapshot ${notification.ordinal}: ${fibersUpdated} fibers, ${agentsUpdated} agents, ${contractsUpdated} contracts`);
+  
   await publishEvent(CHANNELS.STATS_UPDATED, result);
-
   return result;
 }
 
-async function indexAgent(fiberId: string, fiber: StateMachineFiber, ordinal: number): Promise<void> {
-  const state = fiber.state as Record<string, unknown>;
-  const data = state.data as Record<string, unknown> | undefined;
+/**
+ * Derive an Agent record from an AgentIdentity fiber
+ */
+async function deriveAgent(fiber: StateMachineFiber, ordinal: number): Promise<boolean> {
+  const address = fiber.owners[0];
+  if (!address) return false;
   
-  if (!data) return;
+  const stateData = fiber.stateData || {};
+  const displayName = (stateData.displayName as string) || `Agent ${address.slice(3, 11)}`;
+  const reputation = (stateData.reputation as number) ?? 10;
+  const agentState = mapAgentState(stateData.status as string, fiber.currentState?.value);
   
-  const address = data.address as string;
-  const publicKey = data.publicKey as string;
-  const displayName = data.displayName as string | undefined;
-  const reputation = (data.reputation as number) ?? 10;
-  const agentState = mapAgentState(fiber.status);
+  const existing = await prisma.agent.findUnique({ where: { address } });
   
-  await prisma.agent.upsert({
-    where: { address },
-    create: {
-      address,
-      publicKey,
-      displayName,
-      reputation,
-      state: agentState,
-      fiberId,
-      snapshotOrdinal: BigInt(ordinal),
-    },
-    update: {
-      displayName,
-      reputation,
-      state: agentState,
-      snapshotOrdinal: BigInt(ordinal),
-    },
-  });
-
-  await publishEvent(CHANNELS.AGENT_UPDATED, { address, reputation, state: agentState });
-  
-  // Index platform links if present
-  const platforms = data.platforms as Array<{ platform: string; userId: string; username?: string }> | undefined;
-  if (platforms) {
+  if (!existing) {
+    console.log(`  🆔 Creating agent: ${displayName} (${address.slice(0, 12)}...)`);
+    await prisma.agent.create({
+      data: {
+        address,
+        publicKey: address,
+        displayName,
+        reputation,
+        state: agentState,
+        fiberId: fiber.fiberId,
+        snapshotOrdinal: BigInt(ordinal),
+      },
+    });
+    
+    // Initial reputation history
     const agent = await prisma.agent.findUnique({ where: { address } });
     if (agent) {
-      for (const p of platforms) {
-        await prisma.platformLink.upsert({
-          where: {
-            platform_platformUserId: {
-              platform: p.platform.toUpperCase() as any,
-              platformUserId: p.userId,
-            },
-          },
-          create: {
-            agentId: agent.id,
-            platform: p.platform.toUpperCase() as any,
-            platformUserId: p.userId,
-            platformUsername: p.username,
-          },
-          update: {
-            platformUsername: p.username,
-          },
-        });
-      }
+      await prisma.reputationHistory.create({
+        data: {
+          agentId: agent.id,
+          reputation,
+          delta: 0,
+          reason: 'AgentIdentity registration',
+          snapshotOrdinal: BigInt(ordinal),
+        },
+      });
     }
+    
+    await publishEvent(CHANNELS.AGENT_UPDATED, { address, displayName, reputation, state: agentState });
+    return true;
   }
   
-  // Index attestations if present
-  const attestations = data.attestations as Array<{
-    type: string;
-    issuerAddress?: string;
-    delta: number;
-    reason?: string;
-    txHash: string;
-  }> | undefined;
-  
-  if (attestations) {
-    const agent = await prisma.agent.findUnique({ where: { address } });
-    if (agent) {
-      for (const att of attestations) {
-        // Check if attestation already exists
-        const exists = await prisma.attestation.findFirst({
-          where: { txHash: att.txHash },
-        });
-        
-        if (!exists) {
-          let issuerId: number | null = null;
-          if (att.issuerAddress) {
-            const issuer = await prisma.agent.findUnique({ where: { address: att.issuerAddress } });
-            issuerId = issuer?.id ?? null;
-          }
-          
-          await prisma.attestation.create({
-            data: {
-              agentId: agent.id,
-              type: att.type.toUpperCase() as any,
-              issuerId,
-              delta: att.delta,
-              reason: att.reason,
-              txHash: att.txHash,
-              snapshotOrdinal: BigInt(ordinal),
-            },
-          });
-
-          await publishEvent(CHANNELS.ACTIVITY_FEED, {
-            eventType: 'ATTESTATION',
-            timestamp: new Date().toISOString(),
-            agent: { address, displayName },
-            action: `Received ${att.type} attestation`,
-            reputationDelta: att.delta,
-          });
-        }
-      }
+  // Update if changed
+  if (existing.reputation !== reputation || existing.displayName !== displayName || existing.state !== agentState) {
+    const repDelta = reputation - existing.reputation;
+    
+    await prisma.agent.update({
+      where: { address },
+      data: {
+        displayName,
+        reputation,
+        state: agentState,
+        fiberId: fiber.fiberId,
+        snapshotOrdinal: BigInt(ordinal),
+      },
+    });
+    
+    if (repDelta !== 0) {
+      await prisma.reputationHistory.create({
+        data: {
+          agentId: existing.id,
+          reputation,
+          delta: repDelta,
+          reason: 'AgentIdentity state update',
+          snapshotOrdinal: BigInt(ordinal),
+        },
+      });
     }
+    
+    await publishEvent(CHANNELS.AGENT_UPDATED, { address, displayName, reputation, state: agentState });
+    return true;
   }
+  
+  return false;
 }
 
-async function indexContract(fiberId: string, fiber: StateMachineFiber, ordinal: number): Promise<void> {
-  const state = fiber.state as Record<string, unknown>;
-  const data = state.data as Record<string, unknown> | undefined;
+/**
+ * Derive a Contract record from a Contract fiber
+ */
+async function deriveContract(fiber: StateMachineFiber, ordinal: number): Promise<boolean> {
+  const stateData = fiber.stateData || {};
+  const proposerAddress = (stateData.proposer as string) || fiber.owners[0];
+  const counterpartyAddress = (stateData.counterparty as string) || proposerAddress;
   
-  if (!data) return;
+  if (!proposerAddress) return false;
   
-  const contractId = data.contractId as string ?? fiberId;
-  const proposerAddress = data.proposerAddress as string;
-  const counterpartyAddress = data.counterpartyAddress as string;
-  const terms = (data.terms ?? {}) as object;
-  const contractState = mapContractState(state.currentState as string);
-  
-  // Get or create agents
+  // Ensure agents exist
   const proposer = await prisma.agent.findUnique({ where: { address: proposerAddress } });
   const counterparty = await prisma.agent.findUnique({ where: { address: counterpartyAddress } });
   
   if (!proposer || !counterparty) {
-    console.warn(`Contract ${contractId}: missing proposer or counterparty agent`);
-    return;
+    // Create placeholder agents if needed
+    if (!proposer) {
+      await prisma.agent.create({
+        data: {
+          address: proposerAddress,
+          publicKey: proposerAddress,
+          displayName: `Agent ${proposerAddress.slice(3, 11)}`,
+          reputation: 10,
+          state: 'ACTIVE',
+          snapshotOrdinal: BigInt(ordinal),
+        },
+      });
+    }
+    if (!counterparty && counterpartyAddress !== proposerAddress) {
+      await prisma.agent.create({
+        data: {
+          address: counterpartyAddress,
+          publicKey: counterpartyAddress,
+          displayName: `Agent ${counterpartyAddress.slice(3, 11)}`,
+          reputation: 10,
+          state: 'ACTIVE',
+          snapshotOrdinal: BigInt(ordinal),
+        },
+      });
+    }
   }
   
+  const proposerAgent = await prisma.agent.findUnique({ where: { address: proposerAddress } });
+  const counterpartyAgent = await prisma.agent.findUnique({ where: { address: counterpartyAddress } });
+  
+  if (!proposerAgent || !counterpartyAgent) return false;
+  
+  const contractState = mapContractState(fiber.currentState?.value, fiber.status);
+  
   await prisma.contract.upsert({
-    where: { contractId },
+    where: { contractId: fiber.fiberId },
     create: {
-      contractId,
-      proposerId: proposer.id,
-      counterpartyId: counterparty.id,
+      contractId: fiber.fiberId,
+      proposerId: proposerAgent.id,
+      counterpartyId: counterpartyAgent.id,
       state: contractState,
-      terms,
-      fiberId,
+      terms: {
+        title: stateData.title || 'Contract',
+        description: stateData.description || '',
+        ...(stateData.terms || {}),
+      },
+      fiberId: fiber.fiberId,
       snapshotOrdinal: BigInt(ordinal),
     },
     update: {
       state: contractState,
+      terms: {
+        title: stateData.title || 'Contract',
+        description: stateData.description || '',
+        ...(stateData.terms || {}),
+      },
       snapshotOrdinal: BigInt(ordinal),
       ...(contractState === 'ACTIVE' && { acceptedAt: new Date() }),
       ...(contractState === 'COMPLETED' && { completedAt: new Date() }),
     },
   });
+  
+  await publishEvent(CHANNELS.CONTRACT_UPDATED, {
+    contractId: fiber.fiberId,
+    state: contractState,
+  });
+  
+  return true;
 }
 
-function mapAgentState(fiberStatus: string): 'REGISTERED' | 'ACTIVE' | 'WITHDRAWN' {
-  switch (fiberStatus.toLowerCase()) {
-    case 'active':
-      return 'ACTIVE';
-    case 'completed':
-    case 'failed':
-      return 'WITHDRAWN';
-    default:
-      return 'REGISTERED';
+function mapFiberStatus(status: string): 'ACTIVE' | 'ARCHIVED' | 'FAILED' {
+  switch (status?.toLowerCase()) {
+    case 'archived': return 'ARCHIVED';
+    case 'failed': return 'FAILED';
+    default: return 'ACTIVE';
   }
 }
 
-function mapContractState(currentState: string): 'PROPOSED' | 'ACTIVE' | 'COMPLETED' | 'REJECTED' | 'DISPUTED' {
-  switch (currentState?.toLowerCase()) {
-    case 'proposed':
-      return 'PROPOSED';
-    case 'active':
-      return 'ACTIVE';
-    case 'completed':
-      return 'COMPLETED';
-    case 'rejected':
-      return 'REJECTED';
-    case 'disputed':
-      return 'DISPUTED';
-    default:
-      return 'PROPOSED';
-  }
+function mapAgentState(stateDataStatus: string | undefined, currentState: string | undefined): 'REGISTERED' | 'ACTIVE' | 'WITHDRAWN' {
+  if (stateDataStatus === 'Withdrawn' || currentState === 'Withdrawn') return 'WITHDRAWN';
+  if (stateDataStatus === 'Active' || currentState === 'Active') return 'ACTIVE';
+  return 'REGISTERED';
+}
+
+function mapContractState(currentState: string | undefined, fiberStatus: string): 'PROPOSED' | 'ACTIVE' | 'COMPLETED' | 'REJECTED' | 'DISPUTED' {
+  if (fiberStatus !== 'Active') return 'COMPLETED';
+  
+  const state = currentState?.toLowerCase();
+  if (!state) return 'PROPOSED';
+  
+  if (['completed', 'finished', 'delivered', 'approved', 'released'].includes(state)) return 'COMPLETED';
+  if (['rejected', 'cancelled', 'failed'].includes(state)) return 'REJECTED';
+  if (['disputed'].includes(state)) return 'DISPUTED';
+  if (['active', 'accepted', 'in_progress', 'working'].includes(state)) return 'ACTIVE';
+  
+  return 'PROPOSED';
 }

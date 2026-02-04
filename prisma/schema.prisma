@@ -1,6 +1,3 @@
-// OttoChain Identity Service Database Schema
-// Prisma schema for PostgreSQL
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,56 +7,180 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ============================================================================
-// Core Tables
-// ============================================================================
-
 /// Agent identity registered on OttoChain
 model Agent {
-  id              Int       @id @default(autoincrement())
-  address         String    @unique @db.VarChar(64)    // DAG address
-  publicKey       String    @db.VarChar(128)
-  displayName     String?   @db.VarChar(255)
-  reputation      Int       @default(10)
-  state           AgentState @default(REGISTERED)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  fiberId         String    @unique @db.VarChar(64)    // on-chain fiber reference
-  snapshotOrdinal BigInt                               // last update ordinal
-
-  // Relationships
+  id                      Int            @id @default(autoincrement())
+  address                 String         @unique @db.VarChar(64)
+  publicKey               String         @db.VarChar(128)
+  displayName             String?        @db.VarChar(255)
+  reputation              Int            @default(10)
+  state                   AgentState     @default(REGISTERED)
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+  fiberId                 String?        @unique @db.VarChar(64)
+  snapshotOrdinal         BigInt
+  attestationsReceived    Attestation[]  @relation("AttestationTarget")
+  attestationsIssued      Attestation[]  @relation("AttestationIssuer")
+  contractsAsCounterparty Contract[]     @relation("ContractCounterparty")
+  contractsAsProposer     Contract[]     @relation("ContractProposer")
   platformLinks           PlatformLink[]
-  attestationsReceived    Attestation[]   @relation("AttestationTarget")
-  attestationsIssued      Attestation[]   @relation("AttestationIssuer")
-  contractsAsProposer     Contract[]      @relation("ContractProposer")
-  contractsAsCounterparty Contract[]      @relation("ContractCounterparty")
+  reputationHistory       ReputationHistory[]
 
   @@index([reputation(sort: Desc)])
   @@index([state])
   @@index([createdAt])
 }
 
+/// Platform identity linked to an agent
+model PlatformLink {
+  id               Int      @id @default(autoincrement())
+  agentId          Int
+  platform         Platform
+  platformUserId   String   @db.VarChar(128)
+  platformUsername String?  @db.VarChar(255)
+  linkedAt         DateTime @default(now())
+  verified         Boolean  @default(false)
+  agent            Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([platform, platformUserId])
+  @@index([agentId])
+}
+
+/// Reputation attestation
+model Attestation {
+  id              Int             @id @default(autoincrement())
+  agentId         Int
+  type            AttestationType
+  issuerId        Int?
+  issuerPlatform  Platform?
+  delta           Int
+  reason          String?
+  metadata        Json?
+  createdAt       DateTime        @default(now())
+  txHash          String          @db.VarChar(64)
+  snapshotOrdinal BigInt
+  agent           Agent           @relation("AttestationTarget", fields: [agentId], references: [id], onDelete: Cascade)
+  issuer          Agent?          @relation("AttestationIssuer", fields: [issuerId], references: [id])
+
+  @@index([agentId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+/// Agent-to-agent contract
+model Contract {
+  id              Int           @id @default(autoincrement())
+  contractId      String        @unique @db.VarChar(64)
+  proposerId      Int
+  counterpartyId  Int
+  state           ContractState
+  terms           Json
+  proposedAt      DateTime      @default(now())
+  acceptedAt      DateTime?
+  completedAt     DateTime?
+  fiberId         String        @unique @db.VarChar(64)
+  snapshotOrdinal BigInt
+  counterparty    Agent         @relation("ContractCounterparty", fields: [counterpartyId], references: [id])
+  proposer        Agent         @relation("ContractProposer", fields: [proposerId], references: [id])
+
+  @@index([proposerId])
+  @@index([counterpartyId])
+  @@index([state])
+}
+
+/// Reputation history for tracking changes over time
+model ReputationHistory {
+  id              Int      @id @default(autoincrement())
+  agentId         Int
+  reputation      Int
+  delta           Int      @default(0)
+  reason          String?  @db.VarChar(255)
+  recordedAt      DateTime @default(now())
+  snapshotOrdinal BigInt
+  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, recordedAt])
+  @@index([recordedAt])
+}
+
+/// Generic state machine fiber (chain-agnostic)
+model Fiber {
+  fiberId         String   @id @db.VarChar(64)
+  workflowType    String   @db.VarChar(128)  // definition.metadata.name
+  workflowDesc    String?  @db.VarChar(512)  // definition.metadata.description
+  currentState    String   @db.VarChar(64)
+  status          FiberStatus @default(ACTIVE)
+  owners          String[] // DAG addresses
+  stateData       Json
+  definition      Json     // full state machine definition
+  sequenceNumber  Int      @default(0)
+  createdOrdinal  BigInt
+  updatedOrdinal  BigInt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Transitions history
+  transitions     FiberTransition[]
+
+  @@index([workflowType])
+  @@index([status])
+  @@index([currentState])
+  @@index([createdAt])
+  @@index([owners])
+}
+
+/// State transition record for a fiber
+model FiberTransition {
+  id              Int      @id @default(autoincrement())
+  fiberId         String   @db.VarChar(64)
+  eventName       String   @db.VarChar(64)
+  fromState       String   @db.VarChar(64)
+  toState         String   @db.VarChar(64)
+  success         Boolean  @default(true)
+  gasUsed         Int      @default(0)
+  payload         Json?
+  snapshotOrdinal BigInt
+  createdAt       DateTime @default(now())
+  fiber           Fiber    @relation(fields: [fiberId], references: [fiberId], onDelete: Cascade)
+
+  @@index([fiberId, createdAt])
+  @@index([eventName])
+  @@index([snapshotOrdinal])
+}
+
+enum FiberStatus {
+  ACTIVE
+  ARCHIVED
+  FAILED
+}
+
+/// Track indexing progress
+model IndexedSnapshot {
+  ordinal          BigInt   @id
+  hash             String   @db.VarChar(64)
+  indexedAt        DateTime @default(now())
+  agentsUpdated    Int      @default(0)
+  contractsUpdated Int      @default(0)
+  fibersUpdated    Int      @default(0)
+}
+
+/// Webhook subscribers for snapshot notifications
+model SnapshotSubscriber {
+  id          Int       @id @default(autoincrement())
+  callbackUrl String    @unique @db.VarChar(512)
+  secret      String?   @db.VarChar(128)
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  lastPingAt  DateTime?
+  failCount   Int       @default(0)
+
+  @@index([active])
+}
+
 enum AgentState {
   REGISTERED
   ACTIVE
   WITHDRAWN
-}
-
-/// Platform identity linked to an agent
-model PlatformLink {
-  id               Int       @id @default(autoincrement())
-  agentId          Int
-  platform         Platform
-  platformUserId   String    @db.VarChar(128)
-  platformUsername String?   @db.VarChar(255)
-  linkedAt         DateTime  @default(now())
-  verified         Boolean   @default(false)
-
-  // Relationships
-  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
-
-  @@unique([platform, platformUserId])
-  @@index([agentId])
 }
 
 enum Platform {
@@ -70,57 +191,11 @@ enum Platform {
   CUSTOM
 }
 
-/// Reputation attestation
-model Attestation {
-  id              Int             @id @default(autoincrement())
-  agentId         Int                                   // target agent
-  type            AttestationType
-  issuerId        Int?                                  // NULL for platform-issued
-  issuerPlatform  Platform?                             // platform that issued (if platform-issued)
-  delta           Int                                   // reputation change
-  reason          String?         @db.Text
-  metadata        Json?
-  createdAt       DateTime        @default(now())
-  txHash          String          @db.VarChar(64)
-  snapshotOrdinal BigInt
-
-  // Relationships
-  agent  Agent  @relation("AttestationTarget", fields: [agentId], references: [id], onDelete: Cascade)
-  issuer Agent? @relation("AttestationIssuer", fields: [issuerId], references: [id], onDelete: SetNull)
-
-  @@index([agentId])
-  @@index([type])
-  @@index([createdAt])
-}
-
 enum AttestationType {
   COMPLETION
   VOUCH
   VIOLATION
   BEHAVIORAL
-}
-
-/// Agent-to-agent contract
-model Contract {
-  id              Int           @id @default(autoincrement())
-  contractId      String        @unique @db.VarChar(64)  // on-chain identifier
-  proposerId      Int
-  counterpartyId  Int
-  state           ContractState
-  terms           Json
-  proposedAt      DateTime      @default(now())
-  acceptedAt      DateTime?
-  completedAt     DateTime?
-  fiberId         String        @unique @db.VarChar(64)
-  snapshotOrdinal BigInt
-
-  // Relationships
-  proposer     Agent @relation("ContractProposer", fields: [proposerId], references: [id])
-  counterparty Agent @relation("ContractCounterparty", fields: [counterpartyId], references: [id])
-
-  @@index([proposerId])
-  @@index([counterpartyId])
-  @@index([state])
 }
 
 enum ContractState {
@@ -129,30 +204,4 @@ enum ContractState {
   COMPLETED
   REJECTED
   DISPUTED
-}
-
-// ============================================================================
-// Indexer State
-// ============================================================================
-
-/// Track indexing progress
-model IndexedSnapshot {
-  ordinal          BigInt   @id
-  hash             String   @db.VarChar(64)
-  indexedAt        DateTime @default(now())
-  agentsUpdated    Int      @default(0)
-  contractsUpdated Int      @default(0)
-}
-
-/// Webhook subscribers for snapshot notifications
-model SnapshotSubscriber {
-  id          Int      @id @default(autoincrement())
-  callbackUrl String   @unique @db.VarChar(512)
-  secret      String?  @db.VarChar(128)  // for HMAC signature verification
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  lastPingAt  DateTime?
-  failCount   Int      @default(0)       // consecutive failures
-
-  @@index([active])
 }

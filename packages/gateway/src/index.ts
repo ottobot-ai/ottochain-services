@@ -2,12 +2,15 @@
 // GraphQL server with subscriptions for real-time updates
 
 import { ApolloServer } from '@apollo/server';
-import { startStandaloneServer } from '@apollo/server/standalone';
+import { expressMiddleware } from '@apollo/server/express4';
+import { ApolloServerPluginDrainHttpServer } from '@apollo/server/plugin/drainHttpServer';
 import { makeExecutableSchema } from '@graphql-tools/schema';
 import { WebSocketServer } from 'ws';
 import { useServer } from 'graphql-ws/lib/use/ws';
 import { createServer } from 'http';
-import { ApolloServerPluginDrainHttpServer } from '@apollo/server/plugin/drainHttpServer';
+import express from 'express';
+import cors from 'cors';
+import bodyParser from 'body-parser';
 
 import { typeDefs } from './schema.js';
 import { resolvers } from './resolvers.js';
@@ -16,7 +19,8 @@ import { getConfig } from '@ottochain/shared';
 
 async function main() {
   const config = getConfig();
-  const httpServer = createServer();
+  const app = express();
+  const httpServer = createServer(app);
   
   const schema = makeExecutableSchema({ typeDefs, resolvers });
 
@@ -47,13 +51,28 @@ async function main() {
 
   await server.start();
 
-  const { url } = await startStandaloneServer(server, {
-    context: createContext,
-    listen: { port: config.GATEWAY_PORT },
+  // Apply middleware
+  app.use(
+    '/graphql',
+    cors<cors.CorsRequest>(),
+    bodyParser.json(),
+    expressMiddleware(server, {
+      context: createContext,
+    }),
+  );
+
+  // Health check
+  app.get('/health', (_, res) => {
+    res.json({ status: 'ok', service: 'gateway' });
   });
 
-  console.log(`🚀 Gateway ready at ${url}`);
-  console.log(`🔌 WebSocket subscriptions at ws://localhost:${config.GATEWAY_PORT}/graphql`);
+  // Start server
+  await new Promise<void>((resolve) => {
+    httpServer.listen({ port: config.GATEWAY_PORT, host: '0.0.0.0' }, resolve);
+  });
+
+  console.log(`🚀 Gateway ready at http://0.0.0.0:${config.GATEWAY_PORT}/graphql`);
+  console.log(`🔌 WebSocket subscriptions at ws://0.0.0.0:${config.GATEWAY_PORT}/graphql`);
 }
 
 main().catch(console.error);

@@ -160,6 +160,7 @@ export const resolvers = {
         totalContracts,
         completedContracts,
         totalAttestations,
+        totalFibers,
         lastSnapshot,
       ] = await Promise.all([
         prisma.agent.count(),
@@ -167,6 +168,7 @@ export const resolvers = {
         prisma.contract.count(),
         prisma.contract.count({ where: { state: 'COMPLETED' } }),
         prisma.attestation.count(),
+        prisma.fiber.count(),
         prisma.indexedSnapshot.findFirst({ orderBy: { ordinal: 'desc' } }),
       ]);
 
@@ -176,6 +178,7 @@ export const resolvers = {
         totalContracts,
         completedContracts,
         totalAttestations,
+        totalFibers,
         lastSnapshotOrdinal: lastSnapshot?.ordinal ? Number(lastSnapshot.ordinal) : 0,
       };
     },
@@ -188,6 +191,83 @@ export const resolvers = {
             { address: { contains: query, mode: 'insensitive' } },
           ],
         },
+        take: limit,
+      });
+    },
+
+    // === Generic Fiber Queries (chain-agnostic) ===
+    
+    fiber: async (_: unknown, { fiberId }: { fiberId: string }) => {
+      return prisma.fiber.findUnique({ where: { fiberId } });
+    },
+
+    fibers: async (
+      _: unknown,
+      {
+        workflowType,
+        status,
+        owner,
+        limit = 20,
+        offset = 0,
+        orderBy = 'UPDATED_DESC',
+      }: {
+        workflowType?: string;
+        status?: string;
+        owner?: string;
+        limit?: number;
+        offset?: number;
+        orderBy?: string;
+      }
+    ) => {
+      const orderByMap: Record<string, any> = {
+        CREATED_DESC: { createdAt: 'desc' },
+        CREATED_ASC: { createdAt: 'asc' },
+        UPDATED_DESC: { updatedAt: 'desc' },
+        SEQUENCE_DESC: { sequenceNumber: 'desc' },
+      };
+
+      return prisma.fiber.findMany({
+        where: {
+          ...(workflowType && { workflowType }),
+          ...(status && { status: status as any }),
+          ...(owner && { owners: { has: owner } }),
+        },
+        orderBy: orderByMap[orderBy] ?? { updatedAt: 'desc' },
+        take: limit,
+        skip: offset,
+      });
+    },
+
+    workflowTypes: async () => {
+      const fibers = await prisma.fiber.groupBy({
+        by: ['workflowType'],
+        _count: { fiberId: true },
+      });
+
+      // Get sample fiber for each type to extract states
+      const types = await Promise.all(
+        fibers.map(async (f) => {
+          const sample = await prisma.fiber.findFirst({
+            where: { workflowType: f.workflowType },
+          });
+          const definition = sample?.definition as { states?: Record<string, unknown>; metadata?: { description?: string } } | null;
+          
+          return {
+            name: f.workflowType,
+            description: definition?.metadata?.description || null,
+            count: f._count.fiberId,
+            states: definition?.states ? Object.keys(definition.states) : [],
+          };
+        })
+      );
+
+      return types.sort((a, b) => b.count - a.count);
+    },
+
+    fibersByOwner: async (_: unknown, { address, limit = 20 }: { address: string; limit?: number }) => {
+      return prisma.fiber.findMany({
+        where: { owners: { has: address } },
+        orderBy: { updatedAt: 'desc' },
         take: limit,
       });
     },
@@ -286,6 +366,14 @@ export const resolvers = {
         },
       });
     },
+
+    reputationHistory: async (parent: { id: number }, { limit = 50 }: { limit?: number }) => {
+      return prisma.reputationHistory.findMany({
+        where: { agentId: parent.id },
+        take: limit,
+        orderBy: { recordedAt: 'asc' },
+      });
+    },
   },
 
   Attestation: {
@@ -301,6 +389,16 @@ export const resolvers = {
     },
     counterparty: async (parent: { counterpartyId: number }) => {
       return prisma.agent.findUnique({ where: { id: parent.counterpartyId } });
+    },
+  },
+
+  Fiber: {
+    transitions: async (parent: { fiberId: string }, { limit = 20 }: { limit?: number }) => {
+      return prisma.fiberTransition.findMany({
+        where: { fiberId: parent.fiberId },
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      });
     },
   },
 

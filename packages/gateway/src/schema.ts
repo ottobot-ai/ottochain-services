@@ -18,6 +18,7 @@ export const typeDefs = /* GraphQL */ `
     attestationsReceived(limit: Int, offset: Int): [Attestation!]!
     contractsAsProposer(state: ContractState): [Contract!]!
     contractsAsCounterparty(state: ContractState): [Contract!]!
+    reputationHistory(limit: Int): [ReputationPoint!]!
   }
 
   type PlatformLink {
@@ -60,13 +61,54 @@ export const typeDefs = /* GraphQL */ `
     relatedAgent: Agent
   }
 
+  type ReputationPoint {
+    reputation: Int!
+    delta: Int!
+    reason: String
+    recordedAt: DateTime!
+  }
+
   type NetworkStats {
     totalAgents: Int!
     activeAgents: Int!
     totalContracts: Int!
     completedContracts: Int!
     totalAttestations: Int!
+    totalFibers: Int!
     lastSnapshotOrdinal: Int!
+  }
+
+  # === Generic Fiber Types (chain-agnostic) ===
+
+  type Fiber {
+    fiberId: String!
+    workflowType: String!
+    workflowDesc: String
+    currentState: String!
+    status: FiberStatus!
+    owners: [String!]!
+    stateData: JSON!
+    definition: JSON!
+    sequenceNumber: Int!
+    createdAt: DateTime!
+    updatedAt: DateTime!
+    transitions(limit: Int): [FiberTransition!]!
+  }
+
+  type FiberTransition {
+    eventName: String!
+    fromState: String!
+    toState: String!
+    success: Boolean!
+    gasUsed: Int!
+    createdAt: DateTime!
+  }
+
+  type WorkflowType {
+    name: String!
+    description: String
+    count: Int!
+    states: [String!]!
   }
 
   # === Enums ===
@@ -114,6 +156,19 @@ export const typeDefs = /* GraphQL */ `
     NAME_ASC
   }
 
+  enum FiberStatus {
+    ACTIVE
+    ARCHIVED
+    FAILED
+  }
+
+  enum FiberOrderBy {
+    CREATED_DESC
+    CREATED_ASC
+    UPDATED_DESC
+    SEQUENCE_DESC
+  }
+
   # === Queries ===
 
   type Query {
@@ -142,6 +197,20 @@ export const typeDefs = /* GraphQL */ `
     recentActivity(limit: Int = 50): [ActivityEvent!]!
     networkStats: NetworkStats!
     searchAgents(query: String!, limit: Int = 10): [Agent!]!
+    
+    # Generic Fiber Queries (chain-agnostic)
+    fiber(fiberId: String!): Fiber
+    fibers(
+      workflowType: String
+      status: FiberStatus
+      owner: String
+      limit: Int = 20
+      offset: Int = 0
+      orderBy: FiberOrderBy = UPDATED_DESC
+    ): [Fiber!]!
+    
+    workflowTypes: [WorkflowType!]!
+    fibersByOwner(address: String!, limit: Int = 20): [Fiber!]!
   }
 
   # === Mutations ===
