@@ -58,8 +58,8 @@ app.get('/status', async (_, res) => {
 const config = getConfig();
 const port = config.INDEXER_PORT;
 
-app.listen(port, () => {
-  console.log(`🔍 Indexer listening on port ${port}`);
+app.listen(port, '0.0.0.0', () => {
+  console.log(`🔍 Indexer listening on port ${port} (0.0.0.0)`);
   console.log(`   Webhook: POST http://localhost:${port}/webhook/snapshot`);
   console.log(`   Status:  GET  http://localhost:${port}/status`);
 });

@@ -115,6 +115,11 @@ jobs:
         run: |
           # Ensure scripts are executable (git checkout can lose permissions)
           chmod +x bin/*.sh
+          
+          # Enable webhook feature by setting WEBHOOK_URL env var
+          # The actual callback URL is registered via API; this just enables the feature
+          echo "WEBHOOK_URL=http://webhook-enabled/" > .env
+          
           # Use compose-runner which handles key generation, env setup, and container orchestration
           # --skip-assembly since we already built everything in prior steps
           ./bin/compose-runner.sh --up --metagraph=$(pwd)/../../ottochain --dl1 --skip-assembly
@@ -179,11 +184,31 @@ jobs:
           sleep 3
           curl -s http://localhost:3031/health | grep -q '"status":"ok"'
 
+      - name: Setup webhook proxy
+        run: |
+          # ML0 container can't reach localhost directly, so we run a socat proxy
+          # on the tessellation_common network that forwards to host.docker.internal
+          docker run -d --name webhook-proxy \
+            --network tessellation_common \
+            --add-host=host.docker.internal:host-gateway \
+            alpine/socat \
+            TCP-LISTEN:3031,fork,reuseaddr TCP:host.docker.internal:3031
+          
+          sleep 2
+          
+          # Get proxy container IP
+          PROXY_IP=$(docker inspect webhook-proxy --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
+          echo "PROXY_IP=$PROXY_IP" >> $GITHUB_ENV
+          echo "Webhook proxy running at $PROXY_IP:3031"
+          
+          # Verify proxy works
+          docker exec ml0-0 curl -sf http://$PROXY_IP:3031/health
+
       - name: Run integration tests
         env:
           ML0_URL: http://localhost:9200
           INDEXER_URL: http://localhost:3031
-          HOST_IP: 127.0.0.1
+          HOST_IP: ${{ env.PROXY_IP }}
         run: npx tsx scripts/test-webhook.ts
 
       - name: Collect logs on failure
@@ -197,6 +222,10 @@ jobs:
           docker logs ml0-0 2>&1 | tail -100 || true
           echo "=== DL1 Logs ==="
           docker logs dl1-0 2>&1 | tail -100 || true
+          echo "=== Webhook Proxy Logs ==="
+          docker logs webhook-proxy 2>&1 | tail -50 || true
+          echo "=== Webhook Subscribers ==="
+          curl -s http://localhost:9200/data-application/v1/webhooks/subscribers | jq . || true
           echo "=== Indexer Logs ==="
           cat /tmp/indexer.log 2>/dev/null | tail -50 || true
 
@@ -204,5 +233,6 @@ jobs:
         if: always()
         working-directory: tessellation/docker
         run: |
+          docker rm -f webhook-proxy 2>/dev/null || true
           chmod +x bin/*.sh 2>/dev/null || true
           ./bin/compose-runner.sh --down || true
