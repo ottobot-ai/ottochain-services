@@ -2,16 +2,15 @@
 /**
  * OttoChain Multi-Agent Simulation
  * 
- * Simulates a realistic agent ecosystem with:
- * - Agent registration
- * - Vouching networks
- * - Contract negotiations
- * - Completions and disputes
- * - Reputation dynamics
+ * Uses OttoChain's fiber-based message types:
+ * - CreateStateMachine: Create agent identities & contracts
+ * - TransitionStateMachine: Vouch, accept, complete, dispute
+ * 
+ * State machine definitions follow the Agent Identity spec.
  */
 
 import nacl from 'tweetnacl';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 
 // ============================================================================
 // Configuration
@@ -20,10 +19,109 @@ import { createHash } from 'crypto';
 const CONFIG = {
   ML0_URL: process.env.ML0_URL || 'http://localhost:9200',
   DL1_URL: process.env.DL1_URL || 'http://localhost:9400',
-  BRIDGE_URL: process.env.BRIDGE_URL || 'http://localhost:3030',
   INDEXER_URL: process.env.INDEXER_URL || 'http://localhost:3031',
-  SNAPSHOT_WAIT_MS: 45000,  // Time to wait for snapshot confirmation
+  SNAPSHOT_WAIT_MS: 60000,
   NUM_AGENTS: 5,
+};
+
+// ============================================================================
+// Agent Identity State Machine Definition
+// ============================================================================
+
+const AGENT_IDENTITY_DEFINITION = {
+  states: ['Registered', 'Active', 'Withdrawn'],
+  initialState: 'Registered',
+  transitions: [
+    {
+      from: 'Registered',
+      event: 'activate',
+      to: 'Active',
+      guards: [],
+      effects: [{ op: 'merge', path: ['status'], value: 'Active' }],
+    },
+    {
+      from: 'Active',
+      event: 'receive_vouch',
+      to: 'Active',
+      guards: [],
+      effects: [
+        { op: 'apply', path: ['reputation'], expr: { '+': [{ var: 'reputation' }, 2] } },
+        { op: 'push', path: ['vouches'], value: { var: 'event.from' } },
+      ],
+    },
+    {
+      from: 'Active',
+      event: 'receive_completion',
+      to: 'Active',
+      guards: [],
+      effects: [
+        { op: 'apply', path: ['reputation'], expr: { '+': [{ var: 'reputation' }, 5] } },
+      ],
+    },
+    {
+      from: 'Active',
+      event: 'receive_violation',
+      to: 'Active',
+      guards: [],
+      effects: [
+        { op: 'apply', path: ['reputation'], expr: { max: [0, { '-': [{ var: 'reputation' }, 10] }] } },
+      ],
+    },
+    {
+      from: 'Active',
+      event: 'withdraw',
+      to: 'Withdrawn',
+      guards: [],
+      effects: [{ op: 'merge', path: ['status'], value: 'Withdrawn' }],
+    },
+  ],
+};
+
+const CONTRACT_DEFINITION = {
+  states: ['Proposed', 'Active', 'Completed', 'Disputed', 'Rejected'],
+  initialState: 'Proposed',
+  transitions: [
+    {
+      from: 'Proposed',
+      event: 'accept',
+      to: 'Active',
+      guards: [{ '==': [{ var: 'event.agent' }, { var: 'counterparty' }] }],
+      effects: [{ op: 'merge', path: ['acceptedAt'], value: { var: '$timestamp' } }],
+    },
+    {
+      from: 'Proposed',
+      event: 'reject',
+      to: 'Rejected',
+      guards: [{ '==': [{ var: 'event.agent' }, { var: 'counterparty' }] }],
+      effects: [],
+    },
+    {
+      from: 'Active',
+      event: 'complete',
+      to: 'Active', // Stays Active until both complete
+      guards: [],
+      effects: [
+        { op: 'push', path: ['completions'], value: { var: 'event.agent' } },
+      ],
+    },
+    {
+      from: 'Active',
+      event: 'finalize',
+      to: 'Completed',
+      guards: [{ '>=': [{ count: { var: 'completions' } }, 2] }],
+      effects: [{ op: 'merge', path: ['completedAt'], value: { var: '$timestamp' } }],
+    },
+    {
+      from: 'Active',
+      event: 'dispute',
+      to: 'Disputed',
+      guards: [],
+      effects: [
+        { op: 'merge', path: ['disputedAt'], value: { var: '$timestamp' } },
+        { op: 'merge', path: ['disputeReason'], value: { var: 'event.reason' } },
+      ],
+    },
+  ],
 };
 
 // ============================================================================
@@ -35,23 +133,16 @@ interface Agent {
   address: string;
   publicKey: string;
   secretKey: Uint8Array;
-  reputation: number;
+  fiberId?: string;  // UUID of their identity state machine
 }
 
 function createAgent(name: string): Agent {
   const keypair = nacl.sign.keyPair();
   const publicKey = Buffer.from(keypair.publicKey).toString('hex');
-  // Simplified DAG address derivation
   const hash = createHash('sha256').update(keypair.publicKey).digest('hex');
   const address = `DAG${hash.slice(0, 40)}`;
   
-  return {
-    name,
-    address,
-    publicKey,
-    secretKey: keypair.secretKey,
-    reputation: 10, // Starting reputation
-  };
+  return { name, address, publicKey, secretKey: keypair.secretKey };
 }
 
 function signMessage(agent: Agent, message: unknown): string {
@@ -67,8 +158,10 @@ function signMessage(agent: Agent, message: unknown): string {
 async function submitTransaction(message: unknown, signature: string): Promise<{ hash: string }> {
   const signedMessage = {
     value: message,
-    proofs: [{ id: signature.slice(0, 64), signature }],
+    proofs: [{ id: signature.slice(0, 128), signature }],
   };
+
+  console.log(`    📤 Submitting: ${JSON.stringify(message).slice(0, 100)}...`);
 
   const response = await fetch(`${CONFIG.DL1_URL}/data`, {
     method: 'POST',
@@ -84,14 +177,15 @@ async function submitTransaction(message: unknown, signature: string): Promise<{
   return response.json() as Promise<{ hash: string }>;
 }
 
-async function getCheckpoint(): Promise<{ ordinal: number }> {
+async function getCheckpoint(): Promise<{ ordinal: number; state: unknown }> {
   const response = await fetch(`${CONFIG.ML0_URL}/data-application/v1/checkpoint`);
-  return response.json() as Promise<{ ordinal: number }>;
+  return response.json() as Promise<{ ordinal: number; state: unknown }>;
 }
 
-async function getStateMachines(): Promise<Record<string, unknown>> {
-  const response = await fetch(`${CONFIG.ML0_URL}/data-application/v1/state-machines`);
-  return response.json() as Promise<Record<string, unknown>>;
+async function getStateMachine(fiberId: string): Promise<unknown> {
+  const response = await fetch(`${CONFIG.ML0_URL}/data-application/v1/state-machines/${fiberId}`);
+  if (!response.ok) return null;
+  return response.json();
 }
 
 async function waitForSnapshot(minOrdinal: number): Promise<number> {
@@ -101,142 +195,135 @@ async function waitForSnapshot(minOrdinal: number): Promise<number> {
   while (Date.now() - start < CONFIG.SNAPSHOT_WAIT_MS) {
     const checkpoint = await getCheckpoint();
     if (checkpoint.ordinal > minOrdinal) {
-      console.log(`    ✓ Snapshot ${checkpoint.ordinal} confirmed`);
+      console.log(`    ✓ Snapshot ${checkpoint.ordinal} confirmed (${((Date.now() - start) / 1000).toFixed(1)}s)`);
       return checkpoint.ordinal;
     }
-    await sleep(2000);
+    await sleep(3000);
   }
   
-  throw new Error(`Snapshot timeout (waited ${CONFIG.SNAPSHOT_WAIT_MS}ms)`);
+  throw new Error(`Snapshot timeout after ${CONFIG.SNAPSHOT_WAIT_MS}ms`);
 }
 
 // ============================================================================
-// OttoChain Actions
+// OttoChain Operations
 // ============================================================================
 
-async function registerAgent(agent: Agent, platform: string = 'DISCORD'): Promise<void> {
+async function createAgentIdentity(agent: Agent): Promise<string> {
+  const fiberId = randomUUID();
+  agent.fiberId = fiberId;
+
   const message = {
-    RegisterAgent: {
-      address: agent.address,
-      publicKey: agent.publicKey,
-      displayName: agent.name,
-      platform,
-      platformUserId: `${platform.toLowerCase()}_${agent.name.toLowerCase()}`,
+    CreateStateMachine: {
+      fiberId,
+      definition: AGENT_IDENTITY_DEFINITION,
+      initialData: {
+        address: agent.address,
+        publicKey: agent.publicKey,
+        displayName: agent.name,
+        reputation: 10,
+        vouches: [],
+        status: 'Registered',
+      },
     },
   };
-  
+
+  const signature = signMessage(agent, message);
+  await submitTransaction(message, signature);
+  return fiberId;
+}
+
+async function transitionAgent(agent: Agent, event: string, payload: unknown): Promise<void> {
+  if (!agent.fiberId) throw new Error(`Agent ${agent.name} has no fiberId`);
+
+  // Get current sequence number
+  const state = await getStateMachine(agent.fiberId) as { sequenceNumber?: number } | null;
+  const targetSeq = (state?.sequenceNumber ?? 0) + 1;
+
+  const message = {
+    TransitionStateMachine: {
+      fiberId: agent.fiberId,
+      eventName: event,
+      payload,
+      targetSequenceNumber: targetSeq,
+    },
+  };
+
   const signature = signMessage(agent, message);
   await submitTransaction(message, signature);
 }
 
-async function vouch(from: Agent, to: Agent, reason: string): Promise<void> {
-  const message = {
-    Vouch: {
-      fromAddress: from.address,
-      toAddress: to.address,
-      reason,
-    },
-  };
-  
-  const signature = signMessage(from, message);
-  await submitTransaction(message, signature);
-}
-
-async function proposeContract(
+async function createContract(
   proposer: Agent,
   counterparty: Agent,
   terms: Record<string, unknown>
 ): Promise<string> {
-  const contractId = `contract_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  
+  const fiberId = randomUUID();
+
   const message = {
-    ProposeContract: {
-      contractId,
-      proposerAddress: proposer.address,
-      counterpartyAddress: counterparty.address,
-      terms,
+    CreateStateMachine: {
+      fiberId,
+      definition: CONTRACT_DEFINITION,
+      initialData: {
+        proposer: proposer.address,
+        counterparty: counterparty.address,
+        terms,
+        completions: [],
+        status: 'Proposed',
+      },
     },
   };
-  
+
   const signature = signMessage(proposer, message);
   await submitTransaction(message, signature);
-  return contractId;
+  return fiberId;
 }
 
-async function acceptContract(agent: Agent, contractId: string): Promise<void> {
-  const message = {
-    AcceptContract: {
-      contractId,
-      agentAddress: agent.address,
-    },
-  };
-  
-  const signature = signMessage(agent, message);
-  await submitTransaction(message, signature);
-}
+async function transitionContract(
+  actor: Agent,
+  contractId: string,
+  event: string,
+  payload: unknown
+): Promise<void> {
+  const state = await getStateMachine(contractId) as { sequenceNumber?: number } | null;
+  const targetSeq = (state?.sequenceNumber ?? 0) + 1;
 
-async function completeContract(agent: Agent, contractId: string, proof?: string): Promise<void> {
   const message = {
-    CompleteContract: {
-      contractId,
-      agentAddress: agent.address,
-      proof: proof || 'Work completed successfully',
+    TransitionStateMachine: {
+      fiberId: contractId,
+      eventName: event,
+      payload: { agent: actor.address, ...payload as Record<string, unknown> },
+      targetSequenceNumber: targetSeq,
     },
   };
-  
-  const signature = signMessage(agent, message);
-  await submitTransaction(message, signature);
-}
 
-async function disputeContract(agent: Agent, contractId: string, reason: string): Promise<void> {
-  const message = {
-    DisputeContract: {
-      contractId,
-      agentAddress: agent.address,
-      reason,
-    },
-  };
-  
-  const signature = signMessage(agent, message);
-  await submitTransaction(message, signature);
-}
-
-async function reportViolation(reporter: Agent, target: Agent, reason: string): Promise<void> {
-  const message = {
-    ReportViolation: {
-      reporterAddress: reporter.address,
-      targetAddress: target.address,
-      reason,
-    },
-  };
-  
-  const signature = signMessage(reporter, message);
+  const signature = signMessage(actor, message);
   await submitTransaction(message, signature);
 }
 
 // ============================================================================
-// Simulation Scenarios
+// Simulation
 // ============================================================================
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-interface SimulationResult {
+interface SimResult {
   scenario: string;
   success: boolean;
   message: string;
   duration: number;
 }
 
-const results: SimulationResult[] = [];
+const results: SimResult[] = [];
 
 async function runScenario(name: string, fn: () => Promise<void>): Promise<void> {
   console.log(`\n📋 Scenario: ${name}`);
+  console.log('─'.repeat(60));
   const start = Date.now();
-  
+
   try {
     await fn();
     results.push({ scenario: name, success: true, message: 'OK', duration: Date.now() - start });
-    console.log(`   ✅ Passed (${Date.now() - start}ms)`);
+    console.log(`   ✅ Passed (${((Date.now() - start) / 1000).toFixed(1)}s)`);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     results.push({ scenario: name, success: false, message, duration: Date.now() - start });
@@ -244,21 +331,25 @@ async function runScenario(name: string, fn: () => Promise<void>): Promise<void>
   }
 }
 
-// ============================================================================
-// Main Simulation
-// ============================================================================
-
 async function main() {
-  console.log('═══════════════════════════════════════════════════════════');
-  console.log('       OttoChain Multi-Agent Simulation');
-  console.log('═══════════════════════════════════════════════════════════');
+  console.log('═'.repeat(60));
+  console.log('     OttoChain Multi-Agent Simulation');
+  console.log('═'.repeat(60));
   console.log(`ML0: ${CONFIG.ML0_URL}`);
   console.log(`DL1: ${CONFIG.DL1_URL}`);
-  console.log(`Agents: ${CONFIG.NUM_AGENTS}`);
   console.log('');
 
+  // Verify connectivity
+  try {
+    const checkpoint = await getCheckpoint();
+    console.log(`Current ordinal: ${checkpoint.ordinal}`);
+  } catch (err) {
+    console.error('❌ Cannot connect to metagraph. Is it running?');
+    process.exit(1);
+  }
+
   // Create agents
-  const agents: Agent[] = [
+  const agents = [
     createAgent('Alice'),
     createAgent('Bob'),
     createAgent('Charlie'),
@@ -266,206 +357,175 @@ async function main() {
     createAgent('Eve'),
   ].slice(0, CONFIG.NUM_AGENTS);
 
-  console.log('Created agents:');
-  agents.forEach(a => console.log(`  - ${a.name}: ${a.address.slice(0, 20)}...`));
+  console.log('\nAgents:');
+  agents.forEach(a => console.log(`  ${a.name}: ${a.address.slice(0, 24)}...`));
 
-  let currentOrdinal = (await getCheckpoint()).ordinal;
+  let ordinal = (await getCheckpoint()).ordinal;
 
   // ──────────────────────────────────────────────────────────────────────────
   // Scenario 1: Agent Registration
   // ──────────────────────────────────────────────────────────────────────────
   await runScenario('Agent Registration', async () => {
-    console.log('    Registering all agents...');
-    
     for (const agent of agents) {
-      await registerAgent(agent);
-      console.log(`    → ${agent.name} submitted registration`);
-      await sleep(500); // Small delay between txs
+      const fiberId = await createAgentIdentity(agent);
+      console.log(`    → ${agent.name} created identity: ${fiberId.slice(0, 8)}...`);
+      await sleep(500);
     }
-    
-    currentOrdinal = await waitForSnapshot(currentOrdinal);
+    ordinal = await waitForSnapshot(ordinal);
   });
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Scenario 2: Vouching Network
+  // Scenario 2: Activate Agents
+  // ──────────────────────────────────────────────────────────────────────────
+  await runScenario('Agent Activation', async () => {
+    for (const agent of agents) {
+      await transitionAgent(agent, 'activate', {});
+      console.log(`    → ${agent.name} activated`);
+      await sleep(300);
+    }
+    ordinal = await waitForSnapshot(ordinal);
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Scenario 3: Vouching Network
   // ──────────────────────────────────────────────────────────────────────────
   await runScenario('Vouching Network', async () => {
     const [alice, bob, charlie] = agents;
-    
+
     // Alice vouches for Bob
-    await vouch(alice, bob, 'Worked together on project X');
+    await transitionAgent(bob, 'receive_vouch', { from: alice.address });
     console.log(`    → ${alice.name} vouched for ${bob.name}`);
-    
+
     // Bob vouches for Charlie
-    await vouch(bob, charlie, 'Reliable contractor');
+    await transitionAgent(charlie, 'receive_vouch', { from: bob.address });
     console.log(`    → ${bob.name} vouched for ${charlie.name}`);
-    
-    // Charlie vouches for Alice (completing a trust triangle)
-    await vouch(charlie, alice, 'Excellent communication');
+
+    // Charlie vouches for Alice
+    await transitionAgent(alice, 'receive_vouch', { from: charlie.address });
     console.log(`    → ${charlie.name} vouched for ${alice.name}`);
-    
-    currentOrdinal = await waitForSnapshot(currentOrdinal);
+
+    ordinal = await waitForSnapshot(ordinal);
   });
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Scenario 3: Successful Contract
+  // Scenario 4: Contract Lifecycle
   // ──────────────────────────────────────────────────────────────────────────
-  await runScenario('Successful Contract Completion', async () => {
+  await runScenario('Contract Lifecycle', async () => {
     const [alice, bob] = agents;
-    
-    // Alice proposes a contract to Bob
-    const contractId = await proposeContract(alice, bob, {
+
+    // Alice proposes contract
+    const contractId = await createContract(alice, bob, {
       type: 'ServiceAgreement',
-      description: 'Build a landing page',
-      payment: 100,
-      deadline: '2026-02-15',
+      description: 'Build landing page',
+      value: 100,
     });
-    console.log(`    → ${alice.name} proposed contract ${contractId.slice(0, 20)}...`);
-    
-    await sleep(1000);
-    
+    console.log(`    → Contract proposed: ${contractId.slice(0, 8)}...`);
+
+    ordinal = await waitForSnapshot(ordinal);
+
     // Bob accepts
-    await acceptContract(bob, contractId);
-    console.log(`    → ${bob.name} accepted contract`);
-    
-    currentOrdinal = await waitForSnapshot(currentOrdinal);
-    
-    // Bob completes work
-    await completeContract(bob, contractId, 'Deployed to https://example.com');
-    console.log(`    → ${bob.name} marked work complete`);
-    
-    await sleep(1000);
-    
-    // Alice confirms completion
-    await completeContract(alice, contractId, 'Work verified and approved');
-    console.log(`    → ${alice.name} confirmed completion`);
-    
-    currentOrdinal = await waitForSnapshot(currentOrdinal);
+    await transitionContract(bob, contractId, 'accept', {});
+    console.log(`    → ${bob.name} accepted`);
+
+    ordinal = await waitForSnapshot(ordinal);
+
+    // Both parties complete
+    await transitionContract(bob, contractId, 'complete', { proof: 'Delivered' });
+    console.log(`    → ${bob.name} completed`);
+
+    await transitionContract(alice, contractId, 'complete', { proof: 'Verified' });
+    console.log(`    → ${alice.name} completed`);
+
+    // Finalize
+    await transitionContract(alice, contractId, 'finalize', {});
+    console.log(`    → Contract finalized`);
+
+    // Both get completion reputation
+    await transitionAgent(alice, 'receive_completion', {});
+    await transitionAgent(bob, 'receive_completion', {});
+
+    ordinal = await waitForSnapshot(ordinal);
   });
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Scenario 4: Disputed Contract
+  // Scenario 5: Disputed Contract
   // ──────────────────────────────────────────────────────────────────────────
   await runScenario('Disputed Contract', async () => {
     const [_, __, charlie, diana] = agents;
-    
-    // Charlie proposes a contract to Diana
-    const contractId = await proposeContract(charlie, diana, {
+
+    const contractId = await createContract(charlie, diana, {
       type: 'DataDelivery',
-      description: 'Provide dataset for ML training',
-      payment: 50,
+      description: 'ML training dataset',
     });
-    console.log(`    → ${charlie.name} proposed contract`);
-    
-    await sleep(1000);
-    
-    // Diana accepts
-    await acceptContract(diana, contractId);
+    console.log(`    → Contract proposed: ${contractId.slice(0, 8)}...`);
+
+    ordinal = await waitForSnapshot(ordinal);
+
+    await transitionContract(diana, contractId, 'accept', {});
     console.log(`    → ${diana.name} accepted`);
-    
-    currentOrdinal = await waitForSnapshot(currentOrdinal);
-    
-    // Charlie disputes (claims data was poor quality)
-    await disputeContract(charlie, contractId, 'Data quality below agreed standards');
-    console.log(`    → ${charlie.name} disputed contract`);
-    
-    currentOrdinal = await waitForSnapshot(currentOrdinal);
+
+    ordinal = await waitForSnapshot(ordinal);
+
+    await transitionContract(charlie, contractId, 'dispute', {
+      reason: 'Data quality below standards',
+    });
+    console.log(`    → ${charlie.name} disputed`);
+
+    ordinal = await waitForSnapshot(ordinal);
   });
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Scenario 5: Violation Report
+  // Scenario 6: Violation Report
   // ──────────────────────────────────────────────────────────────────────────
   await runScenario('Violation Report', async () => {
-    const [alice, _, __, ___, eve] = agents;
+    const eve = agents[4];
     
-    // Alice reports Eve for spam behavior
-    await reportViolation(alice, eve, 'Sending unsolicited promotional messages');
-    console.log(`    → ${alice.name} reported ${eve.name} for violation`);
-    
-    currentOrdinal = await waitForSnapshot(currentOrdinal);
+    await transitionAgent(eve, 'receive_violation', { 
+      reason: 'Spam behavior' 
+    });
+    console.log(`    → Eve received violation (-10 rep)`);
+
+    ordinal = await waitForSnapshot(ordinal);
   });
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Scenario 6: New Agent Onboarding
+  // Results
   // ──────────────────────────────────────────────────────────────────────────
-  await runScenario('New Agent Onboarding', async () => {
-    const newAgent = createAgent('Frank');
-    console.log(`    → Created new agent: ${newAgent.name}`);
-    
-    await registerAgent(newAgent, 'TELEGRAM');
-    console.log(`    → ${newAgent.name} registered via Telegram`);
-    
-    currentOrdinal = await waitForSnapshot(currentOrdinal);
-    
-    // Existing agent vouches for newcomer
-    const [alice] = agents;
-    await vouch(alice, newAgent, 'Known from Telegram community');
-    console.log(`    → ${alice.name} vouched for ${newAgent.name}`);
-    
-    currentOrdinal = await waitForSnapshot(currentOrdinal);
-  });
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // Results Summary
-  // ──────────────────────────────────────────────────────────────────────────
-  console.log('\n═══════════════════════════════════════════════════════════');
-  console.log('                    Simulation Results');
-  console.log('═══════════════════════════════════════════════════════════\n');
+  console.log('\n' + '═'.repeat(60));
+  console.log('                  Results');
+  console.log('═'.repeat(60) + '\n');
 
   const passed = results.filter(r => r.success).length;
   const failed = results.filter(r => !r.success).length;
 
   results.forEach(r => {
-    const status = r.success ? '✅' : '❌';
+    const icon = r.success ? '✅' : '❌';
     const time = `${(r.duration / 1000).toFixed(1)}s`;
-    console.log(`${status} ${r.scenario.padEnd(35)} ${time.padStart(8)}`);
+    console.log(`${icon} ${r.scenario.padEnd(30)} ${time.padStart(10)}`);
   });
 
-  console.log('');
-  console.log(`Total: ${passed} passed, ${failed} failed`);
-  
-  // Final state check
-  console.log('\n═══════════════════════════════════════════════════════════');
-  console.log('                    Final State');
-  console.log('═══════════════════════════════════════════════════════════\n');
-  
-  try {
-    const checkpoint = await getCheckpoint();
-    console.log(`Final ordinal: ${checkpoint.ordinal}`);
-    
-    const stateMachines = await getStateMachines();
-    const count = Object.keys(stateMachines).length;
-    console.log(`State machines: ${count}`);
-    
-    // If indexer is running, show its stats
-    try {
-      const indexerStatus = await fetch(`${CONFIG.INDEXER_URL}/status`).then(r => r.json()) as {
-        lastIndexedOrdinal: number;
-        totalAgents: number;
-        totalContracts: number;
-      };
-      console.log(`\nIndexer status:`);
-      console.log(`  Last indexed: ${indexerStatus.lastIndexedOrdinal}`);
-      console.log(`  Agents: ${indexerStatus.totalAgents}`);
-      console.log(`  Contracts: ${indexerStatus.totalContracts}`);
-    } catch {
-      console.log('(Indexer not available)');
+  console.log(`\nTotal: ${passed} passed, ${failed} failed`);
+
+  // Final state
+  console.log('\n' + '─'.repeat(60));
+  console.log('Final State:');
+  const finalCheckpoint = await getCheckpoint();
+  console.log(`  Ordinal: ${finalCheckpoint.ordinal}`);
+
+  for (const agent of agents) {
+    if (agent.fiberId) {
+      const state = await getStateMachine(agent.fiberId) as { data?: { reputation?: number } } | null;
+      const rep = state?.data?.reputation ?? '?';
+      console.log(`  ${agent.name}: reputation=${rep}`);
     }
-  } catch (err) {
-    console.log('Could not fetch final state:', err);
   }
 
-  console.log('\n═══════════════════════════════════════════════════════════\n');
-  
-  if (failed > 0) {
-    console.log('❌ Some scenarios failed');
-    process.exit(1);
-  }
-  
-  console.log('✅ All scenarios passed!');
+  console.log('═'.repeat(60) + '\n');
+
+  process.exit(failed > 0 ? 1 : 0);
 }
 
 main().catch(err => {
-  console.error('Simulation error:', err);
+  console.error('Fatal:', err);
   process.exit(1);
 });
