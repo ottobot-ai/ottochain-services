@@ -119,17 +119,49 @@ jobs:
           # --skip-assembly since we already built everything in prior steps
           ./bin/compose-runner.sh --up --metagraph=$(pwd)/../../ottochain --dl1 --skip-assembly
 
-      - name: Wait for ML0 ready
+      - name: Wait for metagraph healthy
         run: |
-          for i in {1..60}; do
+          echo "=== Waiting for GL0 ==="
+          for i in {1..90}; do
+            if curl -s http://localhost:9000/node/info | grep -q '"state":"Ready"'; then
+              echo "GL0 ready after ${i}s"
+              break
+            fi
+            sleep 1
+            if [ $i -eq 90 ]; then echo "GL0 timeout"; docker logs gl0-0 2>&1 | tail -30 || true; exit 1; fi
+          done
+          
+          echo "=== Waiting for ML0 ==="
+          for i in {1..90}; do
             if curl -s http://localhost:9200/node/info | grep -q '"state":"Ready"'; then
               echo "ML0 ready after ${i}s"
+              break
+            fi
+            sleep 1
+            if [ $i -eq 90 ]; then echo "ML0 timeout"; docker logs ml0-0 2>&1 | tail -30 || true; exit 1; fi
+          done
+          
+          echo "=== Waiting for DL1 ==="
+          for i in {1..90}; do
+            if curl -s http://localhost:9400/node/info | grep -q '"state":"Ready"'; then
+              echo "DL1 ready after ${i}s"
+              break
+            fi
+            sleep 1
+            if [ $i -eq 90 ]; then echo "DL1 timeout"; docker logs dl1-0 2>&1 | tail -30 || true; exit 1; fi
+          done
+          
+          echo "=== Waiting for first snapshot ==="
+          for i in {1..120}; do
+            ordinal=$(curl -s http://localhost:9200/global-snapshots/latest | jq -r '.value.ordinal // 0' 2>/dev/null || echo "0")
+            if [ "$ordinal" -gt 0 ]; then
+              echo "Metagraph producing snapshots (ordinal: $ordinal) after ${i}s"
               exit 0
             fi
             sleep 1
           done
-          echo "ML0 failed to start"
-          docker logs tessellation-ml0-0-1 || true
+          echo "Metagraph not producing snapshots"
+          docker logs ml0-0 2>&1 | tail -50 || true
           exit 1
 
       - name: Start indexer
@@ -153,10 +185,14 @@ jobs:
       - name: Collect logs on failure
         if: failure()
         run: |
-          echo "=== ML0 Logs ==="
-          docker logs tessellation-ml0-0-1 2>&1 | tail -100 || true
+          echo "=== Container list ==="
+          docker ps -a || true
           echo "=== GL0 Logs ==="
-          docker logs tessellation-gl0-0-1 2>&1 | tail -50 || true
+          docker logs gl0-0 2>&1 | tail -100 || true
+          echo "=== ML0 Logs ==="
+          docker logs ml0-0 2>&1 | tail -100 || true
+          echo "=== DL1 Logs ==="
+          docker logs dl1-0 2>&1 | tail -100 || true
           echo "=== Indexer Logs ==="
           cat /tmp/indexer.log 2>/dev/null | tail -50 || true
 
