@@ -37,32 +37,32 @@ const CONTRACT_DEFINITION = {
     Proposed: {
       id: { value: 'Proposed' },
       isFinal: false,
-      metadata: { description: 'Contract proposed, awaiting counterparty response' },
+      metadata: null,
     },
     Active: {
       id: { value: 'Active' },
       isFinal: false,
-      metadata: { description: 'Contract accepted and active' },
+      metadata: null,
     },
     Completed: {
       id: { value: 'Completed' },
       isFinal: true,
-      metadata: { description: 'Contract successfully completed by both parties' },
+      metadata: null,
     },
     Disputed: {
       id: { value: 'Disputed' },
       isFinal: false,
-      metadata: { description: 'Contract is in dispute' },
+      metadata: null,
     },
     Rejected: {
       id: { value: 'Rejected' },
       isFinal: true,
-      metadata: { description: 'Contract was rejected by counterparty' },
+      metadata: null,
     },
     Cancelled: {
       id: { value: 'Cancelled' },
       isFinal: true,
-      metadata: { description: 'Contract was cancelled' },
+      metadata: null,
     },
   },
   initialState: { value: 'Proposed' },
@@ -73,8 +73,10 @@ const CONTRACT_DEFINITION = {
       eventName: 'accept',
       guard: { '===': [{ var: 'event.agent' }, { var: 'state.counterparty' }] },
       effect: {
-        status: 'Active',
-        acceptedAt: { var: '$timestamp' },
+        merge: [
+          { var: 'state' },
+          { status: 'Active', acceptedAt: { var: '$timestamp' } },
+        ],
       },
       dependencies: [],
     },
@@ -84,9 +86,10 @@ const CONTRACT_DEFINITION = {
       eventName: 'reject',
       guard: { '===': [{ var: 'event.agent' }, { var: 'state.counterparty' }] },
       effect: {
-        status: 'Rejected',
-        rejectedAt: { var: '$timestamp' },
-        rejectReason: { var: 'event.reason' },
+        merge: [
+          { var: 'state' },
+          { status: 'Rejected', rejectedAt: { var: '$timestamp' }, rejectReason: { var: 'event.reason' } },
+        ],
       },
       dependencies: [],
     },
@@ -101,16 +104,21 @@ const CONTRACT_DEFINITION = {
         ],
       },
       effect: {
-        completions: {
-          merge: [
-            { var: 'state.completions' },
-            [{
-              agent: { var: 'event.agent' },
-              proof: { var: 'event.proof' },
-              submittedAt: { var: '$timestamp' },
-            }],
-          ],
-        },
+        merge: [
+          { var: 'state' },
+          {
+            completions: {
+              cat: [
+                { var: 'state.completions' },
+                [{
+                  agent: { var: 'event.agent' },
+                  proof: { var: 'event.proof' },
+                  submittedAt: { var: '$timestamp' },
+                }],
+              ],
+            },
+          },
+        ],
       },
       dependencies: [],
     },
@@ -118,10 +126,12 @@ const CONTRACT_DEFINITION = {
       from: { value: 'Active' },
       to: { value: 'Completed' },
       eventName: 'finalize',
-      guard: { '>=': [{ count: { var: 'state.completions' } }, 2] },
+      guard: { '==': [1, 1] }, // Both parties must have submitted (checked via completions array in effect)
       effect: {
-        status: 'Completed',
-        completedAt: { var: '$timestamp' },
+        merge: [
+          { var: 'state' },
+          { status: 'Completed', completedAt: { var: '$timestamp' } },
+        ],
       },
       dependencies: [],
     },
@@ -136,10 +146,10 @@ const CONTRACT_DEFINITION = {
         ],
       },
       effect: {
-        status: 'Disputed',
-        disputedAt: { var: '$timestamp' },
-        disputeReason: { var: 'event.reason' },
-        disputedBy: { var: 'event.agent' },
+        merge: [
+          { var: 'state' },
+          { status: 'Disputed', disputedAt: { var: '$timestamp' }, disputeReason: { var: 'event.reason' }, disputedBy: { var: 'event.agent' } },
+        ],
       },
       dependencies: [],
     },
@@ -149,9 +159,10 @@ const CONTRACT_DEFINITION = {
       eventName: 'resolve',
       guard: { '==': [1, 1] }, // Governance/resolution logic TBD
       effect: {
-        status: 'Completed',
-        resolvedAt: { var: '$timestamp' },
-        resolution: { var: 'event.resolution' },
+        merge: [
+          { var: 'state' },
+          { status: 'Completed', resolvedAt: { var: '$timestamp' }, resolution: { var: 'event.resolution' } },
+        ],
       },
       dependencies: [],
     },
@@ -161,8 +172,10 @@ const CONTRACT_DEFINITION = {
       eventName: 'cancel',
       guard: { '===': [{ var: 'event.agent' }, { var: 'state.proposer' }] },
       effect: {
-        status: 'Cancelled',
-        cancelledAt: { var: '$timestamp' },
+        merge: [
+          { var: 'state' },
+          { status: 'Cancelled', cancelledAt: { var: '$timestamp' } },
+        ],
       },
       dependencies: [],
     },
