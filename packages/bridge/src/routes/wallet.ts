@@ -1,9 +1,9 @@
 // Wallet management routes
 
-import { Router } from 'express';
+import { Router, type Router as RouterType } from 'express';
 import nacl from 'tweetnacl';
 
-export const walletRoutes = Router();
+export const walletRoutes: RouterType = Router();
 
 /**
  * Generate a new keypair

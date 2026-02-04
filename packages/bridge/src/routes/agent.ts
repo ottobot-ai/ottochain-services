@@ -1,11 +1,11 @@
 // Agent registration and management routes
 
-import { Router } from 'express';
+import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import { getConfig } from '@ottochain/shared';
 import { submitTransaction } from '../metagraph.js';
 
-export const agentRoutes = Router();
+export const agentRoutes: RouterType = Router();
 
 const RegisterRequestSchema = z.object({
   address: z.string(),

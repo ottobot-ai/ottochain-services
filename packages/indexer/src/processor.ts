@@ -196,7 +196,7 @@ async function indexContract(fiberId: string, fiber: StateMachineFiber, ordinal:
   const contractId = data.contractId as string ?? fiberId;
   const proposerAddress = data.proposerAddress as string;
   const counterpartyAddress = data.counterpartyAddress as string;
-  const terms = data.terms as Record<string, unknown> ?? {};
+  const terms = (data.terms ?? {}) as object;
   const contractState = mapContractState(state.currentState as string);
   
   // Get or create agents

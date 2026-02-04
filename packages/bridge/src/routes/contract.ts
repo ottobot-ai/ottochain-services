@@ -1,10 +1,10 @@
 // Contract management routes
 
-import { Router } from 'express';
+import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import { submitTransaction } from '../metagraph.js';
 
-export const contractRoutes = Router();
+export const contractRoutes: RouterType = Router();
 
 const ProposeRequestSchema = z.object({
   proposerAddress: z.string(),

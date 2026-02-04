@@ -39,7 +39,7 @@ export async function submitTransaction(
     throw new Error(`Metagraph submission failed: ${response.status} ${error}`);
   }
   
-  const result = await response.json();
+  const result = await response.json() as { hash?: string; ordinal?: number };
   
   return {
     hash: result.hash ?? 'pending',
