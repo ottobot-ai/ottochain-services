@@ -121,7 +121,7 @@ jobs:
           docker build -t constellationnetwork/tessellation:test -f docker/Dockerfile .
           
           # Generate keys and start cluster
-          ./docker/bin/generate-keys.sh
+          ./docker/bin/generate-test-user-keys.sh
           docker compose -f docker/docker-compose.yaml up -d gl0-0
           sleep 10
           docker compose -f docker/docker-compose.yaml -f docker/docker-compose.metagraph.yaml up -d ml0-0
