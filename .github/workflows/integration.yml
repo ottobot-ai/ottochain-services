@@ -111,21 +111,11 @@ jobs:
           sbt "currencyL0/assembly; dataL1/assembly"
 
       - name: Start metagraph cluster
-        working-directory: tessellation
+        working-directory: tessellation/docker
         run: |
-          # Copy metagraph jars BEFORE docker build (overwrite tessellation's ml0 with ottochain's)
-          cp ../ottochain/modules/l0/target/scala-2.13/ottochain-currency-l0-assembly*.jar docker/jars/ml0.jar
-          cp ../ottochain/modules/data_l1/target/scala-2.13/ottochain-data-l1-assembly*.jar docker/jars/dl1.jar
-          
-          # Build docker image (needs all jars in place)
-          docker build -t constellationnetwork/tessellation:test -f docker/Dockerfile .
-          
-          # Generate keys and start cluster
-          ./docker/bin/generate-test-user-keys.sh
-          docker compose -f docker/docker-compose.yaml up -d gl0-0
-          sleep 10
-          docker compose -f docker/docker-compose.yaml -f docker/docker-compose.metagraph.yaml up -d ml0-0
-          sleep 15
+          # Use compose-runner which handles key generation, env setup, and container orchestration
+          # --skip-assembly since we already built everything in prior steps
+          ./bin/compose-runner.sh --up --metagraph=$(pwd)/../../ottochain --dl1 --skip-assembly
 
       - name: Wait for ML0 ready
         run: |
@@ -170,6 +160,6 @@ jobs:
 
       - name: Cleanup
         if: always()
+        working-directory: tessellation/docker
         run: |
-          docker compose -f tessellation/docker/docker-compose.yaml \
-                        -f tessellation/docker/docker-compose.metagraph.yaml down -v || true
+          ./bin/compose-runner.sh --down || true
