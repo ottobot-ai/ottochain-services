@@ -182,6 +182,74 @@ curl -X POST http://localhost:9100/data-application/v1/webhooks/subscribe \
 }
 ```
 
+## Integration Testing
+
+Test the full pipeline: Metagraph → Webhook → Indexer → PostgreSQL.
+
+### Prerequisites
+
+- [tessellation](https://github.com/Constellation-Labs/tessellation) repo cloned
+- [ottochain](https://github.com/scasplte2/ottochain) repo cloned
+- Java 21 (via SDKMAN)
+- Docker running
+
+### Run Full Integration Test
+
+```bash
+# Set paths (or use defaults in ~/.openclaw/workspace/)
+export TESSELLATION_DIR=~/repos/tessellation
+export OTTOCHAIN_DIR=~/repos/ottochain
+
+# Run the test suite
+pnpm test:integration
+```
+
+The script will:
+1. Start PostgreSQL container
+2. Push database schema
+3. Start local metagraph cluster
+4. Start the indexer service
+5. Register webhook with ML0
+6. Verify snapshot → webhook → indexer → postgres flow
+7. Report results and cleanup
+
+### Quick Webhook Test
+
+For testing just the webhook flow (assumes metagraph already running):
+
+```bash
+# Start indexer
+DATABASE_URL="postgresql://ottochain:ottochain@localhost:5432/ottochain_identity" \
+METAGRAPH_ML0_URL="http://localhost:9200" \
+INDEXER_PORT=3031 \
+  node packages/indexer/dist/index.js
+
+# In another terminal, run the webhook test
+npx tsx scripts/test-webhook.ts
+```
+
+### Manual Testing
+
+```bash
+# Check ML0 status
+curl http://localhost:9200/node/info | jq .
+
+# Check current checkpoint
+curl http://localhost:9200/data-application/v1/checkpoint | jq .
+
+# Register webhook
+curl -X POST http://localhost:9200/data-application/v1/webhooks/subscribe \
+  -H "Content-Type: application/json" \
+  -d '{"callbackUrl": "http://YOUR_IP:3031/webhook/snapshot"}'
+
+# Check indexer status
+curl http://localhost:3031/status | jq .
+
+# Check indexed snapshots in DB
+docker compose exec postgres psql -U ottochain -d ottochain_identity \
+  -c 'SELECT * FROM "IndexedSnapshot" ORDER BY ordinal DESC LIMIT 5;'
+```
+
 ## Development
 
 ### Project Structure
