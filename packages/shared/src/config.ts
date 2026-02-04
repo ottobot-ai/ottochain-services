@@ -5,6 +5,9 @@ import { z } from 'zod';
 const ConfigSchema = z.object({
   // Database
   DATABASE_URL: z.string().url(),
+
+  // Redis
+  REDIS_URL: z.string().url().default('redis://localhost:6379'),
   
   // Metagraph endpoints
   METAGRAPH_ML0_URL: z.string().url().default('http://localhost:9100'),
