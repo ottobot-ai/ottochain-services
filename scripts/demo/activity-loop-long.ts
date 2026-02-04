@@ -1,6 +1,6 @@
 #!/usr/bin/env npx tsx
 import { PrismaClient } from '@prisma/client';
-import { publishEvent, CHANNELS } from '../packages/shared/src/redis.js';
+import { publishEvent, CHANNELS } from '../../packages/shared/src/redis.js';
 
 const prisma = new PrismaClient();
 const PLATFORMS = ['DISCORD', 'TELEGRAM', 'TWITTER', 'GITHUB'] as const;
