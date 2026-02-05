@@ -198,6 +198,9 @@ export const typeDefs = /* GraphQL */ `
     networkStats: NetworkStats!
     searchAgents(query: String!, limit: Int = 10): [Agent!]!
     
+    # Unified Search
+    search(query: String!, limit: Int = 10): SearchResult!
+    
     # Generic Fiber Queries (chain-agnostic)
     fiber(fiberId: String!): Fiber
     fibers(
@@ -263,6 +266,14 @@ export const typeDefs = /* GraphQL */ `
       proof: String
       signature: String!
     ): ContractResult!
+  }
+
+  # === Search ===
+
+  type SearchResult {
+    fibers: [Fiber!]!
+    agents: [Agent!]!
+    transitions: [FiberTransition!]!
   }
 
   # === Mutation Results ===
