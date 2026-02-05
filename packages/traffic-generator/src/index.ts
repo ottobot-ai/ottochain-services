@@ -9,17 +9,24 @@
  *  - Softmax transition selection with temperature annealing
  *  - Mutation for exploration of unexpected paths
  *  - Population dynamics (births, deaths)
- *  - Contract lifecycle (propose, accept, complete, reject, dispute)
- *  - Continuous operation with configurable generation intervals
+ *  - Multiple workflow types (AgentIdentity, Contract, Voting, TokenEscrow, TicTacToe, etc.)
+ *  - High-throughput mode for 1000+ agents at 10+ TPS
  * 
  * Usage:
+ *   # Standard mode
  *   BRIDGE_URL=http://localhost:3030 ML0_URL=http://localhost:9200 npx tsx src/index.ts
+ * 
+ *   # High-throughput mode (1000 agents, 10 TPS, all workflows)
+ *   npx tsx src/index.ts --high-throughput
+ *   # or
+ *   MODE=high-throughput TARGET_POPULATION=1000 TARGET_TPS=10 npx tsx src/index.ts
  */
 
 import 'dotenv/config';
 import type { GeneratorConfig, GenerationStats } from './types.js';
 import { DEFAULT_CONFIG } from './types.js';
 import { Simulator } from './simulator.js';
+import { HighThroughputSimulator, runHighThroughput } from './high-throughput.js';
 
 // =============================================================================
 // Configuration from Environment
@@ -67,9 +74,23 @@ function formatStats(stats: GenerationStats): string {
 // =============================================================================
 
 async function main(): Promise<void> {
+  // Check for high-throughput mode
+  const isHighThroughput = 
+    process.argv.includes('--high-throughput') ||
+    process.argv.includes('-H') ||
+    process.env.MODE === 'high-throughput';
+  
+  if (isHighThroughput) {
+    console.log('═══════════════════════════════════════════════════════════════');
+    console.log(' OttoChain HIGH-THROUGHPUT Traffic Generator');
+    console.log('═══════════════════════════════════════════════════════════════');
+    return runHighThroughput();
+  }
+  
   console.log('═══════════════════════════════════════════════════════════════');
   console.log(' OttoChain Evolutionary Traffic Generator');
   console.log('═══════════════════════════════════════════════════════════════');
+  console.log(' (Use --high-throughput for 1000 agents / 10 TPS mode)');
   
   const config = loadConfig();
   
@@ -126,6 +147,8 @@ main().catch((err) => {
 
 // Re-export for programmatic use
 export { Simulator } from './simulator.js';
+export { HighThroughputSimulator, runHighThroughput } from './high-throughput.js';
 export { BridgeClient } from './bridge-client.js';
 export * from './types.js';
 export * from './selection.js';
+export * from './workflows.js';

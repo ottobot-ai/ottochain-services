@@ -4,7 +4,11 @@ Evolutionary traffic generator for the OttoChain metagraph.
 
 ## Overview
 
-This package implements a genetic algorithm-inspired simulation framework for generating continuous, realistic traffic on the OttoChain metagraph. It models agent populations with fitness-based selection, contract negotiations, and evolutionary dynamics.
+This package implements a genetic algorithm-inspired simulation framework for generating continuous, realistic traffic on the OttoChain metagraph. It models agent populations with fitness-based selection, multiple workflow types, and evolutionary dynamics.
+
+**Two modes:**
+- **Standard mode**: Moderate load (~20 agents, ~2 TPS) for development/testing
+- **High-throughput mode**: Heavy load (1000 agents, 10+ TPS, 7 workflow types) for stress testing indexer/explorer
 
 ## Key Concepts
 
@@ -70,18 +74,83 @@ pnpm install
 ### Running
 
 ```bash
-# Development
+# Standard mode (development)
 pnpm dev
+
+# High-throughput mode (1000 agents, 10 TPS, all workflows)
+pnpm dev -- --high-throughput
+
+# Or via environment
+MODE=high-throughput TARGET_POPULATION=1000 TARGET_TPS=10 pnpm dev
 
 # Production
 pnpm build && pnpm start
 
-# With custom config
+# Custom testnet config
 BRIDGE_URL=http://5.78.90.207:3030 \
 ML0_URL=http://5.78.90.207:9200 \
-TARGET_POPULATION=50 \
-GENERATION_INTERVAL_MS=5000 \
-pnpm dev
+TARGET_POPULATION=500 \
+TARGET_TPS=15 \
+pnpm dev -- --high-throughput
+```
+
+## Workflow Types
+
+The high-throughput mode supports 7 workflow types:
+
+| Workflow | Participants | States | Expected Duration |
+|----------|--------------|--------|-------------------|
+| **AgentIdentity** | 1 | Registered → Active → Withdrawn | 50 gens |
+| **Contract** | 2 | Proposed → Active → Completed/Rejected | 10 gens |
+| **Voting** | 3-20 | Pending → Voting → Completed | 8 gens |
+| **TokenEscrow** | 2-3 | Pending → Funded → Released/Refunded | 6 gens |
+| **TicTacToe** | 2 | Setup → Playing → Finished | 12 gens |
+| **SimpleOrder** | 2 | Created → Confirmed → Shipped → Delivered | 8 gens |
+| **ApprovalWorkflow** | 3-5 | Draft → Submitted → L1 → L2 → Approved | 10 gens |
+
+### Workflow Transitions
+
+Each workflow defines weighted transitions:
+
+```typescript
+// Contract example
+{ from: 'Proposed', to: 'Active', event: 'accept', actor: 'counterparty', weight: 0.7 }
+{ from: 'Proposed', to: 'Rejected', event: 'reject', actor: 'counterparty', weight: 0.3 }
+{ from: 'Active', to: 'Completed', event: 'complete', actor: 'owner', weight: 0.85 }
+{ from: 'Active', to: 'Disputed', event: 'dispute', actor: 'any', weight: 0.15 }
+```
+
+The mutation rate (default 8%) causes occasional unexpected transitions (e.g., accepting a contract that would normally be rejected) to simulate organic behavior.
+
+## High-Throughput Mode
+
+Designed for stress testing the indexer and explorer:
+
+```bash
+# Environment variables for high-throughput
+TARGET_POPULATION=1000    # Number of agents
+TARGET_TPS=10             # Target transactions per second
+BATCH_SIZE=20             # Parallel transaction submissions
+MAX_FIBERS_PER_TYPE=500   # Max concurrent fibers per workflow
+GENERATION_INTERVAL_MS=1000  # 1 second generations
+WORKFLOWS=AgentIdentity,Contract,Voting,TokenEscrow,TicTacToe,SimpleOrder,ApprovalWorkflow
+```
+
+### Output (High-Throughput)
+
+```
+🚀 Starting high-throughput traffic generator
+   Target: 10 TPS
+   Population: 1000 agents
+   Batch size: 20
+   Workflows: AgentIdentity, Contract, Voting, TokenEscrow, TicTacToe, SimpleOrder, ApprovalWorkflow
+   Bridge: http://localhost:3030
+   Bootstrapping 1000 agents in 20 batches...
+   Created 1000/1000 agents
+   ✓ Bootstrap complete
+
+[Gen 15] TPS: 12.4 | Tx: 186/200 | Fibers: 847 (Contract:312 Voting:89 TokenEscrow:156 ...) | Agents: 1000
+[Gen 20] TPS: 11.2 | Tx: 242/260 | Fibers: 923 (Contract:345 Voting:102 TokenEscrow:178 ...) | Agents: 1000
 ```
 
 ### Docker
