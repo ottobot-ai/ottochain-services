@@ -138,10 +138,11 @@ export const resolvers = {
         ...fiberTransitions.map((t) => ({
           eventType: 'TRANSITION',
           timestamp: t.createdAt,
-          agent: null, // Fiber doesn't link to Agent directly
+          agent: null,
           action: `${t.eventName}: ${t.fromState} → ${t.toState}`,
           reputationDelta: null,
           relatedAgent: null,
+          fiberId: t.fiberId,
         })),
         ...attestations.map((a) => ({
           eventType: 'ATTESTATION',

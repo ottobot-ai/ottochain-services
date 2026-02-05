@@ -55,10 +55,11 @@ export const typeDefs = /* GraphQL */ `
   type ActivityEvent {
     eventType: EventType!
     timestamp: DateTime!
-    agent: Agent!
+    agent: Agent
     action: String!
     reputationDelta: Int
     relatedAgent: Agent
+    fiberId: String
   }
 
   type ReputationPoint {
