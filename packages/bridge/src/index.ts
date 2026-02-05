@@ -6,9 +6,10 @@ import { getConfig } from '@ottochain/shared';
 import { walletRoutes } from './routes/wallet.js';
 import { agentRoutes } from './routes/agent.js';
 import { contractRoutes } from './routes/contract.js';
+import { fiberRoutes } from './routes/fiber.js';
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '1mb' })); // Larger limit for state machine definitions
 
 // Health check
 app.get('/health', (_, res) => {
@@ -19,6 +20,7 @@ app.get('/health', (_, res) => {
 app.use('/wallet', walletRoutes);
 app.use('/agent', agentRoutes);
 app.use('/contract', contractRoutes);
+app.use('/fiber', fiberRoutes);  // Generic fiber API
 
 // Start server
 const config = getConfig();
@@ -29,4 +31,7 @@ app.listen(port, () => {
   console.log(`   Wallet:   POST http://localhost:${port}/wallet/generate`);
   console.log(`   Agent:    POST http://localhost:${port}/agent/register`);
   console.log(`   Contract: POST http://localhost:${port}/contract/propose`);
+  console.log(`   Fiber:    POST http://localhost:${port}/fiber/create`);
+  console.log(`             POST http://localhost:${port}/fiber/transition`);
+  console.log(`             POST http://localhost:${port}/fiber/batch`);
 });

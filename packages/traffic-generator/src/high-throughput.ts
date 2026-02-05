@@ -5,6 +5,7 @@
  * Manages multiple concurrent fiber streams across all workflow types.
  */
 
+import crypto from 'crypto';
 import type {
   Agent,
   GeneratorConfig,
@@ -318,34 +319,33 @@ export class HighThroughputSimulator {
     if (participants.length < workflow.minParticipants) return;
     
     const owner = participants[0];
+    const fiberId = crypto.randomUUID();
     
     try {
-      // Create the fiber via bridge
+      // Create the fiber via bridge's generic fiber endpoint
       let result: { fiberId: string; hash: string };
       
       if (workflow.type === 'AgentIdentity') {
         // Agent identity is created during agent registration, skip
         return;
-      } else if (workflow.type === 'Contract') {
-        const counterparty = this.agents.get(participants[1]);
-        if (!counterparty?.fiberId) return;
-        
-        result = await this.client.proposeContract(
-          owner.privateKey,
-          counterparty.fiberId,
-          `Task_${Date.now().toString(36)}`,
-          { value: Math.floor(Math.random() * 1000) + 50 }
-        );
-      } else {
-        // For other workflow types, use generic state machine creation
-        // This would need bridge support - for now we'll simulate with contracts
-        result = await this.client.proposeContract(
-          owner.privateKey,
-          participants[1] ? this.agents.get(participants[1])?.fiberId || '' : owner.fiberId || '',
-          `${workflow.type}_${Date.now().toString(36)}`,
-          { workflowType: workflow.type }
-        );
       }
+      
+      // Use the generic fiber creation endpoint with the workflow's state machine definition
+      const createCtx = {
+        fiberId,
+        participants: participants.map((p) => p.address),
+        ownerAddress: owner.address,
+        generation: this.generation,
+      };
+      
+      const initialData = workflow.initialDataFn(createCtx);
+      
+      result = await this.client.createFiber(
+        owner.privateKey,
+        workflow.stateMachineDefinition,
+        initialData,
+        { fiberId }
+      );
       
       const fiber: ActiveFiber = {
         fiberId: result.fiberId,
@@ -548,23 +548,13 @@ export class HighThroughputSimulator {
   }
 
   private async submitTransaction(job: TransactionJob): Promise<void> {
-    // Route to appropriate endpoint based on workflow type
-    if (job.workflowType === 'Contract' || job.workflowType === 'AgentIdentity') {
-      await this.client.transitionContract(
-        job.signerKey,
-        job.fiberId,
-        job.event,
-        job.payload
-      );
-    } else {
-      // Generic transition for other workflows
-      await this.client.transitionContract(
-        job.signerKey,
-        job.fiberId,
-        job.event,
-        job.payload
-      );
-    }
+    // Use the generic fiber transition endpoint for all workflow types
+    await this.client.transitionFiber(
+      job.signerKey,
+      job.fiberId,
+      job.event,
+      job.payload
+    );
   }
 
   // ==========================================================================

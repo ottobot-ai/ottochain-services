@@ -140,7 +140,7 @@ export class BridgeClient {
   }
 
   // ==========================================================================
-  // Contract Operations
+  // Contract Operations (convenience wrappers)
   // ==========================================================================
 
   async proposeContract(
@@ -178,6 +178,85 @@ export class BridgeClient {
       if ((err as Error).message.includes('404')) return null;
       throw err;
     }
+  }
+
+  // ==========================================================================
+  // Generic Fiber Operations (for all workflow types)
+  // ==========================================================================
+
+  async createFiber(
+    privateKey: string,
+    definition: Record<string, unknown>,
+    initialData: Record<string, unknown>,
+    options?: { fiberId?: string; parentFiberId?: string }
+  ): Promise<{ fiberId: string; hash: string; schema?: string }> {
+    return this.post('/fiber/create', {
+      privateKey,
+      definition,
+      initialData,
+      fiberId: options?.fiberId,
+      parentFiberId: options?.parentFiberId,
+    });
+  }
+
+  async transitionFiber(
+    privateKey: string,
+    fiberId: string,
+    event: string,
+    payload: Record<string, unknown> = {},
+    targetSequenceNumber?: number
+  ): Promise<TransitionResponse> {
+    return this.post<TransitionResponse>('/fiber/transition', {
+      privateKey,
+      fiberId,
+      event,
+      payload,
+      targetSequenceNumber,
+    });
+  }
+
+  async batchTransition(
+    transitions: Array<{
+      privateKey: string;
+      fiberId: string;
+      event: string;
+      payload?: Record<string, unknown>;
+    }>
+  ): Promise<{
+    total: number;
+    succeeded: number;
+    failed: number;
+    successes: Array<{ fiberId: string; event: string; hash: string }>;
+    failures: Array<{ index: number; fiberId: string; error: string }>;
+  }> {
+    return this.post('/fiber/batch', { transitions });
+  }
+
+  async getFiber(fiberId: string): Promise<unknown | null> {
+    try {
+      return await this.get(`/fiber/${fiberId}`);
+    } catch (err) {
+      if ((err as Error).message.includes('404')) return null;
+      throw err;
+    }
+  }
+
+  async listFibers(
+    schema?: string,
+    limit = 100
+  ): Promise<{
+    count: number;
+    fibers: Array<{
+      fiberId: string;
+      schema?: string;
+      currentState?: string;
+      stateData?: Record<string, unknown>;
+    }>;
+  }> {
+    const params = new URLSearchParams();
+    if (schema) params.set('schema', schema);
+    params.set('limit', limit.toString());
+    return this.get(`/fiber?${params.toString()}`);
   }
 
   // ==========================================================================
