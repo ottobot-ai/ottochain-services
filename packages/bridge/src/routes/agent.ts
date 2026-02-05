@@ -4,7 +4,7 @@
 import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
-import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey, generateKeyPair } from '../metagraph.js';
+import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey, generateKeyPair, waitForFiber } from '../metagraph.js';
 
 export const agentRoutes: RouterType = Router();
 
@@ -233,13 +233,29 @@ agentRoutes.post('/transition', async (req, res) => {
 /**
  * Activate an agent (shorthand for transition with activate event)
  * POST /agent/activate
+ * 
+ * This route waits for the fiber to be visible in DL1 state before attempting
+ * the transition, which prevents "CidNotFound" errors when activating immediately
+ * after registration.
  */
 agentRoutes.post('/activate', async (req, res) => {
   try {
-    const { privateKey, fiberId } = req.body;
+    const { privateKey, fiberId, waitForSync = true, maxWaitSeconds = 30 } = req.body;
 
     if (!privateKey || !fiberId) {
       return res.status(400).json({ error: 'privateKey and fiberId are required' });
+    }
+
+    // Wait for fiber to appear in state before activating (prevents CidNotFound)
+    if (waitForSync) {
+      const fiberVisible = await waitForFiber(fiberId, maxWaitSeconds, 1000);
+      if (!fiberVisible) {
+        return res.status(503).json({ 
+          error: 'Fiber not yet synced to data layer',
+          fiberId,
+          hint: 'Try again in a few seconds or set waitForSync=false to skip waiting'
+        });
+      }
     }
 
     const state = await getStateMachine(fiberId) as { sequenceNumber?: number; currentState?: { value: string } } | null;
