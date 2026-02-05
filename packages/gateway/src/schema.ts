@@ -146,6 +146,7 @@ export const typeDefs = /* GraphQL */ `
     ATTESTATION
     CONTRACT
     REGISTRATION
+    TRANSITION
   }
 
   enum AgentOrderBy {

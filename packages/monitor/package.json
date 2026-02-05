@@ -1,0 +1,22 @@
+{
+  "name": "@ottochain/monitor",
+  "version": "0.1.0",
+  "description": "OttoChain stack monitoring service with dashboard UI",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@ottochain/shared": "workspace:*",
+    "express": "^4.21.2",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/ws": "^8.5.14",
+    "typescript": "^5.7.3"
+  }
+}
