@@ -144,6 +144,52 @@ export class Simulator {
     console.log(`   ✓ Created ${successes}/${initialCount} agents`);
   }
 
+  /**
+   * Retry activation with exponential backoff.
+   * DL1 may not have synced the fiber yet even after it appears in ML0.
+   */
+  private async retryActivation(privateKey: string, fiberId: string, maxAttempts: number = 3): Promise<void> {
+    let lastError: Error | null = null;
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        await this.client.activateAgent(privateKey, fiberId);
+        return;
+      } catch (err) {
+        lastError = err as Error;
+        const errMsg = String(err);
+        // Only retry on CidNotFound or similar sync errors
+        if (errMsg.includes('CidNotFound') || errMsg.includes('Bad Request') || errMsg.includes('400')) {
+          const delay = 5000 * Math.pow(2, i); // 5s, 10s, 20s
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          throw err;
+        }
+      }
+    }
+    throw lastError ?? new Error('Activation failed after retries');
+  }
+
+  /**
+   * Wait for a fiber to appear in the ML0 state checkpoint.
+   * Necessary because DL1 needs time to include transactions in snapshots.
+   */
+  private async waitForFiber(fiberId: string, maxAttempts: number = 20): Promise<boolean> {
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        const checkpoint = await this.client.getCheckpoint();
+        if (checkpoint.state?.stateMachines?.[fiberId]) {
+          // Add extra delay for DL1 to sync (needs 2-3 snapshot cycles)
+          await new Promise(resolve => setTimeout(resolve, 10000));
+          return true;
+        }
+      } catch {
+        // Ignore fetch errors
+      }
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    return false;
+  }
+
   private async createAgent(index: number): Promise<Agent> {
     // Generate wallet
     const wallet = await this.client.generateWallet();
@@ -192,8 +238,12 @@ export class Simulator {
       agent.fiberId = result.fiberId;
       agent.state = 'registered';
       
-      // Activate immediately
-      await this.client.activateAgent(wallet.privateKey, result.fiberId);
+      // Wait for fiber to be visible in state before activating
+      // This is necessary because the metagraph needs time to process the transaction
+      await this.waitForFiber(result.fiberId, 20);
+      
+      // Activate after fiber is confirmed (with retry for DL1 sync)
+      await this.retryActivation(wallet.privateKey, result.fiberId, 3);
       agent.state = 'active';
       
       this.agents.set(agent.address, agent);

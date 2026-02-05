@@ -275,7 +275,13 @@ export class BridgeClient {
     if (!res.ok) {
       throw new Error(`ML0 checkpoint failed: ${res.status}`);
     }
-    return res.json();
+    return res.json() as Promise<{
+      ordinal: number;
+      state: {
+        stateMachines: Record<string, unknown>;
+        scriptOracles: Record<string, unknown>;
+      };
+    }>;
   }
 
   async getStateMachine(fiberId: string): Promise<unknown | null> {
@@ -310,7 +316,7 @@ export class BridgeClient {
       throw new Error(`GET ${path} failed: ${res.status} ${text}`);
     }
 
-    return res.json();
+    return res.json() as Promise<T>;
   }
 
   private async post<T>(path: string, body: Record<string, unknown>): Promise<T> {
@@ -327,6 +333,6 @@ export class BridgeClient {
       throw new Error(`POST ${path} failed: ${res.status} ${text}`);
     }
 
-    return res.json();
+    return res.json() as Promise<T>;
   }
 }

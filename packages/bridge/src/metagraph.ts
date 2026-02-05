@@ -41,15 +41,22 @@ export async function submitTransaction(
   // Sign using SDK's batchSign (same as e2e tests)
   const signed = await batchSign(message, [privateKey], { isDataUpdate: true });
 
+  // Wrap in DataTransactionRequest format expected by tessellation DL1
+  // Format: { data: Signed<DataUpdate>, fee: Option<Signed<FeeTransaction>> }
+  const payload = {
+    data: signed,
+    fee: null,
+  };
+
   console.log(`[metagraph] Submitting to ${config.METAGRAPH_DL1_URL}/data`);
   console.log(`[metagraph] Message type: ${Object.keys(message as object)[0]}`);
-  console.log(`[metagraph] Signed payload (truncated): ${JSON.stringify(signed).substring(0, 300)}...`);
+  console.log(`[metagraph] Payload (truncated): ${JSON.stringify(payload).substring(0, 300)}...`);
 
   // Use SDK's HttpClient
   const client = new HttpClient(config.METAGRAPH_DL1_URL);
 
   try {
-    const result = await client.post<{ hash?: string; ordinal?: number }>('/data', signed);
+    const result = await client.post<{ hash?: string; ordinal?: number }>('/data', payload);
 
     console.log(`[metagraph] Success: ${JSON.stringify(result)}`);
 

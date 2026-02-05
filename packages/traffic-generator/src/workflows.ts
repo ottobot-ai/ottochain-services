@@ -49,6 +49,8 @@ export interface StateMachineDefinition {
     dependencies?: string[];
   }>;
   metadata?: { name: string; description?: string };
+  // Index signature for Record<string, unknown> compatibility
+  [key: string]: unknown;
 }
 
 export interface CreateContext {

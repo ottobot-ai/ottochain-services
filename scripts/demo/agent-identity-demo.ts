@@ -9,11 +9,9 @@ import { generateKeyPair, batchSign, type KeyPair } from '@ottochain/sdk';
 
 const CONFIG = {
   DL1_URLS: [
-    'http://localhost:9400',
-    'http://localhost:9410',
-    'http://localhost:9420',
+    process.env.DL1_URL || 'http://localhost:9400',
   ],
-  ML0_URL: 'http://localhost:9200',
+  ML0_URL: process.env.ML0_URL || 'http://localhost:9200',
 };
 
 // Agent Identity state machine definition
@@ -25,48 +23,48 @@ const AGENT_IDENTITY_DEFINITION = {
     withdrawn: { id: { value: 'withdrawn' }, isFinal: true, metadata: null },
   },
   initialState: { value: 'registered' },
-  transitions: [
+  metadata: null, transitions: [
     {
       from: { value: 'registered' },
-      event: 'activate',
+      eventName: 'activate',
       to: { value: 'active' },
-      guards: [],
-      effects: [],
+      guard: { "===": [true, true] },
+      effect: { "var": "state" }, dependencies: [],
     },
     {
       from: { value: 'active' },
-      event: 'receive_vouch',
+      eventName: 'receive_vouch',
       to: { value: 'active' },
-      guards: [],
-      effects: [],
+      guard: { "===": [true, true] },
+      effect: { "var": "state" }, dependencies: [],
     },
     {
       from: { value: 'active' },
-      event: 'receive_completion',
+      eventName: 'receive_completion',
       to: { value: 'active' },
-      guards: [],
-      effects: [],
+      guard: { "===": [true, true] },
+      effect: { "var": "state" }, dependencies: [],
     },
     {
       from: { value: 'active' },
-      event: 'receive_behavioral',
+      eventName: 'receive_behavioral',
       to: { value: 'active' },
-      guards: [],
-      effects: [],
+      guard: { "===": [true, true] },
+      effect: { "var": "state" }, dependencies: [],
     },
     {
       from: { value: 'active' },
-      event: 'receive_violation',
+      eventName: 'receive_violation',
       to: { value: 'active' },
-      guards: [],
-      effects: [],
+      guard: { "===": [true, true] },
+      effect: { "var": "state" }, dependencies: [],
     },
     {
       from: { value: 'active' },
-      event: 'withdraw',
+      eventName: 'withdraw',
       to: { value: 'withdrawn' },
-      guards: [],
-      effects: [],
+      guard: { "===": [true, true] },
+      effect: { "var": "state" }, dependencies: [],
     },
   ],
 };
@@ -81,11 +79,11 @@ const CONTRACT_DEFINITION = {
     disputed: { id: { value: 'disputed' }, isFinal: false, metadata: null },
   },
   initialState: { value: 'proposed' },
-  transitions: [
-    { from: { value: 'proposed' }, event: 'accept', to: { value: 'active' }, guards: [], effects: [] },
-    { from: { value: 'proposed' }, event: 'reject', to: { value: 'rejected' }, guards: [], effects: [] },
-    { from: { value: 'active' }, event: 'complete', to: { value: 'completed' }, guards: [], effects: [] },
-    { from: { value: 'active' }, event: 'dispute', to: { value: 'disputed' }, guards: [], effects: [] },
+  metadata: null, transitions: [
+    { from: { value: 'proposed' }, eventName: 'accept', to: { value: 'active' }, guard: { "===": [true, true] }, effect: { "var": "state" }, dependencies: [] },
+    { from: { value: 'proposed' }, eventName: 'reject', to: { value: 'rejected' }, guard: { "===": [true, true] }, effect: { "var": "state" }, dependencies: [] },
+    { from: { value: 'active' }, eventName: 'complete', to: { value: 'completed' }, guard: { "===": [true, true] }, effect: { "var": "state" }, dependencies: [] },
+    { from: { value: 'active' }, eventName: 'dispute', to: { value: 'disputed' }, guard: { "===": [true, true] }, effect: { "var": "state" }, dependencies: [] },
   ],
 };
 
@@ -103,12 +101,15 @@ async function sendTransaction(message: unknown, wallets: KeyPair[]): Promise<vo
   const privateKeys = wallets.map(w => w.privateKey);
   const signed = await batchSign(message, privateKeys, { isDataUpdate: true });
 
+  // Wrap in { data: ... } as expected by tessellation DL1
+  const payload = { data: signed };
+
   const results = await Promise.allSettled(
     CONFIG.DL1_URLS.map(async (url) => {
       const response = await fetch(`${url}/data`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(signed),
+        body: JSON.stringify(payload),
       });
       if (!response.ok) {
         throw new Error(`${url}: ${response.status}`);
@@ -223,7 +224,7 @@ async function createContract(proposer: Agent, counterparty: Agent, terms: strin
 async function transitionContract(
   contractId: string,
   actor: Agent,
-  event: string
+  eventName: string
 ): Promise<void> {
   const state = await getStateMachine(contractId);
   const targetSeq = (state?.sequenceNumber ?? 0);

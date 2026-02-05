@@ -1,0 +1,199 @@
+name: Traffic Generator Integration Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/traffic-generator/**'
+      - 'packages/bridge/**'
+      - 'packages/shared/**'
+      - '.github/workflows/traffic-generator-integration.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/traffic-generator/**'
+      - 'packages/bridge/**'
+      - 'packages/shared/**'
+  workflow_dispatch:
+    inputs:
+      run_high_throughput:
+        description: 'Run high-throughput test (10 agents, 3 generations)'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  TESSELLATION_REPO: https://github.com/Constellation-Labs/tessellation.git
+  TESSELLATION_TAG: v4.0.0-rc.2
+  OTTOCHAIN_REPO: https://github.com/scasplte2/ottochain.git
+  OTTOCHAIN_BRANCH: main
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      redis:
+        image: redis:alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout services repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Cache sbt
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.sbt
+            ~/.ivy2/cache
+            ~/.cache/coursier
+          key: sbt-${{ runner.os }}-${{ hashFiles('**/build.sbt') }}
+
+      - name: Clone tessellation
+        run: |
+          git clone --depth 1 --branch ${{ env.TESSELLATION_TAG }} ${{ env.TESSELLATION_REPO }} tessellation
+
+      - name: Clone ottochain
+        run: |
+          git clone --depth 1 --branch ${{ env.OTTOCHAIN_BRANCH }} ${{ env.OTTOCHAIN_REPO }} ottochain
+
+      - name: Build tessellation SDK
+        working-directory: tessellation
+        run: |
+          # Build and publish SDK locally
+          sbt 'sdk/publishLocal'
+
+      - name: Build ottochain
+        working-directory: ottochain
+        run: |
+          sbt 'sharedData/assembly'
+
+      - name: Build tessellation JARs
+        working-directory: tessellation
+        run: |
+          sbt 'globalL0/assembly' 'metagraphL0/assembly' 'currencyL1/assembly' 'dataL1/assembly'
+
+      - name: Setup Docker Compose cluster
+        working-directory: tessellation/docker
+        run: |
+          # Start the local cluster
+          bash bin/compose-runner.sh --up --metagraph=${{ github.workspace }}/ottochain --dl1 --skip-assembly &
+          
+          # Wait for cluster to be ready
+          echo "Waiting for cluster to start..."
+          for i in {1..60}; do
+            if curl -s http://localhost:9000/node/info | grep -q '"state":"Ready"'; then
+              echo "GL0 is ready"
+              break
+            fi
+            sleep 5
+          done
+          
+          for i in {1..60}; do
+            if curl -s http://localhost:9200/node/info | grep -q '"state":"Ready"'; then
+              echo "ML0 is ready"
+              break
+            fi
+            sleep 5
+          done
+          
+          for i in {1..60}; do
+            DL1_CLUSTER=$(curl -s http://localhost:9400/cluster/info | jq 'length' 2>/dev/null || echo "0")
+            if [ "$DL1_CLUSTER" -ge 3 ]; then
+              echo "DL1 cluster has 3 nodes"
+              break
+            fi
+            sleep 5
+          done
+
+      - name: Start Bridge
+        run: |
+          DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" \
+          METAGRAPH_ML0_URL="http://localhost:9200" \
+          METAGRAPH_DL1_URL="http://localhost:9400" \
+          node packages/bridge/dist/index.js &
+          
+          # Wait for bridge
+          for i in {1..30}; do
+            if curl -s http://localhost:3030/health | grep -q '"status":"ok"'; then
+              echo "Bridge is ready"
+              break
+            fi
+            sleep 2
+          done
+
+      - name: Run Integration Test
+        run: |
+          cd packages/traffic-generator
+          BRIDGE_URL="http://localhost:3030" \
+          ML0_URL="http://localhost:9200" \
+          npx tsx test/integration.test.ts
+
+      - name: Run Evolutionary Simulation (3 generations)
+        if: success()
+        run: |
+          cd packages/traffic-generator
+          BRIDGE_URL="http://localhost:3030" \
+          ML0_URL="http://localhost:9200" \
+          TARGET_POPULATION=5 \
+          MAX_GENERATIONS=3 \
+          GENERATION_INTERVAL_MS=15000 \
+          npx tsx src/index.ts
+        continue-on-error: true  # Don't fail on simulation issues
+
+      - name: Run High-Throughput Test
+        if: ${{ github.event.inputs.run_high_throughput == 'true' }}
+        run: |
+          cd packages/traffic-generator
+          BRIDGE_URL="http://localhost:3030" \
+          ML0_URL="http://localhost:9200" \
+          MODE=high-throughput \
+          TARGET_POPULATION=10 \
+          MAX_GENERATIONS=3 \
+          TARGET_TPS=2 \
+          npx tsx src/index.ts
+        continue-on-error: true
+
+      - name: Show cluster state
+        if: always()
+        run: |
+          echo "=== ML0 Checkpoint ==="
+          curl -s http://localhost:9200/data-application/v1/checkpoint | jq '.state.stateMachines | keys | length' || true
+          echo "=== DL1 Cluster ==="
+          curl -s http://localhost:9400/cluster/info | jq 'length' || true
+
+      - name: Cleanup
+        if: always()
+        working-directory: tessellation/docker
+        run: |
+          docker compose down -v || true
