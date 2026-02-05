@@ -135,6 +135,38 @@ export async function checkIndexer(url: string, timeoutMs: number): Promise<Serv
   }
 }
 
+export async function checkGateway(url: string, timeoutMs: number): Promise<ServiceHealth> {
+  const startTime = Date.now();
+  
+  try {
+    const res = await fetchWithTimeout(`${url}/health`, timeoutMs);
+    const latencyMs = Date.now() - startTime;
+    
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    
+    const data = await res.json() as { status: string };
+    
+    return {
+      name: 'Gateway',
+      type: 'gateway',
+      url,
+      status: data.status === 'ok' ? 'healthy' : 'degraded',
+      lastCheck: Date.now(),
+      latencyMs,
+    };
+  } catch (err) {
+    return {
+      name: 'Gateway',
+      type: 'gateway',
+      url,
+      status: 'unhealthy',
+      lastCheck: Date.now(),
+      latencyMs: Date.now() - startTime,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
 export async function checkRedis(url: string, timeoutMs: number): Promise<ServiceHealth> {
   // For Redis, we'd need a Redis client. For now, mark as unknown if URL provided
   return {
@@ -144,6 +176,18 @@ export async function checkRedis(url: string, timeoutMs: number): Promise<Servic
     status: 'unknown',
     lastCheck: Date.now(),
     metadata: { note: 'Redis health check requires client connection' },
+  };
+}
+
+export async function checkPostgres(url: string, timeoutMs: number): Promise<ServiceHealth> {
+  // For Postgres, we'd need a pg client. Mark as unknown for now.
+  return {
+    name: 'Postgres',
+    type: 'postgres',
+    url: url.replace(/\/\/[^:]+:[^@]+@/, '//***:***@'), // Hide credentials
+    status: 'unknown',
+    lastCheck: Date.now(),
+    metadata: { note: 'Postgres health check requires client connection' },
   };
 }
 
@@ -223,8 +267,16 @@ export class HealthCollector {
       services.push(await checkIndexer(this.config.indexerUrl, this.config.timeoutMs));
     }
     
+    if (this.config.gatewayUrl) {
+      services.push(await checkGateway(this.config.gatewayUrl, this.config.timeoutMs));
+    }
+    
     if (this.config.redisUrl) {
       services.push(await checkRedis(this.config.redisUrl, this.config.timeoutMs));
+    }
+    
+    if (this.config.postgresUrl) {
+      services.push(await checkPostgres(this.config.postgresUrl, this.config.timeoutMs));
     }
     
     // Metagraph metrics (use first healthy ML0)
