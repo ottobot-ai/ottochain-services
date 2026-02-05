@@ -267,7 +267,7 @@ export class BridgeClient {
     ordinal: number;
     state: {
       stateMachines: Record<string, unknown>;
-      scriptOracles: Record<string, unknown>;
+      scripts: Record<string, unknown>;
     };
   }> {
     const url = `${this.ml0Url}/data-application/v1/checkpoint`;
@@ -279,7 +279,7 @@ export class BridgeClient {
       ordinal: number;
       state: {
         stateMachines: Record<string, unknown>;
-        scriptOracles: Record<string, unknown>;
+        scripts: Record<string, unknown>;
       };
     }>;
   }
