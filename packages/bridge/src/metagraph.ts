@@ -127,3 +127,49 @@ export async function waitForSnapshot(
 
   throw new Error(`Snapshot timeout after ${timeoutMs}ms`);
 }
+
+/**
+ * Wait for a fiber to sync to DL1's onchain state
+ * 
+ * This polls DL1's /data-application/v1/onchain endpoint to check if the fiber
+ * has been committed. This is the correct way to ensure DL1 has synced the state
+ * from ML0 → GL0 → DL1 before attempting transitions.
+ * 
+ * Based on the pattern from ottochain e2e tests (waitForDl1Sync).
+ * 
+ * @param fiberId - The fiber ID to wait for
+ * @param maxAttempts - Maximum number of polling attempts (default 60 = 60s)
+ * @param intervalMs - Polling interval in ms (default 1000 = 1s)
+ * @returns true if fiber synced to DL1, false if timeout
+ */
+export async function waitForFiber(
+  fiberId: string,
+  maxAttempts: number = 60,
+  intervalMs: number = 1000
+): Promise<boolean> {
+  const config = getConfig();
+  const dl1Url = `${config.METAGRAPH_DL1_URL}/data-application/v1/onchain`;
+  const client = new HttpClient(dl1Url);
+  
+  console.log(`[metagraph] Waiting for fiber ${fiberId} to sync to DL1 (max ${maxAttempts}s)...`);
+  
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const onChain = await client.get<{
+        fiberCommits?: Record<string, { sequenceNumber?: number }>;
+      }>('');
+      
+      if (onChain?.fiberCommits?.[fiberId]) {
+        console.log(`[metagraph] Fiber ${fiberId} found in DL1 onchain state (attempt ${i + 1})`);
+        return true;
+      }
+    } catch {
+      // DL1 may not be ready yet — continue polling
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, intervalMs));
+  }
+  
+  console.log(`[metagraph] Fiber ${fiberId} not synced to DL1 after ${maxAttempts} attempts`);
+  return false;
+}

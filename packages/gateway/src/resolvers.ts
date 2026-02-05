@@ -115,8 +115,13 @@ export const resolvers = {
     },
 
     recentActivity: async (_: unknown, { limit = 50 }: { limit?: number }) => {
-      // Combine attestations and contracts into activity feed
-      const [attestations, contracts] = await Promise.all([
+      // Combine fiber transitions, attestations, and contracts into activity feed
+      const [fiberTransitions, attestations, contracts] = await Promise.all([
+        prisma.fiberTransition.findMany({
+          take: limit,
+          orderBy: { createdAt: 'desc' },
+          include: { fiber: true },
+        }),
         prisma.attestation.findMany({
           take: limit,
           orderBy: { createdAt: 'desc' },
@@ -130,6 +135,14 @@ export const resolvers = {
       ]);
 
       const events = [
+        ...fiberTransitions.map((t) => ({
+          eventType: 'TRANSITION',
+          timestamp: t.createdAt,
+          agent: null, // Fiber doesn't link to Agent directly
+          action: `${t.eventName}: ${t.fromState} → ${t.toState}`,
+          reputationDelta: null,
+          relatedAgent: null,
+        })),
         ...attestations.map((a) => ({
           eventType: 'ATTESTATION',
           timestamp: a.createdAt,
@@ -193,6 +206,47 @@ export const resolvers = {
         },
         take: limit,
       });
+    },
+
+    // Unified search across fibers, agents, and transitions
+    search: async (_: unknown, { query, limit = 10 }: { query: string; limit?: number }) => {
+      const [fibers, agents, transitions] = await Promise.all([
+        // Search fibers by ID or workflow type
+        prisma.fiber.findMany({
+          where: {
+            OR: [
+              { fiberId: { contains: query, mode: 'insensitive' } },
+              { workflowType: { contains: query, mode: 'insensitive' } },
+              { currentState: { contains: query, mode: 'insensitive' } },
+            ],
+          },
+          take: limit,
+          orderBy: { updatedAt: 'desc' },
+        }),
+        // Search agents by name or address
+        prisma.agent.findMany({
+          where: {
+            OR: [
+              { displayName: { contains: query, mode: 'insensitive' } },
+              { address: { contains: query, mode: 'insensitive' } },
+            ],
+          },
+          take: limit,
+        }),
+        // Search transitions by event name
+        prisma.fiberTransition.findMany({
+          where: {
+            OR: [
+              { eventName: { contains: query, mode: 'insensitive' } },
+              { fiberId: { contains: query, mode: 'insensitive' } },
+            ],
+          },
+          take: limit,
+          orderBy: { createdAt: 'desc' },
+        }),
+      ]);
+
+      return { fibers, agents, transitions };
     },
 
     // === Generic Fiber Queries (chain-agnostic) ===
