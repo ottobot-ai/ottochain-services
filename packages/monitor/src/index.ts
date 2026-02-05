@@ -8,10 +8,54 @@
 import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
+import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import type { StackHealth, ServiceStatus, MonitorConfig } from './types.js';
 import { HealthCollector } from './collector.js';
+
+// =============================================================================
+// Authentication
+// =============================================================================
+
+interface AuthConfig {
+  enabled: boolean;
+  username: string;
+  password: string;
+}
+
+function setupAuth(): AuthConfig {
+  const username = process.env.MONITOR_USER ?? 'admin';
+  const password = process.env.MONITOR_PASS ?? crypto.randomBytes(8).toString('base64').slice(0, 12);
+  const enabled = process.env.MONITOR_AUTH !== 'false'; // Enabled by default
+  
+  return { enabled, username, password };
+}
+
+function basicAuthMiddleware(auth: AuthConfig) {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (!auth.enabled) return next();
+    
+    // Allow health endpoint without auth
+    if (req.path === '/health') return next();
+    
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Basic ')) {
+      res.setHeader('WWW-Authenticate', 'Basic realm="OttoChain Monitor"');
+      return res.status(401).send('Authentication required');
+    }
+    
+    const credentials = Buffer.from(authHeader.slice(6), 'base64').toString();
+    const [user, pass] = credentials.split(':');
+    
+    if (user === auth.username && pass === auth.password) {
+      return next();
+    }
+    
+    res.setHeader('WWW-Authenticate', 'Basic realm="OttoChain Monitor"');
+    return res.status(401).send('Invalid credentials');
+  };
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -59,6 +103,7 @@ function computeOverallStatus(nodes: { status: ServiceStatus }[], services: { st
 
 async function main(): Promise<void> {
   const config = loadConfig();
+  const auth = setupAuth();
   const collector = new HealthCollector(config);
   
   console.log('🔍 OttoChain Stack Monitor');
@@ -68,11 +113,21 @@ async function main(): Promise<void> {
   console.log(`   CL1 nodes: ${config.cl1Urls.length}`);
   console.log(`   DL1 nodes: ${config.dl1Urls.length}`);
   console.log(`   Poll interval: ${config.pollIntervalMs}ms`);
+  if (auth.enabled) {
+    console.log('──────────────────────────────────────────────────────────────');
+    console.log('🔐 Authentication enabled');
+    console.log(`   Username: ${auth.username}`);
+    console.log(`   Password: ${auth.password}`);
+    if (!process.env.MONITOR_PASS) {
+      console.log('   (auto-generated, set MONITOR_PASS to use your own)');
+    }
+  }
   console.log('══════════════════════════════════════════════════════════════');
   
   // Express app
   const app = express();
   app.use(express.json());
+  app.use(basicAuthMiddleware(auth));
   app.use(express.static(path.join(__dirname, '../public')));
   
   // REST endpoints
@@ -107,8 +162,32 @@ async function main(): Promise<void> {
   // HTTP server
   const server = createServer(app);
   
+  // Generate a session token for WebSocket auth (simpler than basic auth for WS)
+  const wsToken = crypto.randomBytes(16).toString('hex');
+  
+  // Endpoint to get WS token (requires basic auth)
+  app.get('/api/ws-token', (_, res) => {
+    res.json({ token: wsToken });
+  });
+  
   // WebSocket server for real-time updates
-  const wss = new WebSocketServer({ server, path: '/ws' });
+  const wss = new WebSocketServer({ 
+    server, 
+    path: '/ws',
+    verifyClient: (info, callback) => {
+      if (!auth.enabled) return callback(true);
+      
+      // Check for token in query string: /ws?token=xxx
+      const url = new URL(info.req.url ?? '', 'http://localhost');
+      const token = url.searchParams.get('token');
+      
+      if (token === wsToken) {
+        return callback(true);
+      }
+      
+      callback(false, 401, 'Unauthorized - get token from /api/ws-token');
+    }
+  });
   const clients = new Set<WebSocket>();
   
   wss.on('connection', (ws) => {

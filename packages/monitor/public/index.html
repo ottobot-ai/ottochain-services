@@ -321,10 +321,27 @@
       connectionStatus.querySelector('span').textContent = connected ? 'Live' : 'Disconnected';
     }
     
-    // WebSocket connection
-    function connect() {
+    // WebSocket connection with token auth
+    async function connect() {
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const ws = new WebSocket(`${protocol}//${location.host}/ws`);
+      
+      // Get WS token (this endpoint requires basic auth, which browser handles)
+      let token = '';
+      try {
+        const res = await fetch('/api/ws-token');
+        if (res.ok) {
+          const data = await res.json();
+          token = data.token;
+        }
+      } catch (e) {
+        console.log('Could not get WS token, using REST fallback');
+      }
+      
+      const wsUrl = token 
+        ? `${protocol}//${location.host}/ws?token=${token}`
+        : `${protocol}//${location.host}/ws`;
+      
+      const ws = new WebSocket(wsUrl);
       
       ws.onopen = () => {
         console.log('WebSocket connected');
