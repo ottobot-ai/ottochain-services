@@ -1,19 +1,9 @@
 name: Traffic Generator Integration Tests
 
+# NOTE: This workflow is resource-intensive (builds tessellation + ottochain from source)
+# Run manually or on a schedule, not on every push
+
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'packages/traffic-generator/**'
-      - 'packages/bridge/**'
-      - 'packages/shared/**'
-      - '.github/workflows/traffic-generator-integration.yml'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'packages/traffic-generator/**'
-      - 'packages/bridge/**'
-      - 'packages/shared/**'
   workflow_dispatch:
     inputs:
       run_high_throughput:
@@ -69,6 +59,9 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
+
+      - name: Setup sbt
+        uses: sbt/setup-sbt@v1
 
       - name: Cache sbt
         uses: actions/cache@v4
