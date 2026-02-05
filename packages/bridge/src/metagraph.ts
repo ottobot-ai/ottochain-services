@@ -120,3 +120,43 @@ export async function waitForSnapshot(
 
   throw new Error(`Snapshot timeout after ${timeoutMs}ms`);
 }
+
+/**
+ * Wait for a fiber to appear in the ML0 checkpoint state
+ * 
+ * This is necessary because DL1 may not have synced the fiber state yet,
+ * causing "CidNotFound" errors when trying to transition immediately after creation.
+ * 
+ * @param fiberId - The fiber ID to wait for
+ * @param maxAttempts - Maximum number of polling attempts (default 30 = 30s)
+ * @param intervalMs - Polling interval in ms (default 1000 = 1s)
+ * @returns true if fiber appeared, false if timeout
+ */
+export async function waitForFiber(
+  fiberId: string,
+  maxAttempts: number = 30,
+  intervalMs: number = 1000
+): Promise<boolean> {
+  console.log(`[metagraph] Waiting for fiber ${fiberId} to appear in state (max ${maxAttempts}s)...`);
+  
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const checkpoint = await getCheckpoint() as { 
+        ordinal: number; 
+        state: { stateMachines?: Record<string, unknown> } 
+      };
+      
+      if (checkpoint.state?.stateMachines?.[fiberId]) {
+        console.log(`[metagraph] Fiber ${fiberId} found in state at ordinal ${checkpoint.ordinal} (attempt ${i + 1})`);
+        return true;
+      }
+    } catch {
+      // Ignore errors, keep polling
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, intervalMs));
+  }
+  
+  console.log(`[metagraph] Fiber ${fiberId} not found after ${maxAttempts} attempts`);
+  return false;
+}
