@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OttoChain Stack Monitor</title>
+  <style>
+    :root {
+      --bg-dark: #0f1419;
+      --bg-card: #1a1f2e;
+      --border: #2d3748;
+      --text: #e2e8f0;
+      --text-muted: #718096;
+      --green: #48bb78;
+      --yellow: #ecc94b;
+      --red: #fc8181;
+      --blue: #63b3ed;
+    }
+    
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-dark);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    
+    .header h1 {
+      font-size: 24px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .header h1 span { font-size: 28px; }
+    
+    .overall-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-weight: 500;
+    }
+    
+    .overall-status.healthy { background: rgba(72, 187, 120, 0.2); color: var(--green); }
+    .overall-status.degraded { background: rgba(236, 201, 75, 0.2); color: var(--yellow); }
+    .overall-status.unhealthy { background: rgba(252, 129, 129, 0.2); color: var(--red); }
+    
+    .metrics-bar {
+      display: flex;
+      gap: 24px;
+      margin-bottom: 24px;
+      padding: 16px;
+      background: var(--bg-card);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+    
+    .metric {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    
+    .metric-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .metric-value {
+      font-size: 24px;
+      font-weight: 600;
+      color: var(--blue);
+    }
+    
+    .section {
+      margin-bottom: 32px;
+    }
+    
+    .section h2 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+    
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      transition: border-color 0.2s;
+    }
+    
+    .card:hover { border-color: var(--blue); }
+    
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    
+    .card-title {
+      font-weight: 600;
+      font-size: 16px;
+    }
+    
+    .status-badge {
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+      text-transform: uppercase;
+    }
+    
+    .status-badge.healthy { background: rgba(72, 187, 120, 0.2); color: var(--green); }
+    .status-badge.degraded { background: rgba(236, 201, 75, 0.2); color: var(--yellow); }
+    .status-badge.unhealthy { background: rgba(252, 129, 129, 0.2); color: var(--red); }
+    .status-badge.unknown { background: rgba(113, 128, 150, 0.2); color: var(--text-muted); }
+    
+    .card-details {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    
+    .card-details .row {
+      display: flex;
+      justify-content: space-between;
+    }
+    
+    .card-details .value { color: var(--text); }
+    
+    .error-text {
+      color: var(--red);
+      font-size: 12px;
+      margin-top: 8px;
+      padding: 8px;
+      background: rgba(252, 129, 129, 0.1);
+      border-radius: 6px;
+    }
+    
+    .connection-status {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .connection-status.connected {
+      background: rgba(72, 187, 120, 0.2);
+      color: var(--green);
+    }
+    
+    .connection-status.disconnected {
+      background: rgba(252, 129, 129, 0.2);
+      color: var(--red);
+    }
+    
+    .pulse {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    .last-update {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1><span>🦦</span> OttoChain Stack Monitor</h1>
+    <div id="overall" class="overall-status unknown">
+      <span>●</span> <span id="overall-text">Connecting...</span>
+    </div>
+  </div>
+  
+  <div class="metrics-bar">
+    <div class="metric">
+      <div class="metric-label">Snapshot Ordinal</div>
+      <div class="metric-value" id="ordinal">-</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Active Fibers</div>
+      <div class="metric-value" id="fibers">-</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Healthy Nodes</div>
+      <div class="metric-value" id="healthy-nodes">-</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Last Update</div>
+      <div class="metric-value last-update" id="last-update">-</div>
+    </div>
+  </div>
+  
+  <div class="section">
+    <h2>Metagraph Nodes</h2>
+    <div class="grid" id="nodes-grid"></div>
+  </div>
+  
+  <div class="section">
+    <h2>Services</h2>
+    <div class="grid" id="services-grid"></div>
+  </div>
+  
+  <div id="connection-status" class="connection-status disconnected">
+    <div class="pulse"></div>
+    <span>Disconnected</span>
+  </div>
+  
+  <script>
+    const nodesGrid = document.getElementById('nodes-grid');
+    const servicesGrid = document.getElementById('services-grid');
+    const overallEl = document.getElementById('overall');
+    const overallText = document.getElementById('overall-text');
+    const ordinalEl = document.getElementById('ordinal');
+    const fibersEl = document.getElementById('fibers');
+    const healthyNodesEl = document.getElementById('healthy-nodes');
+    const lastUpdateEl = document.getElementById('last-update');
+    const connectionStatus = document.getElementById('connection-status');
+    
+    function createNodeCard(node) {
+      return `
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">${node.name}</div>
+            <div class="status-badge ${node.status}">${node.status}</div>
+          </div>
+          <div class="card-details">
+            <div class="row"><span>Type</span><span class="value">${node.type.toUpperCase()}</span></div>
+            <div class="row"><span>State</span><span class="value">${node.state ?? '-'}</span></div>
+            <div class="row"><span>Cluster</span><span class="value">${node.clusterSize ?? '-'} nodes</span></div>
+            <div class="row"><span>Latency</span><span class="value">${node.latencyMs ?? '-'}ms</span></div>
+            <div class="row"><span>Version</span><span class="value">${node.version?.slice(0, 20) ?? '-'}</span></div>
+          </div>
+          ${node.error ? `<div class="error-text">${node.error}</div>` : ''}
+        </div>
+      `;
+    }
+    
+    function createServiceCard(service) {
+      return `
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">${service.name}</div>
+            <div class="status-badge ${service.status}">${service.status}</div>
+          </div>
+          <div class="card-details">
+            <div class="row"><span>Type</span><span class="value">${service.type}</span></div>
+            <div class="row"><span>Latency</span><span class="value">${service.latencyMs ?? '-'}ms</span></div>
+          </div>
+          ${service.error ? `<div class="error-text">${service.error}</div>` : ''}
+        </div>
+      `;
+    }
+    
+    function updateUI(data) {
+      // Overall status
+      overallEl.className = `overall-status ${data.overall}`;
+      overallText.textContent = data.overall.charAt(0).toUpperCase() + data.overall.slice(1);
+      
+      // Metrics
+      ordinalEl.textContent = data.metagraph.snapshotOrdinal ?? '-';
+      fibersEl.textContent = data.metagraph.fiberCount ?? '-';
+      
+      const healthyNodes = data.nodes.filter(n => n.status === 'healthy').length;
+      healthyNodesEl.textContent = `${healthyNodes}/${data.nodes.length}`;
+      
+      lastUpdateEl.textContent = new Date(data.timestamp).toLocaleTimeString();
+      
+      // Nodes
+      nodesGrid.innerHTML = data.nodes.map(createNodeCard).join('');
+      
+      // Services
+      servicesGrid.innerHTML = data.services.map(createServiceCard).join('');
+    }
+    
+    function setConnected(connected) {
+      connectionStatus.className = `connection-status ${connected ? 'connected' : 'disconnected'}`;
+      connectionStatus.querySelector('span').textContent = connected ? 'Live' : 'Disconnected';
+    }
+    
+    // WebSocket connection
+    function connect() {
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(`${protocol}//${location.host}/ws`);
+      
+      ws.onopen = () => {
+        console.log('WebSocket connected');
+        setConnected(true);
+      };
+      
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'status') {
+          updateUI(msg.data);
+        }
+      };
+      
+      ws.onclose = () => {
+        console.log('WebSocket disconnected, reconnecting in 3s...');
+        setConnected(false);
+        setTimeout(connect, 3000);
+      };
+      
+      ws.onerror = (err) => {
+        console.error('WebSocket error:', err);
+        ws.close();
+      };
+    }
+    
+    // Initial connection
+    connect();
+    
+    // Fallback: fetch via REST if WebSocket fails
+    async function fetchStatus() {
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        updateUI(data);
+      } catch (err) {
+        console.error('Failed to fetch status:', err);
+      }
+    }
+    
+    // Fetch on load as backup
+    fetchStatus();
+  </script>
+</body>
+</html>
