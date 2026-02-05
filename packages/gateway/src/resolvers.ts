@@ -115,8 +115,13 @@ export const resolvers = {
     },
 
     recentActivity: async (_: unknown, { limit = 50 }: { limit?: number }) => {
-      // Combine attestations and contracts into activity feed
-      const [attestations, contracts] = await Promise.all([
+      // Combine fiber transitions, attestations, and contracts into activity feed
+      const [fiberTransitions, attestations, contracts] = await Promise.all([
+        prisma.fiberTransition.findMany({
+          take: limit,
+          orderBy: { createdAt: 'desc' },
+          include: { fiber: true },
+        }),
         prisma.attestation.findMany({
           take: limit,
           orderBy: { createdAt: 'desc' },
@@ -130,6 +135,14 @@ export const resolvers = {
       ]);
 
       const events = [
+        ...fiberTransitions.map((t) => ({
+          eventType: 'TRANSITION',
+          timestamp: t.createdAt,
+          agent: null, // Fiber doesn't link to Agent directly
+          action: `${t.eventName}: ${t.fromState} → ${t.toState}`,
+          reputationDelta: null,
+          relatedAgent: null,
+        })),
         ...attestations.map((a) => ({
           eventType: 'ATTESTATION',
           timestamp: a.createdAt,
