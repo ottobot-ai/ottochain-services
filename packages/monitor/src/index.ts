@@ -15,6 +15,37 @@ import type { StackHealth, ServiceStatus, MonitorConfig } from './types.js';
 import { HealthCollector } from './collector.js';
 
 // =============================================================================
+// Telegram Alerting
+// =============================================================================
+
+async function sendTelegramAlert(message: string, severity: 'warning' | 'critical'): Promise<void> {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  
+  if (!botToken || !chatId) {
+    console.log(`[ALERT ${severity.toUpperCase()}] ${message}`);
+    return;
+  }
+  
+  try {
+    const emoji = severity === 'critical' ? '🚨' : '⚠️';
+    const text = `${emoji} *OttoChain Monitor*\n\n${message}`;
+    
+    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'Markdown',
+      }),
+    });
+  } catch (err) {
+    console.error('Failed to send Telegram alert:', err);
+  }
+}
+
+// =============================================================================
 // Authentication
 // =============================================================================
 
@@ -105,6 +136,9 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const auth = setupAuth();
   const collector = new HealthCollector(config);
+  
+  // Set up alerting
+  collector.setAlertCallback(sendTelegramAlert);
   
   console.log('🔍 OttoChain Stack Monitor');
   console.log('══════════════════════════════════════════════════════════════');

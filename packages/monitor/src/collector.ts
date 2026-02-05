@@ -219,6 +219,10 @@ export async function getMetagraphMetrics(ml0Url: string, timeoutMs: number): Pr
   return metrics;
 }
 
+export interface AlertCallback {
+  (message: string, severity: 'warning' | 'critical'): void;
+}
+
 export class HealthCollector {
   private config: MonitorConfig;
   private latestHealth: {
@@ -226,9 +230,71 @@ export class HealthCollector {
     services: ServiceHealth[];
     metagraph: MetagraphMetrics;
   } = { nodes: [], services: [], metagraph: {} };
+  private previousHealth: typeof this.latestHealth | null = null;
+  private alertCallback: AlertCallback | null = null;
+  private lastAlertTime: Record<string, number> = {};
+  private alertCooldownMs = 60000; // Don't spam alerts - 1 min cooldown per issue
   
   constructor(config: MonitorConfig) {
     this.config = config;
+  }
+  
+  setAlertCallback(callback: AlertCallback): void {
+    this.alertCallback = callback;
+  }
+  
+  private alert(key: string, message: string, severity: 'warning' | 'critical'): void {
+    const now = Date.now();
+    if (this.lastAlertTime[key] && now - this.lastAlertTime[key] < this.alertCooldownMs) {
+      return; // Cooldown active
+    }
+    this.lastAlertTime[key] = now;
+    this.alertCallback?.(message, severity);
+  }
+  
+  private checkForAlerts(nodes: NodeHealth[]): void {
+    // Check for node failures
+    for (const node of nodes) {
+      const prevNode = this.previousHealth?.nodes.find(n => n.name === node.name);
+      
+      // Node went down
+      if (node.status === 'unhealthy' && prevNode?.status === 'healthy') {
+        this.alert(`node-down-${node.name}`, `🔴 Node DOWN: ${node.name} (${node.url})`, 'critical');
+      }
+      
+      // Node recovered
+      if (node.status === 'healthy' && prevNode?.status === 'unhealthy') {
+        this.alert(`node-up-${node.name}`, `🟢 Node RECOVERED: ${node.name}`, 'warning');
+      }
+    }
+    
+    // Check for forks (different ordinals/states between same-type nodes)
+    this.checkForForks(nodes);
+  }
+  
+  private checkForForks(nodes: NodeHealth[]): void {
+    // Group by type
+    const byType: Record<string, NodeHealth[]> = {};
+    for (const node of nodes) {
+      if (!byType[node.type]) byType[node.type] = [];
+      byType[node.type].push(node);
+    }
+    
+    // Check each group for state mismatches
+    for (const [type, typeNodes] of Object.entries(byType)) {
+      const healthyNodes = typeNodes.filter(n => n.status === 'healthy');
+      if (healthyNodes.length < 2) continue;
+      
+      // Check if all healthy nodes have the same state
+      const states = new Set(healthyNodes.map(n => n.state));
+      if (states.size > 1) {
+        this.alert(
+          `fork-${type}`,
+          `⚠️ Potential FORK in ${type.toUpperCase()}: Nodes have different states: ${Array.from(states).join(', ')}`,
+          'critical'
+        );
+      }
+    }
   }
   
   async collect(): Promise<void> {
@@ -285,6 +351,11 @@ export class HealthCollector {
       ? await getMetagraphMetrics(healthyMl0.url, this.config.timeoutMs)
       : {};
     
+    // Check for alerts before updating
+    this.checkForAlerts(nodes);
+    
+    // Update state
+    this.previousHealth = this.latestHealth;
     this.latestHealth = { nodes, services, metagraph };
   }
   
