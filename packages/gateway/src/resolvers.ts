@@ -208,6 +208,47 @@ export const resolvers = {
       });
     },
 
+    // Unified search across fibers, agents, and transitions
+    search: async (_: unknown, { query, limit = 10 }: { query: string; limit?: number }) => {
+      const [fibers, agents, transitions] = await Promise.all([
+        // Search fibers by ID or workflow type
+        prisma.fiber.findMany({
+          where: {
+            OR: [
+              { fiberId: { contains: query, mode: 'insensitive' } },
+              { workflowType: { contains: query, mode: 'insensitive' } },
+              { currentState: { contains: query, mode: 'insensitive' } },
+            ],
+          },
+          take: limit,
+          orderBy: { updatedAt: 'desc' },
+        }),
+        // Search agents by name or address
+        prisma.agent.findMany({
+          where: {
+            OR: [
+              { displayName: { contains: query, mode: 'insensitive' } },
+              { address: { contains: query, mode: 'insensitive' } },
+            ],
+          },
+          take: limit,
+        }),
+        // Search transitions by event name
+        prisma.fiberTransition.findMany({
+          where: {
+            OR: [
+              { eventName: { contains: query, mode: 'insensitive' } },
+              { fiberId: { contains: query, mode: 'insensitive' } },
+            ],
+          },
+          take: limit,
+          orderBy: { createdAt: 'desc' },
+        }),
+      ]);
+
+      return { fibers, agents, transitions };
+    },
+
     // === Generic Fiber Queries (chain-agnostic) ===
     
     fiber: async (_: unknown, { fiberId }: { fiberId: string }) => {
