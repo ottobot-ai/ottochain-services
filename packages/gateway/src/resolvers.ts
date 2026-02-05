@@ -134,16 +134,36 @@ export const resolvers = {
         }),
       ]);
 
+      // Get unique owner addresses from fiber transitions to batch-fetch agents
+      const ownerAddresses = [...new Set(
+        fiberTransitions
+          .filter((t) => t.fiber?.owners?.length)
+          .flatMap((t) => t.fiber.owners)
+      )];
+      
+      // Batch fetch agents for fiber owners
+      const agents = ownerAddresses.length > 0
+        ? await prisma.agent.findMany({
+            where: { address: { in: ownerAddresses } },
+          })
+        : [];
+      const agentMap = new Map(agents.map((a) => [a.address, a]));
+
       const events = [
-        ...fiberTransitions.map((t) => ({
-          eventType: 'TRANSITION',
-          timestamp: t.createdAt,
-          agent: null,
-          action: `${t.eventName}: ${t.fromState} → ${t.toState}`,
-          reputationDelta: null,
-          relatedAgent: null,
-          fiberId: t.fiberId,
-        })),
+        ...fiberTransitions.map((t) => {
+          // Look up agent from fiber's first owner
+          const ownerAddress = t.fiber?.owners?.[0];
+          const agent = ownerAddress ? agentMap.get(ownerAddress) ?? null : null;
+          return {
+            eventType: 'TRANSITION',
+            timestamp: t.createdAt,
+            agent,
+            action: `${t.eventName}: ${t.fromState} → ${t.toState}`,
+            reputationDelta: null,
+            relatedAgent: null,
+            fiberId: t.fiberId,
+          };
+        }),
         ...attestations.map((a) => ({
           eventType: 'ATTESTATION',
           timestamp: a.createdAt,
