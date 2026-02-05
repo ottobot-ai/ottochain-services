@@ -154,14 +154,26 @@ enum FiberStatus {
   FAILED
 }
 
-/// Track indexing progress
+/// Track indexing progress with GL0 confirmation status
 model IndexedSnapshot {
-  ordinal          BigInt   @id
-  hash             String   @db.VarChar(64)
-  indexedAt        DateTime @default(now())
-  agentsUpdated    Int      @default(0)
-  contractsUpdated Int      @default(0)
-  fibersUpdated    Int      @default(0)
+  ordinal          BigInt         @id
+  hash             String         @db.VarChar(64)
+  status           SnapshotStatus @default(PENDING)
+  gl0Ordinal       BigInt?        // Global L0 ordinal when confirmed
+  confirmedAt      DateTime?      // When GL0 included this snapshot
+  indexedAt        DateTime       @default(now())
+  agentsUpdated    Int            @default(0)
+  contractsUpdated Int            @default(0)
+  fibersUpdated    Int            @default(0)
+
+  @@index([status])
+  @@index([hash])
+}
+
+enum SnapshotStatus {
+  PENDING    // Received from ML0, not yet in GL0
+  CONFIRMED  // Included in GL0 global snapshot
+  ORPHANED   // Rollback - was pending but different hash confirmed
 }
 
 /// Webhook subscribers for snapshot notifications

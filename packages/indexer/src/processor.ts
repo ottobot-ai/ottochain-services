@@ -161,18 +161,19 @@ export async function processSnapshot(notification: SnapshotNotification): Promi
     }
   }
   
-  // Record indexed snapshot
+  // Update indexed snapshot stats (preserve status - set by confirmation poller)
   await prisma.indexedSnapshot.upsert({
     where: { ordinal: BigInt(notification.ordinal) },
     create: {
       ordinal: BigInt(notification.ordinal),
       hash: notification.hash,
+      status: 'PENDING', // Will be updated to CONFIRMED by GL0 poller
       fibersUpdated,
       agentsUpdated,
       contractsUpdated,
     },
     update: {
-      hash: notification.hash,
+      // Don't overwrite status or confirmation fields
       fibersUpdated,
       agentsUpdated,
       contractsUpdated,
