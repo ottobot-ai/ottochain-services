@@ -122,48 +122,47 @@ export async function waitForSnapshot(
 }
 
 /**
- * Wait for a fiber to appear in the ML0 checkpoint state AND sync to DL1
+ * Wait for a fiber to sync to DL1's onchain state
  * 
- * This is necessary because DL1 may not have synced the fiber state yet,
- * causing "CidNotFound" errors when trying to transition immediately after creation.
+ * This polls DL1's /data-application/v1/onchain endpoint to check if the fiber
+ * has been committed. This is the correct way to ensure DL1 has synced the state
+ * from ML0 → GL0 → DL1 before attempting transitions.
  * 
- * The function waits for the fiber to appear in ML0, then adds extra wait time
- * for DL1 to sync the state from ML0.
+ * Based on the pattern from ottochain e2e tests (waitForDl1Sync).
  * 
  * @param fiberId - The fiber ID to wait for
- * @param maxAttempts - Maximum number of polling attempts (default 30 = 30s)
+ * @param maxAttempts - Maximum number of polling attempts (default 60 = 60s)
  * @param intervalMs - Polling interval in ms (default 1000 = 1s)
- * @param dl1SyncDelayMs - Extra delay after ML0 visibility for DL1 sync (default 10000 = 10s)
- * @returns true if fiber appeared, false if timeout
+ * @returns true if fiber synced to DL1, false if timeout
  */
 export async function waitForFiber(
   fiberId: string,
-  maxAttempts: number = 30,
-  intervalMs: number = 1000,
-  dl1SyncDelayMs: number = 10000
+  maxAttempts: number = 60,
+  intervalMs: number = 1000
 ): Promise<boolean> {
-  console.log(`[metagraph] Waiting for fiber ${fiberId} to appear in state (max ${maxAttempts}s)...`);
+  const config = getConfig();
+  const dl1Url = `${config.METAGRAPH_DL1_URL}/data-application/v1/onchain`;
+  const client = new HttpClient(dl1Url);
+  
+  console.log(`[metagraph] Waiting for fiber ${fiberId} to sync to DL1 (max ${maxAttempts}s)...`);
   
   for (let i = 0; i < maxAttempts; i++) {
     try {
-      const checkpoint = await getCheckpoint() as { 
-        ordinal: number; 
-        state: { stateMachines?: Record<string, unknown> } 
-      };
+      const onChain = await client.get<{
+        fiberCommits?: Record<string, { sequenceNumber?: number }>;
+      }>('');
       
-      if (checkpoint.state?.stateMachines?.[fiberId]) {
-        console.log(`[metagraph] Fiber ${fiberId} found in ML0 at ordinal ${checkpoint.ordinal} (attempt ${i + 1})`);
-        console.log(`[metagraph] Waiting ${dl1SyncDelayMs}ms for DL1 to sync...`);
-        await new Promise(resolve => setTimeout(resolve, dl1SyncDelayMs));
+      if (onChain?.fiberCommits?.[fiberId]) {
+        console.log(`[metagraph] Fiber ${fiberId} found in DL1 onchain state (attempt ${i + 1})`);
         return true;
       }
     } catch {
-      // Ignore errors, keep polling
+      // DL1 may not be ready yet — continue polling
     }
     
     await new Promise(resolve => setTimeout(resolve, intervalMs));
   }
   
-  console.log(`[metagraph] Fiber ${fiberId} not found after ${maxAttempts} attempts`);
+  console.log(`[metagraph] Fiber ${fiberId} not synced to DL1 after ${maxAttempts} attempts`);
   return false;
 }
