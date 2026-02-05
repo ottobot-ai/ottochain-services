@@ -207,12 +207,36 @@ jobs:
           # Verify proxy works
           docker exec ml0-0 curl -sf http://$PROXY_IP:3031/health
 
-      - name: Run integration tests
+      - name: Run webhook integration tests
         env:
           ML0_URL: http://localhost:9200
           INDEXER_URL: http://localhost:3031
           HOST_IP: ${{ env.PROXY_IP }}
         run: npx tsx scripts/test-webhook.ts
+
+      - name: Start Redis for bridge
+        run: |
+          docker run -d --name redis-ci -p 6379:6379 redis:alpine
+          sleep 2
+          docker exec redis-ci redis-cli ping
+
+      - name: Start bridge
+        env:
+          DATABASE_URL: postgresql://ottochain:ottochain@localhost:5432/ottochain_identity
+          METAGRAPH_ML0_URL: http://localhost:9200
+          METAGRAPH_DL1_URL: http://localhost:9400
+          BRIDGE_PORT: 3030
+        run: |
+          node packages/bridge/dist/index.js &
+          sleep 3
+          curl -s http://localhost:3030/health | grep -q '"status":"ok"'
+          echo "Bridge is healthy"
+
+      - name: Run traffic generator integration test
+        env:
+          BRIDGE_URL: http://localhost:3030
+          ML0_URL: http://localhost:9200
+        run: npx tsx packages/traffic-generator/test/integration.test.ts
 
       - name: Collect logs on failure
         if: failure()
@@ -237,5 +261,6 @@ jobs:
         working-directory: tessellation/docker
         run: |
           docker rm -f webhook-proxy 2>/dev/null || true
+          docker rm -f redis-ci 2>/dev/null || true
           chmod +x bin/*.sh 2>/dev/null || true
           ./bin/compose-runner.sh --down || true

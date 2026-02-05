@@ -35,7 +35,6 @@
     "typescript": "^5.3.0"
   },
   "dependencies": {
-    "@ottochain/sdk": "file:/home/euler/.openclaw/workspace/ottochain/sdk",
     "@prisma/client": "^5.9.0",
     "ioredis": "^5.9.2"
   }
