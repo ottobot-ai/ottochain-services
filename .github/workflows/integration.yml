@@ -27,7 +27,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U ottochain"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -139,24 +139,24 @@ jobs:
             if [ $i -eq 90 ]; then echo "GL0 timeout"; docker logs gl0-0 2>&1 | tail -30 || true; exit 1; fi
           done
           
-          echo "=== Waiting for ML0 ==="
-          for i in {1..90}; do
+          echo "=== Waiting for ML0 (may take longer on CI) ==="
+          for i in {1..180}; do
             if curl -s http://localhost:9200/node/info | grep -q '"state":"Ready"'; then
               echo "ML0 ready after ${i}s"
               break
             fi
             sleep 1
-            if [ $i -eq 90 ]; then echo "ML0 timeout"; docker logs ml0-0 2>&1 | tail -30 || true; exit 1; fi
+            if [ $i -eq 180 ]; then echo "ML0 timeout"; docker logs ml0-0 2>&1 | tail -30 || true; exit 1; fi
           done
           
           echo "=== Waiting for DL1 ==="
-          for i in {1..90}; do
+          for i in {1..180}; do
             if curl -s http://localhost:9400/node/info | grep -q '"state":"Ready"'; then
               echo "DL1 ready after ${i}s"
               break
             fi
             sleep 1
-            if [ $i -eq 90 ]; then echo "DL1 timeout"; docker logs dl1-0 2>&1 | tail -30 || true; exit 1; fi
+            if [ $i -eq 180 ]; then echo "DL1 timeout"; docker logs dl1-0 2>&1 | tail -30 || true; exit 1; fi
           done
           
           echo "=== Waiting for first metagraph snapshot ==="
