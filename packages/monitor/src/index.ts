@@ -15,7 +15,7 @@ import type { StackHealth, ServiceStatus, MonitorConfig } from './types.js';
 import { HealthCollector } from './collector.js';
 
 // =============================================================================
-// Telegram Alerting
+// Alerting (Telegram + Webhook)
 // =============================================================================
 
 async function sendTelegramAlert(message: string, severity: 'warning' | 'critical'): Promise<void> {
@@ -23,8 +23,7 @@ async function sendTelegramAlert(message: string, severity: 'warning' | 'critica
   const chatId = process.env.TELEGRAM_CHAT_ID;
   
   if (!botToken || !chatId) {
-    console.log(`[ALERT ${severity.toUpperCase()}] ${message}`);
-    return;
+    return; // Telegram not configured
   }
   
   try {
@@ -43,6 +42,45 @@ async function sendTelegramAlert(message: string, severity: 'warning' | 'critica
   } catch (err) {
     console.error('Failed to send Telegram alert:', err);
   }
+}
+
+async function sendWebhookAlert(message: string, severity: 'warning' | 'critical'): Promise<void> {
+  const webhookUrl = process.env.ALERT_WEBHOOK_URL;
+  const webhookSecret = process.env.ALERT_WEBHOOK_SECRET;
+  
+  if (!webhookUrl) {
+    return; // Webhook not configured
+  }
+  
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (webhookSecret) {
+      headers['Authorization'] = `Bearer ${webhookSecret}`;
+    }
+    
+    await fetch(webhookUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        source: 'ottochain-monitor',
+        severity,
+        message,
+        timestamp: new Date().toISOString(),
+      }),
+    });
+  } catch (err) {
+    console.error('Failed to send webhook alert:', err);
+  }
+}
+
+async function sendAlert(message: string, severity: 'warning' | 'critical'): Promise<void> {
+  console.log(`[ALERT ${severity.toUpperCase()}] ${message}`);
+  
+  // Send to all configured channels in parallel
+  await Promise.all([
+    sendTelegramAlert(message, severity),
+    sendWebhookAlert(message, severity),
+  ]);
 }
 
 // =============================================================================
@@ -138,7 +176,7 @@ async function main(): Promise<void> {
   const collector = new HealthCollector(config);
   
   // Set up alerting
-  collector.setAlertCallback(sendTelegramAlert);
+  collector.setAlertCallback(sendAlert);
   
   console.log('🔍 OttoChain Stack Monitor');
   console.log('══════════════════════════════════════════════════════════════');
@@ -155,6 +193,15 @@ async function main(): Promise<void> {
     if (!process.env.MONITOR_PASS) {
       console.log('   (auto-generated, set MONITOR_PASS to use your own)');
     }
+  }
+  // Alerting config
+  const hasWebhook = !!process.env.ALERT_WEBHOOK_URL;
+  const hasTelegram = !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_CHAT_ID;
+  if (hasWebhook || hasTelegram) {
+    console.log('──────────────────────────────────────────────────────────────');
+    console.log('🚨 Alerting configured:');
+    if (hasWebhook) console.log('   ✓ Webhook: ' + process.env.ALERT_WEBHOOK_URL?.slice(0, 50) + '...');
+    if (hasTelegram) console.log('   ✓ Telegram');
   }
   console.log('══════════════════════════════════════════════════════════════');
   
