@@ -4,6 +4,44 @@
  * Genetic evolution-inspired model for continuous metagraph traffic simulation.
  */
 
+import {
+  SdkAgentState,
+  SdkContractState,
+} from '@ottochain/shared';
+
+// Re-export SDK types for convenience
+export { SdkAgentState, SdkContractState };
+
+// ============================================================================
+// State Type Helpers
+// ============================================================================
+
+/**
+ * Extract string keys from TypeScript numeric enums
+ */
+export const enumStringKeys = <T extends Record<string, string | number>>(e: T) =>
+  Object.keys(e).filter((k) => isNaN(Number(k))) as [string, ...string[]];
+
+/**
+ * On-chain agent states (from SDK)
+ */
+export type OnChainAgentState = keyof typeof SdkAgentState;
+
+/**
+ * Simulation agent state includes pre-registration state
+ * UNREGISTERED = has wallet but no fiber yet (not on-chain)
+ */
+export type SimulationAgentState = 'UNREGISTERED' | OnChainAgentState;
+
+/**
+ * On-chain contract states (from SDK)
+ */
+export type OnChainContractState = keyof typeof SdkContractState;
+
+// All valid on-chain agent states for validation
+export const ON_CHAIN_AGENT_STATES = enumStringKeys(SdkAgentState);
+export const ON_CHAIN_CONTRACT_STATES = enumStringKeys(SdkContractState);
+
 // ============================================================================
 // Agent Population Types
 // ============================================================================
@@ -13,10 +51,10 @@ export interface Agent {
   address: string;
   /** Private key for signing */
   privateKey: string;
-  /** Agent identity fiber ID */
+  /** Agent identity fiber ID (null if UNREGISTERED) */
   fiberId: string | null;
   /** Current state in the identity lifecycle */
-  state: AgentState;
+  state: SimulationAgentState;
   /** Computed fitness score */
   fitness: AgentFitness;
   /** Simulation metadata */
@@ -57,15 +95,6 @@ export interface AgentMeta {
   riskTolerance: number;
 }
 
-export type AgentState = 
-  | 'unregistered'  // Has wallet but no fiber yet
-  | 'registered'    // Fiber created, awaiting activation
-  | 'active'        // Fully active agent
-  | 'challenged'    // Under challenge
-  | 'suspended'     // Challenge upheld
-  | 'probation'     // Recovering from suspension
-  | 'withdrawn';    // Final state
-
 // ============================================================================
 // Contract Types
 // ============================================================================
@@ -78,7 +107,7 @@ export interface Contract {
   /** Counterparty agent address */
   counterparty: string;
   /** Current contract state */
-  state: ContractState;
+  state: OnChainContractState;
   /** Task description */
   task: string;
   /** Contract terms */
@@ -88,13 +117,6 @@ export interface Contract {
   /** Expected completion generation */
   expectedCompletion: number;
 }
-
-export type ContractState =
-  | 'proposed'
-  | 'active'
-  | 'completed'
-  | 'rejected'
-  | 'disputed';
 
 // ============================================================================
 // Simulation Context
