@@ -115,8 +115,12 @@ export const typeDefs = /* GraphQL */ `
   # === Enums ===
 
   enum AgentState {
+    UNSPECIFIED
     REGISTERED
     ACTIVE
+    CHALLENGED
+    SUSPENDED
+    PROBATION
     WITHDRAWN
   }
 
@@ -136,11 +140,13 @@ export const typeDefs = /* GraphQL */ `
   }
 
   enum ContractState {
+    UNSPECIFIED
     PROPOSED
     ACTIVE
     COMPLETED
     REJECTED
     DISPUTED
+    CANCELLED
   }
 
   enum EventType {
