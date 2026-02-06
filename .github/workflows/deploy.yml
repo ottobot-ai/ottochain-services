@@ -66,8 +66,23 @@ jobs:
         run: |
           ssh services << 'SCRIPT'
           cd /opt/ottochain-services
-          pm2 restart all
+          
+          # Source environment
+          set -a
+          source .env
+          set +a
+          
+          # Start or restart PM2 apps
+          if pm2 list | grep -q "online\|stopped"; then
+            pm2 restart ecosystem.config.cjs
+          else
+            pm2 start ecosystem.config.cjs
+          fi
+          
+          # Ensure PM2 survives reboot
           pm2 save
+          pm2 startup systemd -u root --hp /root 2>/dev/null || true
+          
           sleep 5
           pm2 list
           SCRIPT
