@@ -1,7 +1,14 @@
 // Snapshot Processor
 // Chain-agnostic indexing of all OttoChain state machines
 
-import { prisma, getConfig, type SnapshotNotification, publishEvent, CHANNELS } from '@ottochain/shared';
+import { 
+  prisma, 
+  getConfig, 
+  type SnapshotNotification, 
+  publishEvent, 
+  CHANNELS,
+} from '@ottochain/shared';
+import { AgentState as PrismaAgentState, ContractState as PrismaContractState } from '@prisma/client';
 
 interface ProcessResult {
   ordinal: number;
@@ -361,22 +368,41 @@ function mapFiberStatus(status: string): 'ACTIVE' | 'ARCHIVED' | 'FAILED' {
   }
 }
 
-function mapAgentState(stateDataStatus: string | undefined, currentState: string | undefined): 'REGISTERED' | 'ACTIVE' | 'WITHDRAWN' {
-  if (stateDataStatus === 'Withdrawn' || currentState === 'Withdrawn') return 'WITHDRAWN';
-  if (stateDataStatus === 'Active' || currentState === 'Active') return 'ACTIVE';
-  return 'REGISTERED';
+/**
+ * Map metagraph state values to Prisma AgentState enum
+ * On-chain states are UPPERCASE (REGISTERED, ACTIVE, etc.)
+ */
+function mapAgentState(stateDataStatus: string | undefined, currentState: string | undefined): PrismaAgentState {
+  const state = (stateDataStatus || currentState || '').toUpperCase();
+  
+  switch (state) {
+    case 'WITHDRAWN': return PrismaAgentState.WITHDRAWN;
+    case 'ACTIVE': return PrismaAgentState.ACTIVE;
+    case 'CHALLENGED': return PrismaAgentState.CHALLENGED;
+    case 'SUSPENDED': return PrismaAgentState.SUSPENDED;
+    case 'PROBATION': return PrismaAgentState.PROBATION;
+    case 'REGISTERED':
+    default: return PrismaAgentState.REGISTERED;
+  }
 }
 
-function mapContractState(currentState: string | undefined, fiberStatus: string): 'PROPOSED' | 'ACTIVE' | 'COMPLETED' | 'REJECTED' | 'DISPUTED' {
-  if (fiberStatus !== 'Active') return 'COMPLETED';
+/**
+ * Map metagraph state values to Prisma ContractState enum
+ * On-chain states are UPPERCASE (PROPOSED, ACTIVE, etc.)
+ */
+function mapContractState(currentState: string | undefined, fiberStatus: string): PrismaContractState {
+  // If fiber is archived/completed, the contract is done
+  if (fiberStatus !== 'Active') return PrismaContractState.COMPLETED;
   
-  const state = currentState?.toLowerCase();
-  if (!state) return 'PROPOSED';
+  const state = (currentState || '').toUpperCase();
   
-  if (['completed', 'finished', 'delivered', 'approved', 'released'].includes(state)) return 'COMPLETED';
-  if (['rejected', 'cancelled', 'failed'].includes(state)) return 'REJECTED';
-  if (['disputed'].includes(state)) return 'DISPUTED';
-  if (['active', 'accepted', 'in_progress', 'working'].includes(state)) return 'ACTIVE';
-  
-  return 'PROPOSED';
+  switch (state) {
+    case 'COMPLETED': return PrismaContractState.COMPLETED;
+    case 'REJECTED': return PrismaContractState.REJECTED;
+    case 'CANCELLED': return PrismaContractState.CANCELLED;
+    case 'DISPUTED': return PrismaContractState.DISPUTED;
+    case 'ACTIVE': return PrismaContractState.ACTIVE;
+    case 'PROPOSED':
+    default: return PrismaContractState.PROPOSED;
+  }
 }

@@ -201,7 +201,7 @@ export class HighThroughputSimulator {
         address: wallet.address,
         privateKey: wallet.privateKey,
         fiberId: null,
-        state: 'unregistered',
+        state: 'UNREGISTERED',
         fitness: {
           reputation: 10,
           completionRate: 0.5,
@@ -233,11 +233,11 @@ export class HighThroughputSimulator {
       );
       
       agent.fiberId = result.fiberId;
-      agent.state = 'registered';
+      agent.state = 'REGISTERED';
       
       // Activate
       await this.client.activateAgent(wallet.privateKey, result.fiberId);
-      agent.state = 'active';
+      agent.state = 'ACTIVE';
       
       this.agents.set(agent.address, agent);
       this.agentsByFiber.set(result.fiberId, agent);
@@ -465,7 +465,7 @@ export class HighThroughputSimulator {
     if (actor === 'third_party') {
       // Find an agent not in participants
       for (const agent of this.agents.values()) {
-        if (!fiber.participants.includes(agent.address) && agent.state === 'active') {
+        if (!fiber.participants.includes(agent.address) && agent.state === 'ACTIVE') {
           return agent;
         }
       }
