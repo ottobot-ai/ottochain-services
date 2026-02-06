@@ -13,6 +13,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import type { StackHealth, ServiceStatus, MonitorConfig } from './types.js';
 import { HealthCollector } from './collector.js';
+import { MonitorCache } from './cache.js';
+import { CacheRefresher } from './refresher.js';
 
 // =============================================================================
 // Alerting (Telegram + Webhook)
@@ -144,7 +146,7 @@ function loadConfig(): MonitorConfig {
     bridgeUrl: process.env.BRIDGE_URL ?? 'http://localhost:3030',
     indexerUrl: process.env.INDEXER_URL,
     gatewayUrl: process.env.GATEWAY_URL,
-    redisUrl: process.env.REDIS_URL,
+    redisUrl: process.env.REDIS_URL ?? 'redis://localhost:6379',
     postgresUrl: process.env.DATABASE_URL,
     
     // Polling
@@ -153,6 +155,12 @@ function loadConfig(): MonitorConfig {
     
     // Server
     port: parseInt(process.env.MONITOR_PORT ?? '3032', 10),
+    
+    // Cache
+    cacheEnabled: process.env.CACHE_ENABLED !== 'false', // enabled by default
+    healthTTL: parseInt(process.env.CACHE_HEALTH_TTL ?? '10', 10),
+    statusTTL: parseInt(process.env.CACHE_STATUS_TTL ?? '30', 10),
+    metagraphTTL: parseInt(process.env.CACHE_METAGRAPH_TTL ?? '5', 10),
   };
 }
 
@@ -177,6 +185,37 @@ async function main(): Promise<void> {
   
   // Set up alerting
   collector.setAlertCallback(sendAlert);
+  
+  // Initialize cache if enabled
+  let cache: MonitorCache | null = null;
+  let refresher: CacheRefresher | null = null;
+  
+  if (config.cacheEnabled && config.redisUrl) {
+    try {
+      cache = new MonitorCache({
+        redisUrl: config.redisUrl,
+        healthTTL: config.healthTTL,
+        statusTTL: config.statusTTL,
+        metagraphTTL: config.metagraphTTL,
+      });
+      
+      // Test Redis connection
+      const cacheHealthy = await cache.isHealthy();
+      if (cacheHealthy) {
+        refresher = new CacheRefresher(collector, cache);
+        refresher.start();
+        console.log('✅ Redis cache enabled');
+      } else {
+        console.warn('⚠️  Redis unhealthy, caching disabled');
+        cache = null;
+      }
+    } catch (err) {
+      console.warn('⚠️  Redis cache setup failed:', err);
+      cache = null;
+    }
+  } else {
+    console.log('ℹ️  Redis cache disabled');
+  }
   
   console.log('🔍 OttoChain Stack Monitor');
   console.log('══════════════════════════════════════════════════════════════');
@@ -211,33 +250,191 @@ async function main(): Promise<void> {
   app.use(basicAuthMiddleware(auth));
   app.use(express.static(path.join(__dirname, '../public')));
   
-  // REST endpoints
-  app.get('/health', (_, res) => {
-    res.json({ status: 'ok', service: 'monitor' });
+  // REST endpoints with caching
+  app.get('/health', async (_, res) => {
+    if (!cache) {
+      return res.json({ status: 'ok', service: 'monitor' });
+    }
+    
+    try {
+      const result = await cache.getOrFetch(
+        MonitorCache.keys.health,
+        async () => ({ status: 'ok', service: 'monitor' }),
+        cache.getTTL('health')
+      );
+      
+      res.set('X-Cache', result.fromCache ? 'HIT' : 'MISS');
+      if (result.ttlRemaining !== undefined) {
+        res.set('X-Cache-TTL', result.ttlRemaining.toString());
+      }
+      res.json(result.data);
+    } catch (err) {
+      console.error('Health endpoint error:', err);
+      res.json({ status: 'ok', service: 'monitor' });
+    }
   });
   
-  app.get('/api/status', (_, res) => {
-    const health = collector.getHealth();
-    const response: StackHealth = {
-      timestamp: Date.now(),
-      overall: computeOverallStatus(health.nodes, health.services),
-      nodes: health.nodes,
-      services: health.services,
-      metagraph: health.metagraph,
-    };
-    res.json(response);
+  app.get('/api/status', async (_, res) => {
+    if (!cache) {
+      const health = collector.getHealth();
+      const response: StackHealth = {
+        timestamp: Date.now(),
+        overall: computeOverallStatus(health.nodes, health.services),
+        nodes: health.nodes,
+        services: health.services,
+        metagraph: health.metagraph,
+      };
+      return res.json(response);
+    }
+    
+    try {
+      const result = await cache.getOrFetch(
+        MonitorCache.keys.status,
+        async () => {
+          await collector.collect();
+          const health = collector.getHealth();
+          return {
+            timestamp: Date.now(),
+            overall: computeOverallStatus(health.nodes, health.services),
+            nodes: health.nodes,
+            services: health.services,
+            metagraph: health.metagraph,
+          };
+        },
+        cache.getTTL('status')
+      );
+      
+      res.set('X-Cache', result.fromCache ? 'HIT' : 'MISS');
+      if (result.ttlRemaining !== undefined) {
+        res.set('X-Cache-TTL', result.ttlRemaining.toString());
+      }
+      res.json(result.data);
+    } catch (err) {
+      console.error('Status endpoint error:', err);
+      const health = collector.getHealth();
+      res.json({
+        timestamp: Date.now(),
+        overall: computeOverallStatus(health.nodes, health.services),
+        nodes: health.nodes,
+        services: health.services,
+        metagraph: health.metagraph,
+      });
+    }
   });
   
-  app.get('/api/nodes', (_, res) => {
-    res.json(collector.getHealth().nodes);
+  app.get('/api/nodes', async (_, res) => {
+    if (!cache) {
+      return res.json(collector.getHealth().nodes);
+    }
+    
+    try {
+      const result = await cache.getOrFetch(
+        MonitorCache.keys.nodes,
+        async () => {
+          await collector.collect();
+          return collector.getHealth().nodes;
+        },
+        cache.getTTL('status')
+      );
+      
+      res.set('X-Cache', result.fromCache ? 'HIT' : 'MISS');
+      if (result.ttlRemaining !== undefined) {
+        res.set('X-Cache-TTL', result.ttlRemaining.toString());
+      }
+      res.json(result.data);
+    } catch (err) {
+      console.error('Nodes endpoint error:', err);
+      res.json(collector.getHealth().nodes);
+    }
   });
   
-  app.get('/api/services', (_, res) => {
-    res.json(collector.getHealth().services);
+  app.get('/api/services', async (_, res) => {
+    if (!cache) {
+      return res.json(collector.getHealth().services);
+    }
+    
+    try {
+      const result = await cache.getOrFetch(
+        MonitorCache.keys.services,
+        async () => {
+          await collector.collect();
+          return collector.getHealth().services;
+        },
+        cache.getTTL('status')
+      );
+      
+      res.set('X-Cache', result.fromCache ? 'HIT' : 'MISS');
+      if (result.ttlRemaining !== undefined) {
+        res.set('X-Cache-TTL', result.ttlRemaining.toString());
+      }
+      res.json(result.data);
+    } catch (err) {
+      console.error('Services endpoint error:', err);
+      res.json(collector.getHealth().services);
+    }
   });
   
-  app.get('/api/metagraph', (_, res) => {
-    res.json(collector.getHealth().metagraph);
+  app.get('/api/metagraph', async (_, res) => {
+    if (!cache) {
+      return res.json(collector.getHealth().metagraph);
+    }
+    
+    try {
+      const result = await cache.getOrFetch(
+        MonitorCache.keys.metagraph,
+        async () => {
+          await collector.collect();
+          return collector.getHealth().metagraph;
+        },
+        cache.getTTL('metagraph')
+      );
+      
+      res.set('X-Cache', result.fromCache ? 'HIT' : 'MISS');
+      if (result.ttlRemaining !== undefined) {
+        res.set('X-Cache-TTL', result.ttlRemaining.toString());
+      }
+      res.json(result.data);
+    } catch (err) {
+      console.error('Metagraph endpoint error:', err);
+      res.json(collector.getHealth().metagraph);
+    }
+  });
+  
+  // Cache status and control endpoint
+  app.get('/api/cache', async (_, res) => {
+    if (!cache || !refresher) {
+      return res.json({ 
+        enabled: false, 
+        status: 'disabled',
+        message: 'Cache not configured' 
+      });
+    }
+    
+    try {
+      const isHealthy = await cache.isHealthy();
+      const refreshStatus = refresher.getStatus();
+      
+      res.json({
+        enabled: config.cacheEnabled,
+        status: isHealthy ? 'healthy' : 'unhealthy',
+        redis: {
+          url: config.redisUrl,
+          healthy: isHealthy,
+        },
+        refresher: refreshStatus,
+        ttl: {
+          health: config.healthTTL,
+          status: config.statusTTL,
+          metagraph: config.metagraphTTL,
+        },
+      });
+    } catch (err) {
+      res.json({
+        enabled: true,
+        status: 'error',
+        error: String(err),
+      });
+    }
   });
   
   // HTTP server
@@ -341,6 +538,24 @@ async function main(): Promise<void> {
     console.log(`\n🌐 Monitor UI:  http://localhost:${config.port}`);
     console.log(`📡 REST API:   http://localhost:${config.port}/api/status`);
     console.log(`🔌 WebSocket:  ws://localhost:${config.port}/ws`);
+    if (cache) {
+      console.log(`💾 Cache:      Redis (${config.healthTTL}s/${config.statusTTL}s/${config.metagraphTTL}s TTLs)`);
+    }
+  });
+  
+  // Cleanup on exit
+  process.on('SIGINT', async () => {
+    console.log('\n🛑 Shutting down...');
+    refresher?.stop();
+    await cache?.close();
+    process.exit(0);
+  });
+  
+  process.on('SIGTERM', async () => {
+    console.log('\n🛑 Shutting down...');
+    refresher?.stop();
+    await cache?.close();
+    process.exit(0);
   });
 }
 

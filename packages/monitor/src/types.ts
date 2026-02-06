@@ -77,4 +77,10 @@ export interface MonitorConfig {
   
   // Server
   port: number;
+  
+  // Cache
+  cacheEnabled: boolean;
+  healthTTL: number;
+  statusTTL: number;
+  metagraphTTL: number;
 }
