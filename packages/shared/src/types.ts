@@ -1,6 +1,16 @@
 // Shared types for OttoChain services
 
 import { z } from 'zod';
+import {
+  AgentState as SdkAgentState,
+  Platform as SdkPlatform,
+  AttestationType as SdkAttestationType,
+  ContractState as SdkContractState,
+} from '@ottochain/sdk';
+
+// Helper to extract string keys from TypeScript numeric enums
+const enumStringKeys = <T extends Record<string, string | number>>(e: T) =>
+  Object.keys(e).filter((k) => isNaN(Number(k))) as [string, ...string[]];
 
 // ============================================================================
 // Snapshot Webhook Types
@@ -24,20 +34,23 @@ export const WebhookSubscriptionSchema = z.object({
 export type WebhookSubscription = z.infer<typeof WebhookSubscriptionSchema>;
 
 // ============================================================================
-// Agent Types
+// Agent Types (derived from SDK protobuf enums)
 // ============================================================================
 
-export const AgentStateSchema = z.enum(['REGISTERED', 'ACTIVE', 'WITHDRAWN']);
+export const AgentStateSchema = z.enum(enumStringKeys(SdkAgentState));
 export type AgentState = z.infer<typeof AgentStateSchema>;
 
-export const PlatformSchema = z.enum(['DISCORD', 'TELEGRAM', 'TWITTER', 'GITHUB', 'CUSTOM']);
+export const PlatformSchema = z.enum(enumStringKeys(SdkPlatform));
 export type Platform = z.infer<typeof PlatformSchema>;
 
-export const AttestationTypeSchema = z.enum(['COMPLETION', 'VOUCH', 'VIOLATION', 'BEHAVIORAL']);
+export const AttestationTypeSchema = z.enum(enumStringKeys(SdkAttestationType));
 export type AttestationType = z.infer<typeof AttestationTypeSchema>;
 
-export const ContractStateSchema = z.enum(['PROPOSED', 'ACTIVE', 'COMPLETED', 'REJECTED', 'DISPUTED']);
+export const ContractStateSchema = z.enum(enumStringKeys(SdkContractState));
 export type ContractState = z.infer<typeof ContractStateSchema>;
+
+// Re-export SDK enums for numeric access when needed
+export { SdkAgentState, SdkPlatform, SdkAttestationType, SdkContractState };
 
 // ============================================================================
 // API Request/Response Types

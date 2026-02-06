@@ -190,6 +190,9 @@ importers:
 
   packages/shared:
     dependencies:
+      '@ottochain/sdk':
+        specifier: github:ottobot-ai/ottochain-sdk#main
+        version: https://codeload.github.com/ottobot-ai/ottochain-sdk/tar.gz/c374eec9e8df47897a96fef734675ed357662c43(@stardust-collective/dag4@2.8.1)
       '@prisma/client':
         specifier: ^5.9.0
         version: 5.22.0(prisma@5.22.0)
@@ -522,6 +525,13 @@ packages:
 
   '@ottochain/sdk@https://codeload.github.com/ottobot-ai/ottochain-sdk/tar.gz/268fb078cb850140ccd86a661d1d142acc290867':
     resolution: {tarball: https://codeload.github.com/ottobot-ai/ottochain-sdk/tar.gz/268fb078cb850140ccd86a661d1d142acc290867}
+    version: 0.1.0
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      '@stardust-collective/dag4': ^2.6.0
+
+  '@ottochain/sdk@https://codeload.github.com/ottobot-ai/ottochain-sdk/tar.gz/c374eec9e8df47897a96fef734675ed357662c43':
+    resolution: {tarball: https://codeload.github.com/ottobot-ai/ottochain-sdk/tar.gz/c374eec9e8df47897a96fef734675ed357662c43}
     version: 0.1.0
     engines: {node: '>=18.0.0'}
     peerDependencies:
@@ -1951,6 +1961,20 @@ snapshots:
       canonicalize: 2.1.0
       js-sha256: 0.11.1
       js-sha512: 0.9.0
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+
+  '@ottochain/sdk@https://codeload.github.com/ottobot-ai/ottochain-sdk/tar.gz/c374eec9e8df47897a96fef734675ed357662c43(@stardust-collective/dag4@2.8.1)':
+    dependencies:
+      '@bufbuild/protobuf': 2.11.0
+      '@stardust-collective/dag4': 2.8.1
+      '@stardust-collective/dag4-keystore': 2.8.1
+      canonicalize: 2.1.0
+      js-sha256: 0.11.1
+      js-sha512: 0.9.0
+      zod: 3.25.76
     transitivePeerDependencies:
       - bufferutil
       - supports-color
