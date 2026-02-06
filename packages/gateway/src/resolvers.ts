@@ -1,6 +1,6 @@
 // GraphQL Resolvers
 
-import { prisma } from '@ottochain/shared';
+import { prisma, getBridgeClient } from '@ottochain/shared';
 import { pubsub, CHANNELS } from './pubsub.js';
 import type { Context } from './context.js';
 
@@ -357,14 +357,32 @@ export const resolvers = {
         platformUserId: string;
         platformUsername?: string;
         displayName?: string;
+        privateKey?: string;
       },
-      ctx: Context
+      _ctx: Context
     ) => {
-      // TODO: Call Bridge to register on-chain
-      // For now, return placeholder
+      if (!args.privateKey) {
+        return { success: false, error: 'privateKey required for on-chain registration' };
+      }
+
+      const bridge = getBridgeClient();
+      const result = await bridge.registerAgent({
+        privateKey: args.privateKey,
+        displayName: args.displayName,
+        platform: args.platform,
+        platformUserId: args.platformUserId,
+      });
+
+      if (!result.success || !result.data) {
+        return { success: false, error: result.error };
+      }
+
+      // Optionally look up agent from DB after indexer processes it
+      // For now return the transaction result
       return {
-        success: false,
-        error: 'Bridge integration pending',
+        success: true,
+        txHash: result.data.hash,
+        // agent will be available after indexer processes the tx
       };
     },
 
@@ -374,35 +392,133 @@ export const resolvers = {
         fromAddress: string;
         toAddress: string;
         reason?: string;
-        signature: string;
+        signature?: string;
+        privateKey?: string;
       },
-      ctx: Context
+      _ctx: Context
     ) => {
-      // TODO: Verify signature, call Bridge
-      return {
-        success: false,
-        error: 'Bridge integration pending',
-      };
+      if (!args.privateKey) {
+        return { success: false, error: 'privateKey required for vouching' };
+      }
+
+      // Look up target agent's fiberId by address
+      const targetAgent = await prisma.agent.findUnique({
+        where: { address: args.toAddress },
+      });
+      
+      if (!targetAgent?.fiberId) {
+        return { success: false, error: 'Target agent not found or has no fiberId' };
+      }
+
+      const bridge = getBridgeClient();
+      const result = await bridge.vouch({
+        privateKey: args.privateKey,
+        targetFiberId: targetAgent.fiberId,
+        fromAddress: args.fromAddress,
+        reason: args.reason,
+      });
+
+      if (!result.success) {
+        return { success: false, error: result.error };
+      }
+
+      return { success: true, txHash: result.data?.hash };
     },
 
-    proposeContract: async (_: unknown, args: any, ctx: Context) => {
-      return { success: false, error: 'Bridge integration pending' };
+    proposeContract: async (
+      _: unknown,
+      args: {
+        proposerAddress: string;
+        counterpartyAddress: string;
+        terms: Record<string, unknown>;
+        signature?: string;
+        privateKey?: string;
+      },
+      _ctx: Context
+    ) => {
+      if (!args.privateKey) {
+        return { success: false, error: 'privateKey required for proposing contract' };
+      }
+
+      const bridge = getBridgeClient();
+      const result = await bridge.proposeContract({
+        privateKey: args.privateKey,
+        counterpartyAddress: args.counterpartyAddress,
+        terms: args.terms,
+      });
+
+      if (!result.success) {
+        return { success: false, error: result.error };
+      }
+
+      return { success: true, txHash: result.data?.hash };
     },
 
-    acceptContract: async (_: unknown, args: any, ctx: Context) => {
-      return { success: false, error: 'Bridge integration pending' };
+    acceptContract: async (
+      _: unknown,
+      args: { contractId: string; privateKey?: string },
+      _ctx: Context
+    ) => {
+      if (!args.privateKey) {
+        return { success: false, error: 'privateKey required' };
+      }
+
+      const bridge = getBridgeClient();
+      const result = await bridge.acceptContract({
+        privateKey: args.privateKey,
+        contractId: args.contractId,
+      });
+
+      return result.success
+        ? { success: true, txHash: result.data?.hash }
+        : { success: false, error: result.error };
     },
 
-    rejectContract: async (_: unknown, args: any, ctx: Context) => {
-      return { success: false, error: 'Bridge integration pending' };
+    rejectContract: async (
+      _: unknown,
+      args: { contractId: string; reason?: string; privateKey?: string },
+      _ctx: Context
+    ) => {
+      if (!args.privateKey) {
+        return { success: false, error: 'privateKey required' };
+      }
+
+      const bridge = getBridgeClient();
+      const result = await bridge.rejectContract({
+        privateKey: args.privateKey,
+        contractId: args.contractId,
+        reason: args.reason,
+      });
+
+      return result.success
+        ? { success: true, txHash: result.data?.hash }
+        : { success: false, error: result.error };
     },
 
-    completeContract: async (_: unknown, args: any, ctx: Context) => {
-      return { success: false, error: 'Bridge integration pending' };
+    completeContract: async (
+      _: unknown,
+      args: { contractId: string; proof?: string; privateKey?: string },
+      _ctx: Context
+    ) => {
+      if (!args.privateKey) {
+        return { success: false, error: 'privateKey required' };
+      }
+
+      const bridge = getBridgeClient();
+      const result = await bridge.completeContract({
+        privateKey: args.privateKey,
+        contractId: args.contractId,
+        proof: args.proof,
+      });
+
+      return result.success
+        ? { success: true, txHash: result.data?.hash }
+        : { success: false, error: result.error };
     },
 
-    linkPlatform: async (_: unknown, args: any, ctx: Context) => {
-      return { success: false, error: 'Bridge integration pending' };
+    linkPlatform: async (_: unknown, _args: unknown, _ctx: Context) => {
+      // Platform linking requires updating agent state - implement when needed
+      return { success: false, error: 'Platform linking not yet implemented' };
     },
   },
 
