@@ -1,6 +1,7 @@
 // OttoChain Indexer
-// Receives snapshot notifications from ML0, indexes state to Postgres
+// Receives snapshot notifications from ML0 via webhook push, indexes state to Postgres
 // Confirms snapshots against GL0 global snapshots
+// Low-frequency fallback poller catches missed webhooks + detects forks across peers
 
 import express from 'express';
 import { prisma, getConfig, SnapshotNotificationSchema } from '@ottochain/shared';
@@ -94,6 +95,7 @@ app.get('/status', async (_, res) => {
     lastConfirmedAt: lastConfirmed?.confirmedAt ?? null,
     confirmations: confirmationStats,
     poller: pollerStats,
+    webhookSubscription: webhookSubscriptionId,
     totalAgents: await prisma.agent.count(),
     totalContracts: await prisma.contract.count(),
     totalFibers: await prisma.fiber.count(),
@@ -146,21 +148,51 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
+// Register as ML0 webhook subscriber.
+// ML0 stores subscribers in memory, so we re-register on every startup.
+let webhookSubscriptionId: string | null = null;
+
+async function registerWebhookSubscriber(ml0Url: string, callbackUrl: string): Promise<void> {
+  try {
+    const resp = await fetch(`${ml0Url}/data-application/v1/webhooks/subscribe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callbackUrl }),
+    });
+    if (resp.ok) {
+      const data = await resp.json() as { id?: string };
+      webhookSubscriptionId = data.id ?? null;
+      console.log(`🔗 Registered as ML0 webhook subscriber: ${webhookSubscriptionId ?? 'ok'}`);
+    } else {
+      console.error(`❌ ML0 webhook registration failed (${resp.status}): ${await resp.text()}`);
+      console.error(`   Snapshots will NOT be indexed until ML0 webhook is available.`);
+    }
+  } catch (err) {
+    console.error(`❌ ML0 webhook registration error: ${(err as Error).message}`);
+    console.error(`   Snapshots will NOT be indexed until ML0 webhook is available.`);
+  }
+}
+
 // Start server
 const config = getConfig();
 const port = config.INDEXER_PORT;
 
-app.listen(port, '0.0.0.0', () => {
+app.listen(port, '0.0.0.0', async () => {
   console.log(`🔍 Indexer listening on port ${port} (0.0.0.0)`);
   console.log(`   Webhook:   POST http://localhost:${port}/webhook/snapshot`);
   console.log(`   Status:    GET  http://localhost:${port}/status`);
   console.log(`   Snapshots: GET  http://localhost:${port}/snapshots?status=PENDING|CONFIRMED|ORPHANED`);
   
-  // Start ML0 snapshot poller (pulls new snapshots and indexes them)
-  const snapshotPollInterval = parseInt(process.env.ML0_POLL_INTERVAL || '5000');
+  // Register with ML0 for push-based snapshot notifications
+  const ml0Url = config.METAGRAPH_ML0_URL;
+  const callbackUrl = process.env.INDEXER_CALLBACK_URL || `http://5.78.121.248:${port}/webhook/snapshot`;
+  await registerWebhookSubscriber(ml0Url, callbackUrl);
+  
+  // Start low-frequency fallback poller (catches missed webhooks + fork detection)
+  const snapshotPollInterval = parseInt(process.env.ML0_POLL_INTERVAL || '60000');
   startSnapshotPoller(snapshotPollInterval);
   
   // Start GL0 confirmation poller (confirms indexed snapshots against GL0)
-  const confirmPollInterval = parseInt(process.env.GL0_POLL_INTERVAL || '5000');
+  const confirmPollInterval = parseInt(process.env.GL0_POLL_INTERVAL || '15000');
   startConfirmationPoller(confirmPollInterval);
 });
