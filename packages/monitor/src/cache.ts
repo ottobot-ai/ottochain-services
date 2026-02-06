@@ -5,7 +5,7 @@
  * by caching expensive node health checks and metagraph data.
  */
 
-import { Redis } from 'ioredis';
+import Redis from 'ioredis';
 import type { StackHealth, NodeHealth, ServiceHealth, MetagraphMetrics } from './types.js';
 
 export interface CacheConfig {
@@ -29,7 +29,7 @@ export class MonitorCache {
     this.config = config;
     this.redis = new Redis(config.redisUrl);
     
-    this.redis.on('error', (err: Error) => {
+    this.redis.on('error', (err) => {
       console.warn('Redis cache error:', err.message);
     });
   }
