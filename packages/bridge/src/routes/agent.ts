@@ -33,35 +33,50 @@ const TransitionRequestSchema = z.object({
 
 const AGENT_IDENTITY_DEFINITION = {
   states: {
-    Registered: {
-      id: { value: 'Registered' },
+    REGISTERED: {
+      id: { value: 'REGISTERED' },
       isFinal: false,
       metadata: null,
     },
-    Active: {
-      id: { value: 'Active' },
+    ACTIVE: {
+      id: { value: 'ACTIVE' },
       isFinal: false,
       metadata: null,
     },
-    Withdrawn: {
-      id: { value: 'Withdrawn' },
+    CHALLENGED: {
+      id: { value: 'CHALLENGED' },
+      isFinal: false,
+      metadata: null,
+    },
+    SUSPENDED: {
+      id: { value: 'SUSPENDED' },
+      isFinal: false,
+      metadata: null,
+    },
+    PROBATION: {
+      id: { value: 'PROBATION' },
+      isFinal: false,
+      metadata: null,
+    },
+    WITHDRAWN: {
+      id: { value: 'WITHDRAWN' },
       isFinal: true,
       metadata: null,
     },
   },
-  initialState: { value: 'Registered' },
+  initialState: { value: 'REGISTERED' },
   transitions: [
     {
-      from: { value: 'Registered' },
-      to: { value: 'Active' },
+      from: { value: 'REGISTERED' },
+      to: { value: 'ACTIVE' },
       eventName: 'activate',
       guard: { '==': [1, 1] },
-      effect: { merge: [{ var: 'state' }, { status: 'Active' }] },
+      effect: { merge: [{ var: 'state' }, { status: 'ACTIVE' }] },
       dependencies: [],
     },
     {
-      from: { value: 'Active' },
-      to: { value: 'Active' },
+      from: { value: 'ACTIVE' },
+      to: { value: 'ACTIVE' },
       eventName: 'receive_vouch',
       guard: { '!!': [{ var: 'event.from' }] },
       effect: {
@@ -75,8 +90,8 @@ const AGENT_IDENTITY_DEFINITION = {
       dependencies: [],
     },
     {
-      from: { value: 'Active' },
-      to: { value: 'Active' },
+      from: { value: 'ACTIVE' },
+      to: { value: 'ACTIVE' },
       eventName: 'receive_completion',
       guard: { '==': [1, 1] },
       effect: {
@@ -90,11 +105,51 @@ const AGENT_IDENTITY_DEFINITION = {
       dependencies: [],
     },
     {
-      from: { value: 'Active' },
-      to: { value: 'Withdrawn' },
+      from: { value: 'ACTIVE' },
+      to: { value: 'CHALLENGED' },
+      eventName: 'challenge',
+      guard: { '!!': [{ var: 'event.challenger' }] },
+      effect: { merge: [{ var: 'state' }, { status: 'CHALLENGED', challengedBy: { var: 'event.challenger' } }] },
+      dependencies: [],
+    },
+    {
+      from: { value: 'CHALLENGED' },
+      to: { value: 'ACTIVE' },
+      eventName: 'dismiss_challenge',
+      guard: { '==': [1, 1] },
+      effect: { merge: [{ var: 'state' }, { status: 'ACTIVE', challengedBy: null }] },
+      dependencies: [],
+    },
+    {
+      from: { value: 'CHALLENGED' },
+      to: { value: 'SUSPENDED' },
+      eventName: 'uphold_challenge',
+      guard: { '==': [1, 1] },
+      effect: { merge: [{ var: 'state' }, { status: 'SUSPENDED', suspendedAt: { var: '$timestamp' } }] },
+      dependencies: [],
+    },
+    {
+      from: { value: 'SUSPENDED' },
+      to: { value: 'PROBATION' },
+      eventName: 'begin_probation',
+      guard: { '==': [1, 1] },
+      effect: { merge: [{ var: 'state' }, { status: 'PROBATION', probationStartedAt: { var: '$timestamp' } }] },
+      dependencies: [],
+    },
+    {
+      from: { value: 'PROBATION' },
+      to: { value: 'ACTIVE' },
+      eventName: 'complete_probation',
+      guard: { '==': [1, 1] },
+      effect: { merge: [{ var: 'state' }, { status: 'ACTIVE', probationStartedAt: null }] },
+      dependencies: [],
+    },
+    {
+      from: { value: 'ACTIVE' },
+      to: { value: 'WITHDRAWN' },
       eventName: 'withdraw',
       guard: { '==': [1, 1] },
-      effect: { merge: [{ var: 'state' }, { status: 'Withdrawn' }] },
+      effect: { merge: [{ var: 'state' }, { status: 'WITHDRAWN' }] },
       dependencies: [],
     },
   ],
@@ -160,7 +215,7 @@ agentRoutes.post('/register', async (req, res) => {
           completedContracts: 0,
           violations: 0,
           // Status
-          status: 'Registered',
+          status: 'REGISTERED',
           createdAt: new Date().toISOString(),
         },
         parentFiberId: null,
@@ -263,7 +318,7 @@ agentRoutes.post('/activate', async (req, res) => {
       return res.status(404).json({ error: 'Agent not found' });
     }
 
-    if (state.currentState?.value !== 'Registered') {
+    if (state.currentState?.value !== 'REGISTERED') {
       return res.status(400).json({ 
         error: 'Agent cannot be activated', 
         currentState: state.currentState?.value 
@@ -285,7 +340,7 @@ agentRoutes.post('/activate', async (req, res) => {
     res.json({
       hash: result.hash,
       fiberId,
-      status: 'Active',
+      status: 'ACTIVE',
     });
   } catch (err) {
     console.error('[agent/activate] Error:', err);
@@ -313,7 +368,7 @@ agentRoutes.post('/vouch', async (req, res) => {
       return res.status(404).json({ error: 'Target agent not found' });
     }
 
-    if (state.currentState?.value !== 'Active') {
+    if (state.currentState?.value !== 'ACTIVE') {
       return res.status(400).json({ 
         error: 'Can only vouch for active agents',
         currentState: state.currentState?.value 
