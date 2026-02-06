@@ -1,0 +1,47 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Tessellation Nodes (5.78.90.207)
+  - job_name: 'gl0'
+    static_configs:
+      - targets: ['5.78.90.207:9000']
+    metrics_path: /metrics
+
+  - job_name: 'ml0'
+    static_configs:
+      - targets: ['5.78.90.207:9200']
+    metrics_path: /metrics
+
+  - job_name: 'cl1'
+    static_configs:
+      - targets: ['5.78.90.207:9300']
+    metrics_path: /metrics
+
+  - job_name: 'dl1'
+    static_configs:
+      - targets: ['5.78.90.207:9400']
+    metrics_path: /metrics
+
+  # OttoChain Services (local via host.docker.internal)
+  - job_name: 'monitor'
+    static_configs:
+      - targets: ['host.docker.internal:3032']
+    metrics_path: /metrics
+    scrape_interval: 30s
+
+  # Optional: Node exporter for system metrics
+  # - job_name: 'node'
+  #   static_configs:
+  #     - targets: ['host.docker.internal:9100']
+
+  # Optional: Postgres exporter
+  # - job_name: 'postgres'
+  #   static_configs:
+  #     - targets: ['host.docker.internal:9187']
+
+  # Optional: Redis exporter
+  # - job_name: 'redis'
+  #   static_configs:
+  #     - targets: ['host.docker.internal:9121']

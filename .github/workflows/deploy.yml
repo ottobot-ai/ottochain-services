@@ -72,6 +72,25 @@ jobs:
           pm2 list
           SCRIPT
 
+      - name: Deploy monitoring stack
+        run: |
+          ssh services << 'SCRIPT'
+          cd /opt/ottochain-services/packages/monitoring
+          
+          # Create .env if it doesn't exist
+          if [ ! -f .env ]; then
+            cp .env.example .env
+            echo "Created .env from example"
+          fi
+          
+          # Start or update the monitoring stack
+          docker compose pull
+          docker compose up -d
+          
+          echo "Monitoring stack status:"
+          docker compose ps
+          SCRIPT
+
       - name: Health check
         run: |
           sleep 5
@@ -80,11 +99,15 @@ jobs:
           INDEXER=$(ssh services 'curl -sf http://localhost:3031/health | jq -r .status' || echo "down")
           BRIDGE=$(ssh services 'curl -sf -o /dev/null -w "%{http_code}" http://localhost:3030/health' || echo "000")
           GATEWAY=$(ssh services 'curl -sf -o /dev/null -w "%{http_code}" http://localhost:4000/graphql' || echo "000")
+          PROMETHEUS=$(ssh services 'curl -sf -o /dev/null -w "%{http_code}" http://localhost:9090/-/ready' || echo "000")
+          GRAFANA=$(ssh services 'curl -sf -o /dev/null -w "%{http_code}" http://localhost:3000/api/health' || echo "000")
 
           echo "Explorer: HTTP $EXPLORER"
           echo "Indexer: $INDEXER"
           echo "Bridge: HTTP $BRIDGE"
           echo "Gateway: HTTP $GATEWAY"
+          echo "Prometheus: HTTP $PROMETHEUS"
+          echo "Grafana: HTTP $GRAFANA"
 
           echo "## 🚀 Services Deployed" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -94,3 +117,5 @@ jobs:
           echo "| Indexer | $INDEXER |" >> $GITHUB_STEP_SUMMARY
           echo "| Bridge | HTTP $BRIDGE |" >> $GITHUB_STEP_SUMMARY
           echo "| Gateway | HTTP $GATEWAY |" >> $GITHUB_STEP_SUMMARY
+          echo "| Prometheus | HTTP $PROMETHEUS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Grafana | HTTP $GRAFANA |" >> $GITHUB_STEP_SUMMARY
