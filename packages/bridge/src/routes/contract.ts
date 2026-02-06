@@ -34,68 +34,68 @@ const ContractActionSchema = z.object({
 
 const CONTRACT_DEFINITION = {
   states: {
-    Proposed: {
-      id: { value: 'Proposed' },
+    PROPOSED: {
+      id: { value: 'PROPOSED' },
       isFinal: false,
       metadata: null,
     },
-    Active: {
-      id: { value: 'Active' },
+    ACTIVE: {
+      id: { value: 'ACTIVE' },
       isFinal: false,
       metadata: null,
     },
-    Completed: {
-      id: { value: 'Completed' },
+    COMPLETED: {
+      id: { value: 'COMPLETED' },
       isFinal: true,
       metadata: null,
     },
-    Disputed: {
-      id: { value: 'Disputed' },
+    DISPUTED: {
+      id: { value: 'DISPUTED' },
       isFinal: false,
       metadata: null,
     },
-    Rejected: {
-      id: { value: 'Rejected' },
+    REJECTED: {
+      id: { value: 'REJECTED' },
       isFinal: true,
       metadata: null,
     },
-    Cancelled: {
-      id: { value: 'Cancelled' },
+    CANCELLED: {
+      id: { value: 'CANCELLED' },
       isFinal: true,
       metadata: null,
     },
   },
-  initialState: { value: 'Proposed' },
+  initialState: { value: 'PROPOSED' },
   transitions: [
     {
-      from: { value: 'Proposed' },
-      to: { value: 'Active' },
+      from: { value: 'PROPOSED' },
+      to: { value: 'ACTIVE' },
       eventName: 'accept',
       guard: { '===': [{ var: 'event.agent' }, { var: 'state.counterparty' }] },
       effect: {
         merge: [
           { var: 'state' },
-          { status: 'Active', acceptedAt: { var: '$timestamp' } },
+          { status: 'ACTIVE', acceptedAt: { var: '$timestamp' } },
         ],
       },
       dependencies: [],
     },
     {
-      from: { value: 'Proposed' },
-      to: { value: 'Rejected' },
+      from: { value: 'PROPOSED' },
+      to: { value: 'REJECTED' },
       eventName: 'reject',
       guard: { '===': [{ var: 'event.agent' }, { var: 'state.counterparty' }] },
       effect: {
         merge: [
           { var: 'state' },
-          { status: 'Rejected', rejectedAt: { var: '$timestamp' }, rejectReason: { var: 'event.reason' } },
+          { status: 'REJECTED', rejectedAt: { var: '$timestamp' }, rejectReason: { var: 'event.reason' } },
         ],
       },
       dependencies: [],
     },
     {
-      from: { value: 'Active' },
-      to: { value: 'Active' },
+      from: { value: 'ACTIVE' },
+      to: { value: 'ACTIVE' },
       eventName: 'submit_completion',
       guard: {
         or: [
@@ -123,21 +123,21 @@ const CONTRACT_DEFINITION = {
       dependencies: [],
     },
     {
-      from: { value: 'Active' },
-      to: { value: 'Completed' },
+      from: { value: 'ACTIVE' },
+      to: { value: 'COMPLETED' },
       eventName: 'finalize',
       guard: { '==': [1, 1] }, // Both parties must have submitted (checked via completions array in effect)
       effect: {
         merge: [
           { var: 'state' },
-          { status: 'Completed', completedAt: { var: '$timestamp' } },
+          { status: 'COMPLETED', completedAt: { var: '$timestamp' } },
         ],
       },
       dependencies: [],
     },
     {
-      from: { value: 'Active' },
-      to: { value: 'Disputed' },
+      from: { value: 'ACTIVE' },
+      to: { value: 'DISPUTED' },
       eventName: 'dispute',
       guard: {
         or: [
@@ -148,33 +148,33 @@ const CONTRACT_DEFINITION = {
       effect: {
         merge: [
           { var: 'state' },
-          { status: 'Disputed', disputedAt: { var: '$timestamp' }, disputeReason: { var: 'event.reason' }, disputedBy: { var: 'event.agent' } },
+          { status: 'DISPUTED', disputedAt: { var: '$timestamp' }, disputeReason: { var: 'event.reason' }, disputedBy: { var: 'event.agent' } },
         ],
       },
       dependencies: [],
     },
     {
-      from: { value: 'Disputed' },
-      to: { value: 'Completed' },
+      from: { value: 'DISPUTED' },
+      to: { value: 'COMPLETED' },
       eventName: 'resolve',
       guard: { '==': [1, 1] }, // Governance/resolution logic TBD
       effect: {
         merge: [
           { var: 'state' },
-          { status: 'Completed', resolvedAt: { var: '$timestamp' }, resolution: { var: 'event.resolution' } },
+          { status: 'COMPLETED', resolvedAt: { var: '$timestamp' }, resolution: { var: 'event.resolution' } },
         ],
       },
       dependencies: [],
     },
     {
-      from: { value: 'Proposed' },
-      to: { value: 'Cancelled' },
+      from: { value: 'PROPOSED' },
+      to: { value: 'CANCELLED' },
       eventName: 'cancel',
       guard: { '===': [{ var: 'event.agent' }, { var: 'state.proposer' }] },
       effect: {
         merge: [
           { var: 'state' },
-          { status: 'Cancelled', cancelledAt: { var: '$timestamp' } },
+          { status: 'CANCELLED', cancelledAt: { var: '$timestamp' } },
         ],
       },
       dependencies: [],
@@ -222,7 +222,7 @@ contractRoutes.post('/propose', async (req, res) => {
           terms: input.terms,
           // Tracking
           completions: [],
-          status: 'Proposed',
+          status: 'PROPOSED',
           proposedAt: new Date().toISOString(),
         },
         parentFiberId: null,
@@ -270,7 +270,7 @@ contractRoutes.post('/accept', async (req, res) => {
       return res.status(404).json({ error: 'Contract not found' });
     }
 
-    if (state.currentState?.value !== 'Proposed') {
+    if (state.currentState?.value !== 'PROPOSED') {
       return res.status(400).json({ 
         error: 'Contract is not in Proposed state',
         currentState: state.currentState?.value 
@@ -332,7 +332,7 @@ contractRoutes.post('/reject', async (req, res) => {
       return res.status(404).json({ error: 'Contract not found' });
     }
 
-    if (state.currentState?.value !== 'Proposed') {
+    if (state.currentState?.value !== 'PROPOSED') {
       return res.status(400).json({ 
         error: 'Contract is not in Proposed state',
         currentState: state.currentState?.value 
@@ -382,7 +382,7 @@ contractRoutes.post('/complete', async (req, res) => {
       return res.status(404).json({ error: 'Contract not found' });
     }
 
-    if (state.currentState?.value !== 'Active') {
+    if (state.currentState?.value !== 'ACTIVE') {
       return res.status(400).json({ 
         error: 'Contract is not Active',
         currentState: state.currentState?.value 
@@ -433,7 +433,7 @@ contractRoutes.post('/finalize', async (req, res) => {
       return res.status(404).json({ error: 'Contract not found' });
     }
 
-    if (state.currentState?.value !== 'Active') {
+    if (state.currentState?.value !== 'ACTIVE') {
       return res.status(400).json({ 
         error: 'Contract is not Active',
         currentState: state.currentState?.value 
@@ -493,7 +493,7 @@ contractRoutes.post('/dispute', async (req, res) => {
       return res.status(404).json({ error: 'Contract not found' });
     }
 
-    if (state.currentState?.value !== 'Active') {
+    if (state.currentState?.value !== 'ACTIVE') {
       return res.status(400).json({ 
         error: 'Can only dispute Active contracts',
         currentState: state.currentState?.value 
