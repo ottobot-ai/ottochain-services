@@ -44,7 +44,7 @@ async function checkConfirmations(): Promise<void> {
       return;
     }
     
-    const globalSnapshot: GlobalSnapshot = await response.json();
+    const globalSnapshot = await response.json() as GlobalSnapshot;
     const gl0Ordinal = globalSnapshot.value.ordinal;
     
     // Skip if we've already checked this ordinal
