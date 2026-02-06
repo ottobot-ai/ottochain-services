@@ -113,7 +113,7 @@ export class Simulator {
     temperature: number;
   } {
     const agents = Array.from(this.agents.values());
-    const activeAgents = agents.filter((a) => a.state === 'active');
+    const activeAgents = agents.filter((a) => a.state === 'ACTIVE');
     const avgFitness =
       activeAgents.length > 0
         ? activeAgents.reduce((sum, a) => sum + a.fitness.total, 0) / activeAgents.length
@@ -203,7 +203,7 @@ export class Simulator {
       address: wallet.address,
       privateKey: wallet.privateKey,
       fiberId: null,
-      state: 'unregistered',
+      state: 'UNREGISTERED',
       fitness: {
         reputation: 10,
         completionRate: 0,
@@ -236,7 +236,7 @@ export class Simulator {
         `${platform}_${wallet.address.slice(4, 12)}`
       );
       agent.fiberId = result.fiberId;
-      agent.state = 'registered';
+      agent.state = 'REGISTERED';
       
       // Wait for fiber to be visible in state before activating
       // This is necessary because the metagraph needs time to process the transaction
@@ -244,7 +244,7 @@ export class Simulator {
       
       // Activate after fiber is confirmed (with retry for DL1 sync)
       await this.retryActivation(wallet.privateKey, result.fiberId, 3);
-      agent.state = 'active';
+      agent.state = 'ACTIVE';
       
       this.agents.set(agent.address, agent);
       this.events.onAgentBirth?.(agent);
@@ -308,7 +308,7 @@ export class Simulator {
       this.updateContext(stats);
       
       // Compute final stats
-      const activeAgentList = population.filter((a) => a.state === 'active');
+      const activeAgentList = population.filter((a) => a.state === 'ACTIVE');
       if (activeAgentList.length > 0) {
         stats.avgFitness =
           activeAgentList.reduce((sum, a) => sum + a.fitness.total, 0) /
@@ -341,7 +341,7 @@ export class Simulator {
     const population = Array.from(this.agents.values());
     
     // Births: create new agents if below target
-    const currentActive = population.filter((a) => a.state === 'active').length;
+    const currentActive = population.filter((a) => a.state === 'ACTIVE').length;
     if (currentActive < this.config.targetPopulation) {
       const birthCount = Math.min(
         this.config.birthRate,
@@ -365,14 +365,14 @@ export class Simulator {
       
       for (const agent of toWithdraw) {
         try {
-          if (agent.fiberId && agent.state === 'active') {
+          if (agent.fiberId && agent.state === 'ACTIVE') {
             await this.client.transitionAgent(
               agent.privateKey,
               agent.fiberId,
               'withdraw',
               { timestamp: Date.now() }
             );
-            agent.state = 'withdrawn';
+            agent.state = 'WITHDRAWN';
             stats.deaths++;
             this.events.onAgentDeath?.(agent);
           }
@@ -391,7 +391,7 @@ export class Simulator {
     agent: Agent,
     stats: GenerationStats
   ): Promise<void> {
-    if (!agent.fiberId || agent.state !== 'active') return;
+    if (!agent.fiberId || agent.state !== 'ACTIVE') return;
     
     // Determine available actions
     const availableEvents = this.getAvailableAgentEvents(agent);
@@ -452,15 +452,15 @@ export class Simulator {
 
   private getAvailableAgentEvents(agent: Agent): string[] {
     switch (agent.state) {
-      case 'registered':
+      case 'REGISTERED':
         return ['activate'];
-      case 'active':
+      case 'ACTIVE':
         return ['submit_attestation', 'submit_violation', 'file_challenge', 'withdraw'];
-      case 'challenged':
+      case 'CHALLENGED':
         return []; // Wait for resolution
-      case 'suspended':
+      case 'SUSPENDED':
         return []; // Wait for probation
-      case 'probation':
+      case 'PROBATION':
         return ['submit_attestation'];
       default:
         return [];
@@ -474,7 +474,7 @@ export class Simulator {
   ): void {
     switch (event) {
       case 'withdraw':
-        agent.state = 'withdrawn';
+        agent.state = 'WITHDRAWN';
         break;
       case 'file_challenge':
         // Would need to track challenged agents
@@ -510,7 +510,7 @@ export class Simulator {
         fiberId: result.fiberId,
         proposer: agent.address,
         counterparty: counterparty.address,
-        state: 'proposed',
+        state: 'PROPOSED',
         task: `Simulated task`,
         terms: {},
         createdGeneration: this.generation,
@@ -530,7 +530,7 @@ export class Simulator {
     // Pick someone to vouch for (prefer network connections)
     const candidates = Array.from(this.agents.values()).filter(
       (a) =>
-        a.state === 'active' &&
+        a.state === 'ACTIVE' &&
         a.address !== agent.address &&
         !agent.meta.vouchedFor.has(a.address)
     );
@@ -572,7 +572,7 @@ export class Simulator {
   private async processContracts(stats: GenerationStats): Promise<void> {
     for (const [fiberId, contract] of this.contracts.entries()) {
       // Skip completed contracts
-      if (['completed', 'rejected'].includes(contract.state)) {
+      if (contract.state === 'COMPLETED' || contract.state === 'REJECTED') {
         this.contracts.delete(fiberId);
         continue;
       }
@@ -586,7 +586,7 @@ export class Simulator {
       }
       
       try {
-        if (contract.state === 'proposed') {
+        if (contract.state === 'PROPOSED') {
           // Counterparty decides: accept or reject
           const choices = computeTransitionWeights(
             counterpartyAgent,
@@ -605,8 +605,8 @@ export class Simulator {
             );
             stats.successes++;
             
-            contract.state = chosen.event === 'accept' ? 'active' : 'rejected';
-            if (contract.state === 'rejected') {
+            contract.state = chosen.event === 'accept' ? 'ACTIVE' : 'REJECTED';
+            if (contract.state === 'REJECTED') {
               stats.rejections++;
               proposerAgent.meta.activeContracts.delete(fiberId);
               counterpartyAgent.meta.activeContracts.delete(fiberId);
@@ -615,7 +615,7 @@ export class Simulator {
             
             if (chosen.isMutation) stats.mutations++;
           }
-        } else if (contract.state === 'active') {
+        } else if (contract.state === 'ACTIVE') {
           // Check if it's time to complete
           if (this.generation >= contract.expectedCompletion) {
             // Decide: complete or dispute
@@ -637,12 +637,12 @@ export class Simulator {
               stats.successes++;
               
               if (chosen.event === 'complete') {
-                contract.state = 'completed';
+                contract.state = 'COMPLETED';
                 stats.completions++;
                 proposerAgent.meta.completedContracts++;
                 counterpartyAgent.meta.completedContracts++;
               } else {
-                contract.state = 'disputed';
+                contract.state = 'DISPUTED';
                 stats.disputes++;
               }
               

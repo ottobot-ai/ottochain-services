@@ -63,7 +63,7 @@ export function selectAgentByFitness(
   excludeAddresses: Set<string> = new Set()
 ): Agent | null {
   const eligible = population.filter(
-    (a) => a.state === 'active' && !excludeAddresses.has(a.address)
+    (a) => a.state === 'ACTIVE' && !excludeAddresses.has(a.address)
   );
   
   if (eligible.length === 0) return null;
@@ -119,7 +119,7 @@ export function selectCounterparty(
 ): Agent | null {
   const eligible = population.filter(
     (a) =>
-      a.state === 'active' &&
+      a.state === 'ACTIVE' &&
       a.address !== proposer.address &&
       !proposer.meta.activeContracts.has(a.address) // Not already in contract
   );
@@ -349,7 +349,7 @@ export function selectForDeath(
   population: Agent[],
   count: number
 ): Agent[] {
-  const eligible = population.filter((a) => a.state === 'active');
+  const eligible = population.filter((a) => a.state === 'ACTIVE');
   if (eligible.length === 0) return [];
   
   // Invert fitness for death selection
