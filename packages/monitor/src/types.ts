@@ -16,12 +16,26 @@ export interface NodeHealth {
   lastCheck: number;
   latencyMs?: number;
   error?: string;
+  // Ordinal tracking
+  ordinal?: number;
+  ordinalLastChanged?: number;
+  isProgressing?: boolean;
 }
 
 export interface MetagraphMetrics {
   snapshotOrdinal?: number;
   fiberCount?: number;
   lastSnapshotTime?: number;
+  // Per-layer ordinals
+  gl0Ordinal?: number;
+  ml0Ordinal?: number;
+  dl1Ordinal?: number;
+  // Currency state
+  currencySnapshotAvailable?: boolean;
+  genesisWalletBalance?: string;
+  // Sync health
+  dl1Lag?: number;  // ML0 ordinal - DL1 cache ordinal
+  isHealthy?: boolean;
 }
 
 export interface ServiceHealth {

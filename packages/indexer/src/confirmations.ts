@@ -10,13 +10,14 @@ import { prisma, getConfig, publishEvent, CHANNELS } from '@ottochain/shared';
 interface GlobalSnapshot {
   value: {
     ordinal: number;
-    stateChannelSnapshots: Record<string, {
-      snapshotBinary: string;
-      snapshotInfo: {
-        ordinal: number;
-        hash: string;
+    // stateChannelSnapshots: metagraphId → array of currency snapshot binaries
+    // Each entry has { value: { lastSnapshotHash, content } }
+    stateChannelSnapshots: Record<string, Array<{
+      value: {
+        lastSnapshotHash: string;
+        content: number[];
       };
-    }>;
+    }>>;
   };
 }
 
@@ -53,60 +54,53 @@ async function checkConfirmations(): Promise<void> {
     }
     lastCheckedGl0Ordinal = gl0Ordinal;
     
-    // Check for metagraph snapshots
-    const stateChannels = globalSnapshot.value.stateChannelSnapshots;
+    // Check if our metagraph appears in this GL0 snapshot
+    const stateChannels = globalSnapshot.value.stateChannelSnapshots ?? {};
     
-    // Find our metagraph by ID or check all state channels
-    let confirmedHash: string | null = null;
-    let confirmedMl0Ordinal: number | null = null;
+    // Look for our metagraph's currency snapshots in GL0
+    // The metagraph ID key in stateChannelSnapshots confirms GL0 received our snapshot
+    const metagraphSnapshots = metagraphId ? stateChannels[metagraphId] : undefined;
     
-    if (metagraphId && stateChannels[metagraphId]) {
-      confirmedHash = stateChannels[metagraphId].snapshotInfo.hash;
-      confirmedMl0Ordinal = stateChannels[metagraphId].snapshotInfo.ordinal;
-    } else {
-      // If no metagraph ID configured, check all state channels
-      for (const [id, snapshot] of Object.entries(stateChannels)) {
-        const hash = snapshot.snapshotInfo.hash;
-        
-        // Check if this hash matches any pending snapshot
-        const pending = await prisma.indexedSnapshot.findFirst({
-          where: { hash, status: 'PENDING' }
-        });
-        
-        if (pending) {
-          confirmedHash = hash;
-          confirmedMl0Ordinal = snapshot.snapshotInfo.ordinal;
-          console.log(`🔍 Found metagraph in state channel: ${id}`);
-          break;
-        }
-      }
+    if (!metagraphSnapshots || metagraphSnapshots.length === 0) {
+      // Our metagraph didn't produce a snapshot in this GL0 ordinal — normal, skip
+      return;
     }
     
-    if (confirmedHash) {
-      // Find and confirm the pending snapshot
-      const pending = await prisma.indexedSnapshot.findFirst({
-        where: { hash: confirmedHash, status: 'PENDING' }
+    // Our metagraph IS in this GL0 snapshot — confirm the latest pending
+    const latestEntry = metagraphSnapshots[metagraphSnapshots.length - 1];
+    const confirmedHash = latestEntry.value.lastSnapshotHash;
+    
+    // Find pending snapshots to confirm. Match by hash if possible, else confirm the oldest pending.
+    let pending = await prisma.indexedSnapshot.findFirst({
+      where: { hash: confirmedHash, status: 'PENDING' }
+    });
+    
+    if (!pending) {
+      // Hash might not match (webhook vs polled), just confirm the oldest pending
+      pending = await prisma.indexedSnapshot.findFirst({
+        where: { status: 'PENDING' },
+        orderBy: { ordinal: 'asc' }
+      });
+    }
+    
+    if (pending) {
+      await prisma.indexedSnapshot.update({
+        where: { ordinal: pending.ordinal },
+        data: {
+          status: 'CONFIRMED',
+          gl0Ordinal: BigInt(gl0Ordinal),
+          confirmedAt: new Date(),
+        }
       });
       
-      if (pending) {
-        await prisma.indexedSnapshot.update({
-          where: { ordinal: pending.ordinal },
-          data: {
-            status: 'CONFIRMED',
-            gl0Ordinal: BigInt(gl0Ordinal),
-            confirmedAt: new Date(),
-          }
-        });
-        
-        console.log(`✅ Confirmed ML0 snapshot ${pending.ordinal} in GL0 ordinal ${gl0Ordinal}`);
-        
-        await publishEvent(CHANNELS.STATS_UPDATED, {
-          event: 'SNAPSHOT_CONFIRMED',
-          ml0Ordinal: Number(pending.ordinal),
-          gl0Ordinal,
-          hash: confirmedHash,
-        });
-      }
+      console.log(`✅ Confirmed ML0 snapshot ${pending.ordinal} in GL0 ordinal ${gl0Ordinal} (hash: ${confirmedHash.slice(0, 12)}...)`);
+      
+      await publishEvent(CHANNELS.STATS_UPDATED, {
+        event: 'SNAPSHOT_CONFIRMED',
+        ml0Ordinal: Number(pending.ordinal),
+        gl0Ordinal,
+        hash: confirmedHash,
+      });
     }
     
     // Check for orphaned snapshots (pending for too long with newer confirmed)
