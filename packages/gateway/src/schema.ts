@@ -221,11 +221,16 @@ export const typeDefs = /* GraphQL */ `
   # === Mutations ===
 
   type Mutation {
+    """
+    Register a new agent identity on-chain.
+    Requires privateKey for signing (dev/testing) or signature for verification (production).
+    """
     registerAgent(
       platform: Platform!
       platformUserId: String!
       platformUsername: String
       displayName: String
+      privateKey: String
     ): RegisterResult!
     
     linkPlatform(
@@ -240,14 +245,16 @@ export const typeDefs = /* GraphQL */ `
       fromAddress: String!
       toAddress: String!
       reason: String
-      signature: String!
+      signature: String
+      privateKey: String
     ): AttestationResult!
     
     proposeContract(
       proposerAddress: String!
       counterpartyAddress: String!
       terms: JSON!
-      signature: String!
+      signature: String
+      privateKey: String
     ): ContractResult!
     
     acceptContract(

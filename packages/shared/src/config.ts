@@ -22,6 +22,7 @@ const ConfigSchema = z.object({
   // Service ports
   GATEWAY_PORT: z.coerce.number().default(4000),
   BRIDGE_PORT: z.coerce.number().default(3030),
+  BRIDGE_URL: z.string().url().default('http://localhost:3030'),
   INDEXER_PORT: z.coerce.number().default(3031),
   
   // GL0 polling interval (ms)
