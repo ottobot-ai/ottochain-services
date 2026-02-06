@@ -1,187 +1,122 @@
 /**
- * Lightweight ML0 Snapshot Poller (Fallback)
+ * ML0 Snapshot Poller
  * 
- * Low-frequency backup for webhook push. Catches any missed snapshots.
- * Also tracks (ordinal, hash) per ML0 peer for fork detection.
+ * Polls ML0 for new snapshots and feeds them to the indexer's
+ * processSnapshot pipeline. Replaces the need for ML0 to push
+ * webhook notifications.
  */
 
-import { prisma, getConfig } from '@ottochain/shared';
+import { getConfig, type SnapshotNotification } from '@ottochain/shared';
 import { processSnapshot } from './processor.js';
 
-// ML0 node endpoints (all 3 peers)
-const ML0_PEERS = [
-  { name: 'node1', url: 'http://5.78.90.207:9200' },
-  { name: 'node2', url: 'http://5.78.113.25:9200' },
-  { name: 'node3', url: 'http://5.78.107.77:9200' },
-];
-
-interface PeerSnapshot {
-  ordinal: number;
-  hash: string;
-  lastSeen: Date;
-}
-
-// Track latest snapshot per peer for fork detection
-const peerState: Map<string, PeerSnapshot> = new Map();
-
-let pollingInterval: NodeJS.Timeout | null = null;
-let lastPolledOrdinal = 0;
+let pollingTimer: NodeJS.Timeout | null = null;
+let lastIndexedOrdinal = -1;
+let consecutiveErrors = 0;
+const MAX_CONSECUTIVE_ERRORS = 10;
 
 /**
- * Poll a single ML0 peer for its latest snapshot info
+ * Fetch the latest snapshot ordinal and hash from ML0
  */
-async function pollPeer(peer: { name: string; url: string }): Promise<PeerSnapshot | null> {
+async function fetchLatestSnapshot(): Promise<{ ordinal: number; hash: string } | null> {
+  const config = getConfig();
+  const url = `${config.METAGRAPH_ML0_URL}/snapshots/latest`;
+
   try {
-    const resp = await fetch(`${peer.url}/data-application/v1/checkpoint`, {
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!resp.ok) return null;
-    
-    const data = await resp.json() as { ordinal: number; state: any };
-    
-    // Get snapshot hash from the node info
-    const infoResp = await fetch(`${peer.url}/node/info`, {
-      signal: AbortSignal.timeout(5000),
-    });
-    const info = infoResp.ok ? await infoResp.json() as { state?: string } : null;
-    
-    return {
-      ordinal: data.ordinal,
-      hash: info?.state ?? 'unknown',
-      lastSeen: new Date(),
-    };
+    const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!response.ok) return null;
+
+    const data = await response.json() as any;
+    const ordinal = data?.value?.ordinal;
+    const hash = data?.value?.lastSnapshotHash || data?.value?.hash || '';
+
+    if (typeof ordinal !== 'number' || ordinal <= 0) return null;
+    return { ordinal, hash };
   } catch {
     return null;
   }
 }
 
 /**
- * Check all peers for fork divergence
- */
-function checkForForks(): void {
-  const peers = Array.from(peerState.entries());
-  if (peers.length < 2) return;
-  
-  // Group by ordinal
-  const byOrdinal = new Map<number, string[]>();
-  for (const [name, state] of peers) {
-    const names = byOrdinal.get(state.ordinal) || [];
-    names.push(name);
-    byOrdinal.set(state.ordinal, names);
-  }
-  
-  // Check peers at the same ordinal for hash divergence
-  for (const [name1, state1] of peers) {
-    for (const [name2, state2] of peers) {
-      if (name1 >= name2) continue;
-      if (state1.ordinal === state2.ordinal && state1.hash !== state2.hash) {
-        console.error(`🔀 FORK DETECTED: ${name1} and ${name2} diverge at ordinal ${state1.ordinal}`);
-        console.error(`   ${name1}: ${state1.hash}`);
-        console.error(`   ${name2}: ${state2.hash}`);
-      }
-    }
-  }
-}
-
-/**
- * Poll all peers and catch up on any missed snapshots
+ * Poll for new snapshots and index them
  */
 async function pollOnce(): Promise<void> {
-  const config = getConfig();
-  const primaryUrl = config.METAGRAPH_ML0_URL;
-  
-  // Poll all peers for fork detection
-  const results = await Promise.all(ML0_PEERS.map(async (peer) => {
-    const snapshot = await pollPeer(peer);
-    if (snapshot) {
-      peerState.set(peer.name, snapshot);
+  const latest = await fetchLatestSnapshot();
+
+  if (!latest) {
+    consecutiveErrors++;
+    if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+      console.warn(`⚠️ ML0 snapshot poller: ${consecutiveErrors} consecutive failures`);
     }
-    return { peer: peer.name, snapshot };
-  }));
-  
-  checkForForks();
-  
-  // Find the highest ordinal across peers
-  const maxOrdinal = Math.max(...results
-    .filter(r => r.snapshot)
-    .map(r => r.snapshot!.ordinal));
-  
-  if (maxOrdinal <= lastPolledOrdinal || maxOrdinal <= 0) return;
-  
-  // Check if we've already indexed this ordinal (webhook may have handled it)
-  const existing = await prisma.indexedSnapshot.findFirst({
-    where: { ordinal: BigInt(maxOrdinal) }
-  });
-  
-  if (existing) {
-    lastPolledOrdinal = maxOrdinal;
-    return; // Already indexed via webhook
+    return;
   }
-  
-  // Missed snapshot — fetch and index it
-  console.log(`🔄 Poller catchup: indexing missed snapshot ${maxOrdinal}`);
-  
+
+  consecutiveErrors = 0;
+
+  // Skip if we already indexed this ordinal
+  if (latest.ordinal <= lastIndexedOrdinal) return;
+
+  // If this is the first poll, just set the baseline (don't backfill everything)
+  if (lastIndexedOrdinal === -1) {
+    // Index the current snapshot to get initial state
+    console.log(`🔄 Snapshot poller: starting from ordinal ${latest.ordinal}`);
+  }
+
+  const notification: SnapshotNotification = {
+    ordinal: latest.ordinal,
+    hash: latest.hash,
+    timestamp: new Date().toISOString(),
+  };
+
   try {
-    const resp = await fetch(`${primaryUrl}/data-application/v1/checkpoint`, {
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!resp.ok) return;
+    const result = await processSnapshot(notification);
+    lastIndexedOrdinal = latest.ordinal;
     
-    const data = await resp.json() as { ordinal: number; state: any };
-    
-    await processSnapshot({
-      ordinal: data.ordinal,
-      hash: 'polled',
-      timestamp: new Date().toISOString(),
-    });
-    
-    console.log(`✅ Poller indexed missed snapshot ${data.ordinal}`);
-    lastPolledOrdinal = data.ordinal;
+    // Only log if there were actual changes
+    if (result.fibersUpdated > 0 || result.agentsUpdated > 0 || result.contractsUpdated > 0) {
+      console.log(`🔄 Polled snapshot ${latest.ordinal}: ${result.fibersUpdated}F ${result.agentsUpdated}A ${result.contractsUpdated}C`);
+    }
   } catch (err) {
-    console.warn(`⚠️ Poller catchup failed: ${(err as Error).message}`);
+    console.error(`❌ Failed to process polled snapshot ${latest.ordinal}:`, err);
+    consecutiveErrors++;
   }
 }
 
 /**
- * Start the low-frequency fallback poller
+ * Start the ML0 snapshot poller
  */
-export function startSnapshotPoller(intervalMs = 60000): void {
-  if (pollingInterval) {
+export function startSnapshotPoller(intervalMs = 5000): void {
+  if (pollingTimer) {
     console.warn('⚠️ Snapshot poller already running');
     return;
   }
+
+  console.log(`🔄 Starting ML0 snapshot poller (every ${intervalMs}ms)`);
   
-  console.log(`🔄 Starting fallback poller (every ${intervalMs / 1000}s) with ${ML0_PEERS.length}-peer fork detection`);
+  // Initial poll immediately
+  pollOnce();
   
-  // Initial poll
-  pollOnce().catch(console.error);
-  
-  pollingInterval = setInterval(() => pollOnce().catch(console.error), intervalMs);
+  // Then poll on interval
+  pollingTimer = setInterval(pollOnce, intervalMs);
 }
 
 /**
- * Stop the fallback poller
+ * Stop the ML0 snapshot poller
  */
 export function stopSnapshotPoller(): void {
-  if (pollingInterval) {
-    clearInterval(pollingInterval);
-    pollingInterval = null;
-    console.log('🛑 Stopped fallback poller');
+  if (pollingTimer) {
+    clearInterval(pollingTimer);
+    pollingTimer = null;
+    console.log('🛑 Stopped ML0 snapshot poller');
   }
 }
 
 /**
- * Get poller stats including per-peer state
+ * Get poller stats
  */
 export function getPollerStats() {
   return {
-    lastPolledOrdinal,
-    isRunning: pollingInterval !== null,
-    peers: Object.fromEntries(
-      Array.from(peerState.entries()).map(([name, state]) => [
-        name,
-        { ordinal: state.ordinal, hash: state.hash, lastSeen: state.lastSeen },
-      ])
-    ),
+    lastIndexedOrdinal,
+    consecutiveErrors,
+    isRunning: pollingTimer !== null,
   };
 }
