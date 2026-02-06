@@ -25,7 +25,8 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "docker:up": "docker-compose up -d",
-    "docker:down": "docker-compose down"
+    "docker:down": "docker-compose down",
+    "postinstall": "prisma generate"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

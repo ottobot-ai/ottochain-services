@@ -9,14 +9,23 @@ const ConfigSchema = z.object({
   // Redis
   REDIS_URL: z.string().url().default('redis://localhost:6379'),
   
+  // Global L0 (for confirmation checking)
+  GL0_URL: z.string().url().optional(),
+  
+  // Metagraph identification
+  METAGRAPH_ID: z.string().optional(), // DAG address of the metagraph
+  
   // Metagraph endpoints
-  METAGRAPH_ML0_URL: z.string().url().default('http://localhost:9100'),
+  METAGRAPH_ML0_URL: z.string().url().default('http://localhost:9200'),
   METAGRAPH_DL1_URL: z.string().url().default('http://localhost:9400'),
   
   // Service ports
   GATEWAY_PORT: z.coerce.number().default(4000),
   BRIDGE_PORT: z.coerce.number().default(3030),
   INDEXER_PORT: z.coerce.number().default(3031),
+  
+  // GL0 polling interval (ms)
+  GL0_POLL_INTERVAL: z.coerce.number().default(5000),
   
   // Environment
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
