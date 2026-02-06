@@ -190,8 +190,12 @@ model SnapshotSubscriber {
 }
 
 enum AgentState {
+  UNSPECIFIED
   REGISTERED
   ACTIVE
+  CHALLENGED
+  SUSPENDED
+  PROBATION
   WITHDRAWN
 }
 
@@ -211,9 +215,11 @@ enum AttestationType {
 }
 
 enum ContractState {
+  UNSPECIFIED
   PROPOSED
   ACTIVE
   COMPLETED
   REJECTED
   DISPUTED
+  CANCELLED
 }
