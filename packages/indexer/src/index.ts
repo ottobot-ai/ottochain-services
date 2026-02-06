@@ -6,6 +6,7 @@ import express from 'express';
 import { prisma, getConfig, SnapshotNotificationSchema } from '@ottochain/shared';
 import { processSnapshot } from './processor.js';
 import { startConfirmationPoller, stopConfirmationPoller, getConfirmationStats } from './confirmations.js';
+import { startSnapshotPoller, stopSnapshotPoller, getPollerStats } from './poller.js';
 
 const app = express();
 app.use(express.json());
@@ -83,6 +84,7 @@ app.get('/status', async (_, res) => {
   });
   
   const confirmationStats = await getConfirmationStats();
+  const pollerStats = getPollerStats();
   
   const stats = {
     lastIndexedOrdinal: lastSnapshot?.ordinal ? Number(lastSnapshot.ordinal) : null,
@@ -91,6 +93,7 @@ app.get('/status', async (_, res) => {
     lastConfirmedOrdinal: lastConfirmed?.ordinal ? Number(lastConfirmed.ordinal) : null,
     lastConfirmedAt: lastConfirmed?.confirmedAt ?? null,
     confirmations: confirmationStats,
+    poller: pollerStats,
     totalAgents: await prisma.agent.count(),
     totalContracts: await prisma.contract.count(),
     totalFibers: await prisma.fiber.count(),
@@ -131,12 +134,14 @@ app.get('/snapshots', async (req, res) => {
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('Received SIGTERM, shutting down...');
+  stopSnapshotPoller();
   stopConfirmationPoller();
   process.exit(0);
 });
 
 process.on('SIGINT', () => {
   console.log('Received SIGINT, shutting down...');
+  stopSnapshotPoller();
   stopConfirmationPoller();
   process.exit(0);
 });
@@ -151,7 +156,11 @@ app.listen(port, '0.0.0.0', () => {
   console.log(`   Status:    GET  http://localhost:${port}/status`);
   console.log(`   Snapshots: GET  http://localhost:${port}/snapshots?status=PENDING|CONFIRMED|ORPHANED`);
   
-  // Start GL0 confirmation poller (every 5 seconds)
-  const pollInterval = parseInt(process.env.GL0_POLL_INTERVAL || '5000');
-  startConfirmationPoller(pollInterval);
+  // Start ML0 snapshot poller (pulls new snapshots and indexes them)
+  const snapshotPollInterval = parseInt(process.env.ML0_POLL_INTERVAL || '5000');
+  startSnapshotPoller(snapshotPollInterval);
+  
+  // Start GL0 confirmation poller (confirms indexed snapshots against GL0)
+  const confirmPollInterval = parseInt(process.env.GL0_POLL_INTERVAL || '5000');
+  startConfirmationPoller(confirmPollInterval);
 });
