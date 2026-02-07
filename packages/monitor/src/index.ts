@@ -439,7 +439,7 @@ async function main(): Promise<void> {
   
   // Sync status endpoint for traffic-gen and fork detection
   app.get('/api/sync-status', async (_, res) => {
-    try {
+    const buildSyncStatus = async () => {
       const health = collector.getHealth();
       const nodes = health.nodes;
       const metagraph = health.metagraph;
@@ -455,8 +455,8 @@ async function main(): Promise<void> {
       const dl1Ordinals = dl1Nodes.map(n => ({ name: n.name, ordinal: n.ordinal, state: n.state }));
       
       // Check for forks (different ordinals on same layer)
-      const gl0OrdinalValues = gl0Ordinals.map(n => n.ordinal).filter(o => o !== undefined);
-      const ml0OrdinalValues = ml0Ordinals.map(n => n.ordinal).filter(o => o !== undefined);
+      const gl0OrdinalValues = gl0Ordinals.map(n => n.ordinal).filter((o): o is number => o !== undefined);
+      const ml0OrdinalValues = ml0Ordinals.map(n => n.ordinal).filter((o): o is number => o !== undefined);
       
       const gl0Fork = new Set(gl0OrdinalValues).size > 1;
       const ml0Fork = new Set(ml0OrdinalValues).size > 1;
@@ -473,7 +473,7 @@ async function main(): Promise<void> {
       // Ready for traffic = all healthy, no forks, reasonable lag
       const readyForTraffic = allReady && allHealthy && !gl0Fork && !ml0Fork && (dl1Lag === undefined || dl1Lag < 10);
       
-      res.json({
+      return {
         ready: readyForTraffic,
         allReady,
         allHealthy,
@@ -493,7 +493,32 @@ async function main(): Promise<void> {
           lag: dl1Lag,
         },
         timestamp: Date.now(),
-      });
+      };
+    };
+    
+    // Use cache if available (5 second TTL like metagraph)
+    if (!cache) {
+      try {
+        const data = await buildSyncStatus();
+        return res.json(data);
+      } catch (err) {
+        console.error('Sync status error:', err);
+        return res.status(500).json({ ready: false, error: String(err) });
+      }
+    }
+    
+    try {
+      const result = await cache.getOrFetch(
+        MonitorCache.keys.syncStatus,
+        buildSyncStatus,
+        cache.getTTL('metagraph')  // 5 second TTL
+      );
+      
+      res.set('X-Cache', result.fromCache ? 'HIT' : 'MISS');
+      if (result.ttlRemaining !== undefined) {
+        res.set('X-Cache-TTL', result.ttlRemaining.toString());
+      }
+      res.json(result.data);
     } catch (err) {
       console.error('Sync status error:', err);
       res.status(500).json({ ready: false, error: String(err) });

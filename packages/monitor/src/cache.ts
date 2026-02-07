@@ -109,6 +109,7 @@ export class MonitorCache {
     nodes: 'monitor:nodes',
     services: 'monitor:services',
     metagraph: 'monitor:metagraph',
+    syncStatus: 'monitor:sync-status',
   } as const;
 
   /**
