@@ -252,26 +252,35 @@ async function main(): Promise<void> {
   
   // REST endpoints with caching
   app.get('/health', async (_, res) => {
-    if (!cache) {
-      return res.json({ status: 'ok', service: 'monitor' });
+    // Build health response with component statuses
+    const components: Record<string, 'ok' | 'degraded' | 'error'> = {};
+    
+    // Check Redis if enabled
+    if (cache) {
+      try {
+        const redisHealthy = await cache.isHealthy();
+        components.redis = redisHealthy ? 'ok' : 'error';
+      } catch {
+        components.redis = 'error';
+      }
     }
     
-    try {
-      const result = await cache.getOrFetch(
-        MonitorCache.keys.health,
-        async () => ({ status: 'ok', service: 'monitor' }),
-        cache.getTTL('health')
-      );
-      
-      res.set('X-Cache', result.fromCache ? 'HIT' : 'MISS');
-      if (result.ttlRemaining !== undefined) {
-        res.set('X-Cache-TTL', result.ttlRemaining.toString());
-      }
-      res.json(result.data);
-    } catch (err) {
-      console.error('Health endpoint error:', err);
-      res.json({ status: 'ok', service: 'monitor' });
-    }
+    // Overall status based on components
+    const hasError = Object.values(components).includes('error');
+    const hasDegraded = Object.values(components).includes('degraded');
+    const overallStatus = hasError ? 'degraded' : hasDegraded ? 'degraded' : 'ok';
+    
+    const healthResponse = {
+      status: overallStatus,
+      service: 'monitor',
+      version: process.env.npm_package_version ?? '0.1.0',
+      components: Object.keys(components).length > 0 ? components : undefined,
+      timestamp: new Date().toISOString(),
+    };
+    
+    // Set appropriate HTTP status
+    const httpStatus = overallStatus === 'ok' ? 200 : 503;
+    res.status(httpStatus).json(healthResponse);
   });
   
   app.get('/api/status', async (_, res) => {
