@@ -89,13 +89,21 @@ jobs:
 
       - name: Deploy monitoring stack
         run: |
-          ssh services << 'SCRIPT'
+          ssh services << SCRIPT
           cd /opt/ottochain-services/packages/monitoring
           
           # Create .env if it doesn't exist
           if [ ! -f .env ]; then
             cp .env.example .env
             echo "Created .env from example"
+          fi
+          
+          # Configure alertmanager with telegram credentials from main .env
+          source /opt/ottochain-services/.env
+          if [ -n "\$TELEGRAM_BOT_TOKEN" ] && [ -n "\$TELEGRAM_CHAT_ID" ]; then
+            sed -i "s|YOUR_TELEGRAM_BOT_TOKEN|\$TELEGRAM_BOT_TOKEN|g" alertmanager.yml
+            sed -i "s|chat_id: 0|chat_id: \$TELEGRAM_CHAT_ID|g" alertmanager.yml
+            echo "Configured alertmanager with Telegram credentials"
           fi
           
           # Start or update the monitoring stack
@@ -115,6 +123,7 @@ jobs:
           BRIDGE=$(ssh services 'curl -sf -o /dev/null -w "%{http_code}" http://localhost:3030/health' || echo "000")
           GATEWAY=$(ssh services 'curl -sf -o /dev/null -w "%{http_code}" http://localhost:4000/graphql' || echo "000")
           PROMETHEUS=$(ssh services 'curl -sf -o /dev/null -w "%{http_code}" http://localhost:9090/-/ready' || echo "000")
+          ALERTMANAGER=$(ssh services 'curl -sf -o /dev/null -w "%{http_code}" http://localhost:9093/-/ready' || echo "000")
           GRAFANA=$(ssh services 'curl -sf -o /dev/null -w "%{http_code}" http://localhost:3000/api/health' || echo "000")
 
           echo "Explorer: HTTP $EXPLORER"
@@ -122,6 +131,7 @@ jobs:
           echo "Bridge: HTTP $BRIDGE"
           echo "Gateway: HTTP $GATEWAY"
           echo "Prometheus: HTTP $PROMETHEUS"
+          echo "Alertmanager: HTTP $ALERTMANAGER"
           echo "Grafana: HTTP $GRAFANA"
 
           echo "## 🚀 Services Deployed" >> $GITHUB_STEP_SUMMARY
@@ -133,4 +143,5 @@ jobs:
           echo "| Bridge | HTTP $BRIDGE |" >> $GITHUB_STEP_SUMMARY
           echo "| Gateway | HTTP $GATEWAY |" >> $GITHUB_STEP_SUMMARY
           echo "| Prometheus | HTTP $PROMETHEUS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Alertmanager | HTTP $ALERTMANAGER |" >> $GITHUB_STEP_SUMMARY
           echo "| Grafana | HTTP $GRAFANA |" >> $GITHUB_STEP_SUMMARY
