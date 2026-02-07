@@ -8,6 +8,7 @@ import { agentRoutes } from './routes/agent.js';
 import { contractRoutes } from './routes/contract.js';
 import { fiberRoutes } from './routes/fiber.js';
 import { smRoutes } from './routes/sm.js';
+import { scriptRoutes } from './routes/script.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' })); // Larger limit for state machine definitions
@@ -21,8 +22,9 @@ app.get('/health', (_, res) => {
 app.use('/wallet', walletRoutes);
 app.use('/agent', agentRoutes);
 app.use('/contract', contractRoutes);
-app.use('/fiber', fiberRoutes);  // Generic fiber API
-app.use('/sm', smRoutes);        // Generic state machine API
+app.use('/fiber', fiberRoutes);    // Generic fiber API
+app.use('/sm', smRoutes);          // Generic state machine API
+app.use('/script', scriptRoutes);  // Generic script oracle API
 
 // Start server
 const config = getConfig();
@@ -40,5 +42,8 @@ app.listen(port, () => {
   console.log(`             POST http://localhost:${port}/sm/transition`);
   console.log(`             GET  http://localhost:${port}/sm/:fiberId`);
   console.log(`             GET  http://localhost:${port}/sm?schema=X&status=Y`);
-  console.log(`             POST http://localhost:${port}/sm/:fiberId/commit`);
+  console.log(`   Script:   POST http://localhost:${port}/script/register`);
+  console.log(`             POST http://localhost:${port}/script/invoke`);
+  console.log(`             GET  http://localhost:${port}/script/:scriptId`);
+  console.log(`             GET  http://localhost:${port}/script/:scriptId/result`);
 });
