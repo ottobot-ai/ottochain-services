@@ -130,6 +130,8 @@ export const typeDefs = /* GraphQL */ `
     sequenceNumber: Int!
     createdOrdinal: BigInt!
     updatedOrdinal: BigInt!
+    createdGl0Ordinal: BigInt
+    updatedGl0Ordinal: BigInt
     createdAt: DateTime!
     updatedAt: DateTime!
     transitions(limit: Int): [FiberTransition!]!
@@ -144,6 +146,7 @@ export const typeDefs = /* GraphQL */ `
     gasUsed: Int!
     payload: JSON
     snapshotOrdinal: BigInt!
+    gl0Ordinal: BigInt
     createdAt: DateTime!
   }
 
