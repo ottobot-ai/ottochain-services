@@ -454,6 +454,333 @@ export class BridgeClient {
   }
 
   // ==========================================================================
+  // DAO Operations
+  // ==========================================================================
+
+  /**
+   * Create a new DAO fiber.
+   */
+  async createDAO(
+    privateKey: string,
+    daoType: 'token' | 'multisig' | 'threshold',
+    initialData: Record<string, unknown>
+  ): Promise<{ fiberId: string; hash: string }> {
+    const definition = {
+      workflowType: 'DAO',
+      daoType,
+      name: initialData.name || `${daoType} DAO`,
+    };
+    return this.createFiber(privateKey, definition, initialData);
+  }
+
+  /**
+   * Propose an action in the DAO.
+   */
+  async daoPropose(
+    privateKey: string,
+    fiberId: string,
+    proposalId: string,
+    proposalData: Record<string, unknown>
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'propose', {
+      proposalId,
+      ...proposalData,
+    });
+  }
+
+  /**
+   * Vote on a DAO proposal.
+   */
+  async daoVote(
+    privateKey: string,
+    fiberId: string,
+    vote: string,
+    weight?: number
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'vote', {
+      vote,
+      weight,
+    });
+  }
+
+  /**
+   * Sign a multisig proposal.
+   */
+  async daoSign(
+    privateKey: string,
+    fiberId: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'sign', {});
+  }
+
+  /**
+   * Execute a passed DAO proposal.
+   */
+  async daoExecute(
+    privateKey: string,
+    fiberId: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'execute', {});
+  }
+
+  /**
+   * Delegate voting power.
+   */
+  async daoDelegate(
+    privateKey: string,
+    fiberId: string,
+    delegateTo: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'delegate', {
+      delegateTo,
+    });
+  }
+
+  /**
+   * Queue a passed proposal for timelock.
+   */
+  async daoQueue(
+    privateKey: string,
+    fiberId: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'queue', {});
+  }
+
+  /**
+   * Cancel a proposal.
+   */
+  async daoCancel(
+    privateKey: string,
+    fiberId: string,
+    reason?: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'cancel', { reason });
+  }
+
+  /**
+   * Reject a proposal (did not pass).
+   */
+  async daoReject(
+    privateKey: string,
+    fiberId: string,
+    reason?: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'reject', { reason });
+  }
+
+  /**
+   * Join a threshold DAO.
+   */
+  async daoJoin(
+    privateKey: string,
+    fiberId: string,
+    agentReputation: number
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'join', { agentReputation });
+  }
+
+  /**
+   * Leave a DAO.
+   */
+  async daoLeave(
+    privateKey: string,
+    fiberId: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'leave', {});
+  }
+
+  /**
+   * Add a signer to multisig.
+   */
+  async daoAddSigner(
+    privateKey: string,
+    fiberId: string,
+    newSigner: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'add_signer', { newSigner });
+  }
+
+  /**
+   * Remove a signer from multisig.
+   */
+  async daoRemoveSigner(
+    privateKey: string,
+    fiberId: string,
+    removeSigner: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'remove_signer', { removeSigner });
+  }
+
+  /**
+   * Dissolve a DAO.
+   */
+  async daoDissolve(
+    privateKey: string,
+    fiberId: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'dissolve', {});
+  }
+
+  /**
+   * List all DAOs.
+   */
+  async listDAOs(limit = 100): Promise<{
+    count: number;
+    fibers: Array<{
+      fiberId: string;
+      currentState?: string;
+      stateData?: Record<string, unknown>;
+    }>;
+  }> {
+    return this.listFibers('DAO', limit);
+  }
+
+  // ==========================================================================
+  // Governance Operations
+  // ==========================================================================
+
+  /**
+   * Create a new Governance fiber.
+   */
+  async createGovernance(
+    privateKey: string,
+    initialData: Record<string, unknown>
+  ): Promise<{ fiberId: string; hash: string }> {
+    const definition = {
+      workflowType: 'Governance',
+      name: initialData.name || 'Governance',
+    };
+    return this.createFiber(privateKey, definition, initialData);
+  }
+
+  /**
+   * Add a member to governance.
+   */
+  async govAddMember(
+    privateKey: string,
+    fiberId: string,
+    member: string,
+    role: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'add_member', { member, role });
+  }
+
+  /**
+   * Remove a member from governance.
+   */
+  async govRemoveMember(
+    privateKey: string,
+    fiberId: string,
+    member: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'remove_member', { member });
+  }
+
+  /**
+   * Propose a governance change (rules, parameters, etc.).
+   */
+  async govPropose(
+    privateKey: string,
+    fiberId: string,
+    proposalId: string,
+    type: string,
+    changes: Record<string, unknown>
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'propose', {
+      proposalId,
+      type,
+      changes,
+    });
+  }
+
+  /**
+   * Vote on a governance proposal.
+   */
+  async govVote(
+    privateKey: string,
+    fiberId: string,
+    vote: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'vote', { vote });
+  }
+
+  /**
+   * Finalize a governance vote.
+   */
+  async govFinalize(
+    privateKey: string,
+    fiberId: string,
+    forCount: number
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'finalize', { forCount });
+  }
+
+  /**
+   * Raise a dispute in governance.
+   */
+  async govRaiseDispute(
+    privateKey: string,
+    fiberId: string,
+    disputeId: string,
+    defendant: string,
+    claim: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'raise_dispute', {
+      disputeId,
+      defendant,
+      claim,
+    });
+  }
+
+  /**
+   * Submit evidence for a dispute.
+   */
+  async govSubmitEvidence(
+    privateKey: string,
+    fiberId: string,
+    content: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'submit_evidence', { content });
+  }
+
+  /**
+   * Resolve a dispute.
+   */
+  async govResolve(
+    privateKey: string,
+    fiberId: string,
+    ruling: string,
+    remedy: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'resolve', { ruling, remedy });
+  }
+
+  /**
+   * Dissolve governance.
+   */
+  async govDissolve(
+    privateKey: string,
+    fiberId: string,
+    approvalCount: number
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'dissolve', { approvalCount });
+  }
+
+  /**
+   * List all governance fibers.
+   */
+  async listGovernance(limit = 100): Promise<{
+    count: number;
+    fibers: Array<{
+      fiberId: string;
+      currentState?: string;
+      stateData?: Record<string, unknown>;
+    }>;
+  }> {
+    return this.listFibers('Governance', limit);
+  }
+
+  // ==========================================================================
   // Generic Fiber Operations (for all workflow types)
   // ==========================================================================
 

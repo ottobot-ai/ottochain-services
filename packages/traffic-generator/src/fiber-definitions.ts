@@ -21,7 +21,7 @@ export interface FiberDefinition {
   type: string;
   name: string;
   /** SDK workflowType - determines which UI view shows it */
-  workflowType: 'Contract' | 'AgentIdentity' | 'Custom' | 'Market';
+  workflowType: 'Contract' | 'AgentIdentity' | 'Custom' | 'Market' | 'DAO' | 'Governance';
   roles: string[];  // e.g., ['proposer', 'counterparty'] or ['playerX', 'playerO']
   isVariableParty: boolean;  // true for voting, multi-sig
   /** Contract states from SDK: PROPOSED → ACTIVE → COMPLETED/REJECTED/DISPUTED */
@@ -31,8 +31,10 @@ export interface FiberDefinition {
   transitions: TransitionDef[];
   /** Market type for Market workflows */
   marketType?: 'prediction' | 'auction' | 'crowdfund' | 'group_buy';
+  /** DAO type for DAO workflows */
+  daoType?: 'token' | 'multisig' | 'threshold';
   /** Generate initial stateData for this fiber type */
-  generateStateData: (participants: Map<string, string>, context: FiberContext) => ContractStateData | CustomStateData | MarketStateData;
+  generateStateData: (participants: Map<string, string>, context: FiberContext) => ContractStateData | CustomStateData | MarketStateData | DAOStateData | GovernanceStateData;
 }
 
 export interface FiberContext {
@@ -84,6 +86,79 @@ export interface MarketStateData {
   terms: Record<string, unknown>;
 }
 
+/** DAO fiber stateData */
+export interface DAOStateData {
+  schema: 'DAO';
+  daoType: 'token' | 'multisig' | 'threshold';
+  name: string;
+  creator: string;
+  members: string[];
+  // Token DAO specific
+  balances?: Record<string, number>;
+  delegations?: Record<string, string>;
+  proposalThreshold?: number;
+  votingPeriodMs?: number;
+  timelockMs?: number;
+  quorum?: number;
+  // Multisig specific
+  signers?: string[];
+  threshold?: number;
+  proposalTTLMs?: number;
+  signatures?: Record<string, number>;
+  // Threshold DAO specific
+  memberThreshold?: number;
+  voteThreshold?: number;
+  proposeThreshold?: number;
+  // Common
+  proposal: {
+    id: string;
+    title: string;
+    description: string;
+    actionType: string;
+    payload: Record<string, unknown>;
+    proposer: string;
+    proposedAt: number;
+    deadline?: number;
+  } | null;
+  votes: Record<string, { vote: string; weight?: number; votedAt: number }>;
+  executedProposals: Array<Record<string, unknown>>;
+  status: string;
+  createdAt: number;
+}
+
+/** Governance fiber stateData */
+export interface GovernanceStateData {
+  schema: 'Governance';
+  name: string;
+  creator: string;
+  admins: string[];
+  members: Record<string, { role: string; addedAt: number }>;
+  rules: Record<string, unknown>;
+  votingPeriodMs: number;
+  passingThreshold: number;
+  disputeQuorum: number;
+  proposal: {
+    id: string;
+    type: string;
+    changes: Record<string, unknown>;
+    proposer: string;
+    proposedAt: number;
+    deadline: number;
+  } | null;
+  dispute: {
+    id: string;
+    plaintiff: string;
+    defendant: string;
+    claim: string;
+    filedAt: number;
+    evidence: Array<{ from: string; content: string; at: number }>;
+  } | null;
+  votes: Record<string, { vote?: string; ruling?: string; votedAt: number }>;
+  history: Array<Record<string, unknown>>;
+  status: string;
+  createdAt: number;
+}
+
 /** Sample contract terms generators */
 const SAMPLE_TERMS = {
   escrow: [
@@ -118,6 +193,26 @@ const SAMPLE_TERMS = {
   groupBuy: [
     { product: 'Hardware wallet bulk order', unitPrice: 50, bulkPrice: 35, minUnits: 10 },
     { product: 'Developer tool license', unitPrice: 100, bulkPrice: 70, minUnits: 5 },
+  ],
+  tokenDAO: [
+    { name: 'Protocol Treasury DAO', tokenId: 'OTTO', proposalThreshold: 1000, quorum: 10000, votingPeriodDays: 3 },
+    { name: 'Community Fund DAO', tokenId: 'OTTO', proposalThreshold: 500, quorum: 5000, votingPeriodDays: 5 },
+    { name: 'Development Grants DAO', tokenId: 'DEV', proposalThreshold: 100, quorum: 1000, votingPeriodDays: 7 },
+  ],
+  multisigDAO: [
+    { name: 'Core Team Multisig', requiredSigners: 3, totalSigners: 5, proposalTTLDays: 7 },
+    { name: 'Emergency Response Multisig', requiredSigners: 2, totalSigners: 3, proposalTTLDays: 1 },
+    { name: 'Partnership Multisig', requiredSigners: 4, totalSigners: 7, proposalTTLDays: 14 },
+  ],
+  thresholdDAO: [
+    { name: 'Contributor DAO', memberThreshold: 20, voteThreshold: 30, proposeThreshold: 50, quorum: 3 },
+    { name: 'Expert Council', memberThreshold: 50, voteThreshold: 60, proposeThreshold: 80, quorum: 5 },
+    { name: 'Open Community DAO', memberThreshold: 10, voteThreshold: 15, proposeThreshold: 25, quorum: 10 },
+  ],
+  governance: [
+    { name: 'Project Governance', passingThreshold: 0.5, disputeQuorum: 3, votingPeriodDays: 7 },
+    { name: 'Guild Governance', passingThreshold: 0.6, disputeQuorum: 5, votingPeriodDays: 5 },
+    { name: 'DAO Governance', passingThreshold: 0.67, disputeQuorum: 7, votingPeriodDays: 14 },
   ],
 };
 
@@ -529,6 +624,246 @@ export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
         description: `Bulk purchase: ${terms.product}`,
         threshold: terms.minUnits * terms.unitPrice,
         terms,
+      };
+    },
+  },
+
+  // =========================================================================
+  // DAO Workflows
+  // =========================================================================
+
+  /**
+   * Token DAO - Token-weighted voting governance
+   * creator creates → active → propose → voting → queue/reject → execute/cancel
+   */
+  tokenDAO: {
+    type: 'tokenDAO',
+    name: 'Token DAO',
+    workflowType: 'DAO',
+    daoType: 'token',
+    roles: ['creator', 'member', 'delegate'],
+    isVariableParty: true,
+    states: ['ACTIVE', 'VOTING', 'QUEUED', 'DISSOLVED'],
+    initialState: 'ACTIVE',
+    finalStates: ['DISSOLVED'],
+    transitions: [
+      { from: 'ACTIVE', to: 'VOTING', event: 'propose', actor: 'member' },
+      { from: 'VOTING', to: 'VOTING', event: 'vote', actor: 'member' },
+      { from: 'VOTING', to: 'QUEUED', event: 'queue', actor: 'creator' },
+      { from: 'VOTING', to: 'ACTIVE', event: 'reject', actor: 'creator' },
+      { from: 'QUEUED', to: 'ACTIVE', event: 'execute', actor: 'creator' },
+      { from: 'QUEUED', to: 'ACTIVE', event: 'cancel', actor: 'member' },
+      { from: 'ACTIVE', to: 'ACTIVE', event: 'delegate', actor: 'member' },
+      { from: 'ACTIVE', to: 'DISSOLVED', event: 'dissolve', actor: 'creator' },
+    ],
+    generateStateData: (participants, ctx): DAOStateData => {
+      const terms = randomTerms('tokenDAO');
+      const members = Array.from(participants.entries())
+        .filter(([role]) => role.startsWith('member'))
+        .map(([, addr]) => addr);
+      
+      // Generate random token balances for members
+      const balances: Record<string, number> = {};
+      for (const member of members) {
+        balances[member] = Math.floor(Math.random() * 5000) + 100;
+      }
+      balances[participants.get('creator')!] = terms.proposalThreshold * 2;
+      
+      return {
+        schema: 'DAO',
+        daoType: 'token',
+        name: `${terms.name} #${ctx.fiberId.slice(0, 6)}`,
+        creator: participants.get('creator')!,
+        members: [participants.get('creator')!, ...members],
+        balances,
+        delegations: {},
+        proposalThreshold: terms.proposalThreshold,
+        votingPeriodMs: terms.votingPeriodDays * 24 * 60 * 60 * 1000,
+        timelockMs: 24 * 60 * 60 * 1000, // 1 day
+        quorum: terms.quorum,
+        proposal: null,
+        votes: {},
+        executedProposals: [],
+        status: 'ACTIVE',
+        createdAt: Date.now(),
+      };
+    },
+  },
+
+  /**
+   * Multisig DAO - N-of-M signature threshold governance
+   * creator creates → active → propose → pending → sign → execute/cancel
+   */
+  multisigDAO: {
+    type: 'multisigDAO',
+    name: 'Multisig DAO',
+    workflowType: 'DAO',
+    daoType: 'multisig',
+    roles: ['creator', 'signer'],
+    isVariableParty: true,
+    states: ['ACTIVE', 'PENDING', 'DISSOLVED'],
+    initialState: 'ACTIVE',
+    finalStates: ['DISSOLVED'],
+    transitions: [
+      { from: 'ACTIVE', to: 'PENDING', event: 'propose', actor: 'signer' },
+      { from: 'PENDING', to: 'PENDING', event: 'sign', actor: 'signer' },
+      { from: 'PENDING', to: 'ACTIVE', event: 'execute', actor: 'signer' },
+      { from: 'PENDING', to: 'ACTIVE', event: 'cancel', actor: 'signer' },
+      { from: 'ACTIVE', to: 'ACTIVE', event: 'add_signer', actor: 'creator' },
+      { from: 'ACTIVE', to: 'ACTIVE', event: 'remove_signer', actor: 'creator' },
+      { from: 'ACTIVE', to: 'DISSOLVED', event: 'dissolve', actor: 'creator' },
+    ],
+    generateStateData: (participants, ctx): DAOStateData => {
+      const terms = randomTerms('multisigDAO');
+      const signers = Array.from(participants.entries())
+        .filter(([role]) => role.startsWith('signer'))
+        .map(([, addr]) => addr);
+      signers.unshift(participants.get('creator')!);
+      
+      return {
+        schema: 'DAO',
+        daoType: 'multisig',
+        name: `${terms.name} #${ctx.fiberId.slice(0, 6)}`,
+        creator: participants.get('creator')!,
+        members: signers,
+        signers,
+        threshold: terms.requiredSigners,
+        proposalTTLMs: terms.proposalTTLDays * 24 * 60 * 60 * 1000,
+        signatures: {},
+        proposal: null,
+        votes: {},
+        executedProposals: [],
+        status: 'ACTIVE',
+        createdAt: Date.now(),
+      };
+    },
+  },
+
+  /**
+   * Threshold DAO - Reputation threshold governance
+   * creator creates → active → join/leave → propose → voting → execute/reject
+   */
+  thresholdDAO: {
+    type: 'thresholdDAO',
+    name: 'Threshold DAO',
+    workflowType: 'DAO',
+    daoType: 'threshold',
+    roles: ['creator', 'member'],
+    isVariableParty: true,
+    states: ['ACTIVE', 'VOTING', 'DISSOLVED'],
+    initialState: 'ACTIVE',
+    finalStates: ['DISSOLVED'],
+    transitions: [
+      { from: 'ACTIVE', to: 'ACTIVE', event: 'join', actor: 'member' },
+      { from: 'ACTIVE', to: 'ACTIVE', event: 'leave', actor: 'member' },
+      { from: 'ACTIVE', to: 'VOTING', event: 'propose', actor: 'member' },
+      { from: 'VOTING', to: 'VOTING', event: 'vote', actor: 'member' },
+      { from: 'VOTING', to: 'ACTIVE', event: 'execute', actor: 'creator' },
+      { from: 'VOTING', to: 'ACTIVE', event: 'reject', actor: 'creator' },
+      { from: 'ACTIVE', to: 'DISSOLVED', event: 'dissolve', actor: 'creator' },
+    ],
+    generateStateData: (participants, ctx): DAOStateData => {
+      const terms = randomTerms('thresholdDAO');
+      const members = Array.from(participants.entries())
+        .filter(([role]) => role.startsWith('member'))
+        .map(([, addr]) => addr);
+      members.unshift(participants.get('creator')!);
+      
+      return {
+        schema: 'DAO',
+        daoType: 'threshold',
+        name: `${terms.name} #${ctx.fiberId.slice(0, 6)}`,
+        creator: participants.get('creator')!,
+        members,
+        memberThreshold: terms.memberThreshold,
+        voteThreshold: terms.voteThreshold,
+        proposeThreshold: terms.proposeThreshold,
+        quorum: terms.quorum,
+        votingPeriodMs: 7 * 24 * 60 * 60 * 1000, // 7 days
+        proposal: null,
+        votes: {},
+        executedProposals: [],
+        status: 'ACTIVE',
+        createdAt: Date.now(),
+      };
+    },
+  },
+
+  // =========================================================================
+  // Governance Workflows
+  // =========================================================================
+
+  /**
+   * Simple Governance - Basic org governance with member management and disputes
+   * creator creates → active → add/remove members → propose rules → voting → finalize
+   * Also handles disputes: file → evidence → vote → resolve
+   */
+  simpleGovernance: {
+    type: 'simpleGovernance',
+    name: 'Simple Governance',
+    workflowType: 'Governance',
+    roles: ['creator', 'admin', 'member'],
+    isVariableParty: true,
+    states: ['ACTIVE', 'VOTING', 'DISPUTE', 'DISSOLVED'],
+    initialState: 'ACTIVE',
+    finalStates: ['DISSOLVED'],
+    transitions: [
+      { from: 'ACTIVE', to: 'ACTIVE', event: 'add_member', actor: 'admin' },
+      { from: 'ACTIVE', to: 'ACTIVE', event: 'remove_member', actor: 'admin' },
+      { from: 'ACTIVE', to: 'VOTING', event: 'propose', actor: 'member' },
+      { from: 'VOTING', to: 'VOTING', event: 'vote', actor: 'member' },
+      { from: 'VOTING', to: 'ACTIVE', event: 'finalize', actor: 'admin' },
+      { from: 'ACTIVE', to: 'DISPUTE', event: 'raise_dispute', actor: 'member' },
+      { from: 'DISPUTE', to: 'DISPUTE', event: 'submit_evidence', actor: 'member' },
+      { from: 'DISPUTE', to: 'DISPUTE', event: 'vote', actor: 'member' },
+      { from: 'DISPUTE', to: 'ACTIVE', event: 'resolve', actor: 'admin' },
+      { from: 'ACTIVE', to: 'DISSOLVED', event: 'dissolve', actor: 'creator' },
+    ],
+    generateStateData: (participants, ctx): GovernanceStateData => {
+      const terms = randomTerms('governance');
+      const admins = [participants.get('creator')!];
+      if (participants.has('admin')) {
+        admins.push(participants.get('admin')!);
+      }
+      
+      const members: Record<string, { role: string; addedAt: number }> = {};
+      const now = Date.now();
+      
+      // Add creator as admin
+      members[participants.get('creator')!] = { role: 'admin', addedAt: now };
+      
+      // Add other admins
+      for (const admin of admins.slice(1)) {
+        members[admin] = { role: 'admin', addedAt: now };
+      }
+      
+      // Add regular members
+      for (const [role, addr] of participants.entries()) {
+        if (role.startsWith('member') && !members[addr]) {
+          members[addr] = { role: 'member', addedAt: now };
+        }
+      }
+      
+      return {
+        schema: 'Governance',
+        name: `${terms.name} #${ctx.fiberId.slice(0, 6)}`,
+        creator: participants.get('creator')!,
+        admins,
+        members,
+        rules: {
+          maxMembers: 100,
+          allowDisputes: true,
+          requireVoteForRuleChanges: true,
+        },
+        votingPeriodMs: terms.votingPeriodDays * 24 * 60 * 60 * 1000,
+        passingThreshold: terms.passingThreshold,
+        disputeQuorum: terms.disputeQuorum,
+        proposal: null,
+        dispute: null,
+        votes: {},
+        history: [],
+        status: 'ACTIVE',
+        createdAt: now,
       };
     },
   },

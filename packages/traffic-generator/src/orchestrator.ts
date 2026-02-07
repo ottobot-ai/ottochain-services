@@ -1,5 +1,5 @@
 import { BridgeClient } from './bridge-client.js';
-import { FIBER_DEFINITIONS, type FiberDefinition, type MarketStateData } from './fiber-definitions.js';
+import { FIBER_DEFINITIONS, type FiberDefinition, type MarketStateData, type DAOStateData, type GovernanceStateData } from './fiber-definitions.js';
 import { MARKET_SM_DEFINITION } from './market-workflows.js';
 import { Agent } from './types.js';
 
@@ -224,15 +224,36 @@ export class FiberOrchestrator {
         );
         fiberId = result.fiberId;
         console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${marketData.marketType}, creator: ${proposer.address.slice(0, 10)})`);
+      } else if (def.workflowType === 'DAO') {
+        // Use DAO-specific creation
+        const daoData = stateData as DAOStateData;
+        const result = await this.bridge.createDAO(
+          proposer.privateKey,
+          daoData.daoType,
+          daoData as unknown as Record<string, unknown>
+        );
+        fiberId = result.fiberId;
+        console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${daoData.daoType}, ${daoData.members.length} members)`);
+      } else if (def.workflowType === 'Governance') {
+        // Use Governance-specific creation
+        const govData = stateData as GovernanceStateData;
+        const result = await this.bridge.createGovernance(
+          proposer.privateKey,
+          govData as unknown as Record<string, unknown>
+        );
+        fiberId = result.fiberId;
+        console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${Object.keys(govData.members).length} members)`);
       } else if (def.workflowType === 'Contract' && counterparty) {
         // Use SDK-compliant contract creation
+        const contractData = stateData as Record<string, unknown>;
+        const terms = (contractData.terms as Record<string, unknown>) ?? {};
         const result = await this.bridge.proposeContract(
           proposer.privateKey,
           counterparty.address,
-          stateData.terms as Record<string, unknown> ?? {},
+          terms,
           {
-            title: (stateData as Record<string, unknown>).contractId as string ?? def.name,
-            description: (stateData.terms as Record<string, unknown>)?.description as string ?? def.name,
+            title: (contractData.contractId as string) ?? def.name,
+            description: (terms.description as string) ?? def.name,
           }
         );
         fiberId = result.contractId;
@@ -308,6 +329,10 @@ export class FiberOrchestrator {
     try {
       if (def.workflowType === 'Market') {
         await this.executeMarketTransition(fiber, transition, actorAgent);
+      } else if (def.workflowType === 'DAO') {
+        await this.executeDAOTransition(fiber, transition, actorAgent);
+      } else if (def.workflowType === 'Governance') {
+        await this.executeGovernanceTransition(fiber, transition, actorAgent);
       } else if (def.workflowType === 'Contract') {
         await this.executeContractTransition(fiber, transition, actorAgent);
       } else {
@@ -451,6 +476,225 @@ export class FiberOrchestrator {
         return Math.random() > 0.4 ? 'SUCCESS' : 'FAILED';
       default:
         return 'RESOLVED';
+    }
+  }
+
+  /**
+   * Execute a DAO-specific transition
+   * Handles: propose, vote, execute, delegate, veto, cancel
+   */
+  private async executeDAOTransition(
+    fiber: ActiveFiber,
+    transition: { event: string; actor: string },
+    actor: { address: string; privateKey: string }
+  ): Promise<void> {
+    const daoType = fiber.definition.daoType;
+    
+    switch (transition.event) {
+      case 'propose': {
+        const proposalId = `PROP-${fiber.id.slice(0, 6)}-${Date.now().toString(36)}`;
+        const proposalData = this.generateDAOProposal(fiber);
+        await this.bridge.daoPropose(actor.privateKey, fiber.id, proposalId, proposalData);
+        break;
+      }
+      case 'vote': {
+        const vote = this.generateDAOVote(daoType);
+        const weight = daoType === 'token' ? Math.floor(Math.random() * 1000) + 100 : 1;
+        await this.bridge.daoVote(actor.privateKey, fiber.id, vote, weight);
+        break;
+      }
+      case 'sign': {
+        // Multisig specific - sign pending proposal
+        await this.bridge.daoSign(actor.privateKey, fiber.id);
+        break;
+      }
+      case 'execute': {
+        await this.bridge.daoExecute(actor.privateKey, fiber.id);
+        break;
+      }
+      case 'delegate': {
+        // Pick another member to delegate to
+        const members = Array.from(fiber.participants.values())
+          .filter(p => p.address !== actor.address);
+        if (members.length > 0) {
+          const delegateTo = members[Math.floor(Math.random() * members.length)];
+          await this.bridge.daoDelegate(actor.privateKey, fiber.id, delegateTo.address);
+        }
+        break;
+      }
+      case 'queue': {
+        await this.bridge.daoQueue(actor.privateKey, fiber.id);
+        break;
+      }
+      case 'cancel': {
+        await this.bridge.daoCancel(actor.privateKey, fiber.id, 'Cancelled by proposer');
+        break;
+      }
+      case 'reject': {
+        await this.bridge.daoReject(actor.privateKey, fiber.id, 'Did not reach quorum');
+        break;
+      }
+      case 'join': {
+        const reputation = Math.floor(Math.random() * 80) + 20;
+        await this.bridge.daoJoin(actor.privateKey, fiber.id, reputation);
+        break;
+      }
+      case 'leave': {
+        await this.bridge.daoLeave(actor.privateKey, fiber.id);
+        break;
+      }
+      case 'add_signer': {
+        // Generate new signer address (in reality would be an existing agent)
+        const newSigner = `0x${Math.random().toString(16).slice(2, 42)}`;
+        await this.bridge.daoAddSigner(actor.privateKey, fiber.id, newSigner);
+        break;
+      }
+      case 'remove_signer': {
+        // Would remove a signer, using placeholder
+        await this.bridge.daoRemoveSigner(actor.privateKey, fiber.id, actor.address);
+        break;
+      }
+      case 'dissolve': {
+        await this.bridge.daoDissolve(actor.privateKey, fiber.id);
+        break;
+      }
+      default:
+        // Fallback to generic fiber transition
+        await this.bridge.transitionFiber(actor.privateKey, fiber.id, transition.event, { agent: actor.address });
+    }
+  }
+
+  /**
+   * Execute a Governance-specific transition
+   * Handles: add_member, remove_member, update_rules, raise_dispute, resolve
+   */
+  private async executeGovernanceTransition(
+    fiber: ActiveFiber,
+    transition: { event: string; actor: string },
+    actor: { address: string; privateKey: string }
+  ): Promise<void> {
+    switch (transition.event) {
+      case 'add_member': {
+        const newMember = `0x${Math.random().toString(16).slice(2, 42)}`;
+        const role = Math.random() > 0.8 ? 'admin' : 'member';
+        await this.bridge.govAddMember(actor.privateKey, fiber.id, newMember, role);
+        break;
+      }
+      case 'remove_member': {
+        // Would remove a member, using placeholder
+        const members = Array.from(fiber.participants.values())
+          .filter(p => p.address !== actor.address);
+        if (members.length > 0) {
+          const toRemove = members[Math.floor(Math.random() * members.length)];
+          await this.bridge.govRemoveMember(actor.privateKey, fiber.id, toRemove.address);
+        }
+        break;
+      }
+      case 'propose': {
+        const proposalId = `GOV-${fiber.id.slice(0, 6)}-${Date.now().toString(36)}`;
+        const changes = this.generateGovernanceRuleChange();
+        await this.bridge.govPropose(actor.privateKey, fiber.id, proposalId, 'rule_change', changes);
+        break;
+      }
+      case 'vote': {
+        const vote = Math.random() > 0.3 ? 'for' : (Math.random() > 0.5 ? 'against' : 'abstain');
+        await this.bridge.govVote(actor.privateKey, fiber.id, vote);
+        break;
+      }
+      case 'finalize': {
+        const forCount = Math.floor(Math.random() * 10) + 3;
+        await this.bridge.govFinalize(actor.privateKey, fiber.id, forCount);
+        break;
+      }
+      case 'raise_dispute': {
+        const disputeId = `DISP-${fiber.id.slice(0, 6)}-${Date.now().toString(36)}`;
+        const defendants = Array.from(fiber.participants.values())
+          .filter(p => p.address !== actor.address);
+        if (defendants.length > 0) {
+          const defendant = defendants[Math.floor(Math.random() * defendants.length)];
+          await this.bridge.govRaiseDispute(
+            actor.privateKey,
+            fiber.id,
+            disputeId,
+            defendant.address,
+            'Alleged violation of governance rules'
+          );
+        }
+        break;
+      }
+      case 'submit_evidence': {
+        const content = `Evidence submitted at ${new Date().toISOString()}`;
+        await this.bridge.govSubmitEvidence(actor.privateKey, fiber.id, content);
+        break;
+      }
+      case 'resolve': {
+        const ruling = Math.random() > 0.5 ? 'plaintiff' : 'defendant';
+        const remedy = ruling === 'plaintiff' ? 'Remediation required' : 'Dispute dismissed';
+        await this.bridge.govResolve(actor.privateKey, fiber.id, ruling, remedy);
+        break;
+      }
+      case 'dissolve': {
+        const approvalCount = Math.floor(Math.random() * 5) + 5;
+        await this.bridge.govDissolve(actor.privateKey, fiber.id, approvalCount);
+        break;
+      }
+      default:
+        // Fallback to generic fiber transition
+        await this.bridge.transitionFiber(actor.privateKey, fiber.id, transition.event, { agent: actor.address });
+    }
+  }
+
+  /**
+   * Generate a random DAO proposal based on type
+   */
+  private generateDAOProposal(fiber: ActiveFiber): Record<string, unknown> {
+    const daoType = fiber.definition.daoType;
+    const proposalTypes = daoType === 'multisig' 
+      ? ['transfer', 'upgrade', 'parameter_change']
+      : ['funding', 'governance', 'treasury', 'membership'];
+    
+    const actionType = proposalTypes[Math.floor(Math.random() * proposalTypes.length)];
+    
+    return {
+      title: `${actionType.charAt(0).toUpperCase() + actionType.slice(1)} Proposal`,
+      description: `Proposal for ${actionType} action generated at ${new Date().toISOString()}`,
+      actionType,
+      payload: {
+        amount: Math.floor(Math.random() * 1000) + 100,
+        target: `0x${Math.random().toString(16).slice(2, 42)}`,
+      },
+    };
+  }
+
+  /**
+   * Generate a random DAO vote
+   */
+  private generateDAOVote(daoType?: 'token' | 'multisig' | 'threshold'): string {
+    // Bias towards 'for' votes for simulation flow
+    const rand = Math.random();
+    if (rand < 0.6) return 'for';
+    if (rand < 0.85) return 'against';
+    return 'abstain';
+  }
+
+  /**
+   * Generate random governance rule changes
+   */
+  private generateGovernanceRuleChange(): Record<string, unknown> {
+    const changeTypes = ['maxMembers', 'votingPeriod', 'passingThreshold', 'disputeQuorum'];
+    const changeType = changeTypes[Math.floor(Math.random() * changeTypes.length)];
+    
+    switch (changeType) {
+      case 'maxMembers':
+        return { maxMembers: Math.floor(Math.random() * 100) + 50 };
+      case 'votingPeriod':
+        return { votingPeriodMs: (Math.floor(Math.random() * 7) + 3) * 24 * 60 * 60 * 1000 };
+      case 'passingThreshold':
+        return { passingThreshold: Math.random() * 0.3 + 0.5 }; // 0.5 to 0.8
+      case 'disputeQuorum':
+        return { disputeQuorum: Math.floor(Math.random() * 5) + 3 };
+      default:
+        return {};
     }
   }
 
