@@ -503,7 +503,14 @@ export class Simulator {
     }
     
     const counterparty = selectCounterparty(agent, population);
-    if (!counterparty || !counterparty.fiberId) return;
+    if (!counterparty || !counterparty.fiberId) {
+      if (this.generation % 10 === 0) {
+        console.log(`  [debug] No eligible counterparty for ${agent.meta.displayName} (state=${agent.state}, fid=${agent.fiberId?.slice(0,8)})`);
+      }
+      return;
+    }
+    
+    console.log(`  📝 Proposing contract: ${agent.meta.displayName} -> ${counterparty.meta.displayName}`);
     
     try {
       stats.transactions++;
@@ -514,6 +521,7 @@ export class Simulator {
         { value: Math.floor(Math.random() * 100) + 10 }
       );
       stats.successes++;
+      console.log(`  ✅ Contract proposed: ${result.fiberId}`);
       
       // Track contract
       const contract: Contract = {
@@ -533,6 +541,7 @@ export class Simulator {
       
     } catch (err) {
       stats.failures++;
+      console.log(`  ❌ Contract proposal failed: ${(err as Error).message?.slice(0, 100)}`);
     }
   }
 
