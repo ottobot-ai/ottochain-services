@@ -437,6 +437,69 @@ async function main(): Promise<void> {
     }
   });
   
+  // Sync status endpoint for traffic-gen and fork detection
+  app.get('/api/sync-status', async (_, res) => {
+    try {
+      const health = collector.getHealth();
+      const nodes = health.nodes;
+      const metagraph = health.metagraph;
+      
+      // Group nodes by type and collect ordinals
+      const gl0Nodes = nodes.filter(n => n.type === 'gl0');
+      const ml0Nodes = nodes.filter(n => n.type === 'ml0');
+      const dl1Nodes = nodes.filter(n => n.type === 'dl1');
+      
+      // Get ordinals for each layer
+      const gl0Ordinals = gl0Nodes.map(n => ({ name: n.name, ordinal: n.ordinal, state: n.state }));
+      const ml0Ordinals = ml0Nodes.map(n => ({ name: n.name, ordinal: n.ordinal, state: n.state }));
+      const dl1Ordinals = dl1Nodes.map(n => ({ name: n.name, ordinal: n.ordinal, state: n.state }));
+      
+      // Check for forks (different ordinals on same layer)
+      const gl0OrdinalValues = gl0Ordinals.map(n => n.ordinal).filter(o => o !== undefined);
+      const ml0OrdinalValues = ml0Ordinals.map(n => n.ordinal).filter(o => o !== undefined);
+      
+      const gl0Fork = new Set(gl0OrdinalValues).size > 1;
+      const ml0Fork = new Set(ml0OrdinalValues).size > 1;
+      
+      // Check if all nodes are Ready
+      const allReady = nodes.every(n => n.state === 'Ready');
+      const allHealthy = nodes.every(n => n.status === 'healthy');
+      
+      // Check DL1 lag (difference between ML0 and DL1 ordinals)
+      const ml0Ordinal = metagraph.ml0Ordinal ?? ml0OrdinalValues[0];
+      const dl1Ordinal = metagraph.dl1Ordinal ?? dl1Ordinals[0]?.ordinal;
+      const dl1Lag = (ml0Ordinal && dl1Ordinal) ? ml0Ordinal - dl1Ordinal : undefined;
+      
+      // Ready for traffic = all healthy, no forks, reasonable lag
+      const readyForTraffic = allReady && allHealthy && !gl0Fork && !ml0Fork && (dl1Lag === undefined || dl1Lag < 10);
+      
+      res.json({
+        ready: readyForTraffic,
+        allReady,
+        allHealthy,
+        gl0: {
+          nodes: gl0Ordinals,
+          fork: gl0Fork,
+          ordinal: gl0OrdinalValues[0],
+        },
+        ml0: {
+          nodes: ml0Ordinals,
+          fork: ml0Fork,
+          ordinal: ml0Ordinal,
+        },
+        dl1: {
+          nodes: dl1Ordinals,
+          ordinal: dl1Ordinal,
+          lag: dl1Lag,
+        },
+        timestamp: Date.now(),
+      });
+    } catch (err) {
+      console.error('Sync status error:', err);
+      res.status(500).json({ ready: false, error: String(err) });
+    }
+  });
+  
   // HTTP server
   const server = createServer(app);
   

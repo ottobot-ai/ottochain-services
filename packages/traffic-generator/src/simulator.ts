@@ -70,6 +70,7 @@ export class Simulator {
     this.client = new BridgeClient({
       bridgeUrl: this.config.bridgeUrl,
       ml0Url: this.config.ml0Url,
+      monitorUrl: this.config.monitorUrl,
     });
     
     this.context = {
@@ -359,6 +360,19 @@ export class Simulator {
 
   private async runGeneration(): Promise<void> {
     if (!this.running) return;
+    
+    // Check sync status before sending traffic
+    const syncStatus = await this.client.checkSyncStatus();
+    if (!syncStatus.ready) {
+      const reason = syncStatus.error 
+        ?? (syncStatus.gl0.fork ? 'GL0 fork detected' 
+        : syncStatus.ml0.fork ? 'ML0 fork detected'
+        : !syncStatus.allReady ? 'Nodes not ready'
+        : !syncStatus.allHealthy ? 'Nodes unhealthy'
+        : 'Unknown');
+      console.log(`⏸️  Skipping generation - network not ready: ${reason}`);
+      return;
+    }
     
     this.generation++;
     this.context.generation = this.generation;

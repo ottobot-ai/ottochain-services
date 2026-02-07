@@ -9,7 +9,19 @@ import type { Agent, Contract } from './types.js';
 export interface BridgeConfig {
   bridgeUrl: string;
   ml0Url: string;
+  monitorUrl?: string;
   timeoutMs?: number;
+}
+
+export interface SyncStatus {
+  ready: boolean;
+  allReady: boolean;
+  allHealthy: boolean;
+  gl0: { nodes: Array<{ name: string; ordinal?: number; state?: string }>; fork: boolean; ordinal?: number };
+  ml0: { nodes: Array<{ name: string; ordinal?: number; state?: string }>; fork: boolean; ordinal?: number };
+  dl1: { nodes: Array<{ name: string; ordinal?: number; state?: string }>; ordinal?: number; lag?: number };
+  timestamp: number;
+  error?: string;
 }
 
 export interface WalletResponse {
@@ -56,12 +68,65 @@ export interface ContractState {
 export class BridgeClient {
   private baseUrl: string;
   private ml0Url: string;
+  private monitorUrl: string | null;
   private timeout: number;
 
   constructor(config: BridgeConfig) {
     this.baseUrl = config.bridgeUrl.replace(/\/$/, '');
     this.ml0Url = config.ml0Url.replace(/\/$/, '');
+    this.monitorUrl = config.monitorUrl?.replace(/\/$/, '') ?? null;
     this.timeout = config.timeoutMs ?? 30000;
+  }
+  
+  // ==========================================================================
+  // Sync Status (check before sending traffic)
+  // ==========================================================================
+
+  async checkSyncStatus(): Promise<SyncStatus> {
+    if (!this.monitorUrl) {
+      // No monitor configured, assume ready
+      return { 
+        ready: true, 
+        allReady: true, 
+        allHealthy: true,
+        gl0: { nodes: [], fork: false },
+        ml0: { nodes: [], fork: false },
+        dl1: { nodes: [] },
+        timestamp: Date.now(),
+      };
+    }
+    
+    try {
+      const res = await fetch(`${this.monitorUrl}/api/sync-status`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      
+      if (!res.ok) {
+        return { 
+          ready: false, 
+          allReady: false, 
+          allHealthy: false,
+          gl0: { nodes: [], fork: false },
+          ml0: { nodes: [], fork: false },
+          dl1: { nodes: [] },
+          timestamp: Date.now(),
+          error: `Monitor returned ${res.status}`,
+        };
+      }
+      
+      return await res.json() as SyncStatus;
+    } catch (err) {
+      return { 
+        ready: false, 
+        allReady: false, 
+        allHealthy: false,
+        gl0: { nodes: [], fork: false },
+        ml0: { nodes: [], fork: false },
+        dl1: { nodes: [] },
+        timestamp: Date.now(),
+        error: String(err),
+      };
+    }
   }
 
   // ==========================================================================

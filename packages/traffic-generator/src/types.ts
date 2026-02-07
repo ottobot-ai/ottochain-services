@@ -219,6 +219,8 @@ export interface GeneratorConfig {
   bridgeUrl: string;
   /** ML0 URL for state queries */
   ml0Url: string;
+  /** Monitor URL for sync status checks */
+  monitorUrl?: string;
   /** Platform names for agent distribution */
   platforms: string[];
   /** Seed for reproducible runs (optional) */
