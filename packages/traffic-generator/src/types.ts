@@ -193,6 +193,8 @@ export interface TransitionResult {
 export interface GeneratorConfig {
   /** Target population size */
   targetPopulation: number;
+  /** Path to persisted wallet pool JSON (optional) */
+  walletPoolPath?: string;
   /** Birth rate (new agents per generation) */
   birthRate: number;
   /** Death rate (withdrawals per generation as fraction of population) */
