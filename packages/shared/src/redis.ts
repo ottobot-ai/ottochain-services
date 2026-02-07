@@ -1,10 +1,46 @@
 import Redis from 'ioredis';
 import { getConfig } from './config.js';
 
-const config = getConfig();
+// Lazy-loaded Redis connections - only connect when first accessed
+// This prevents ECONNREFUSED errors for services that don't use Redis
 
-export const publisher = new Redis(config.REDIS_URL);
-export const subscriber = new Redis(config.REDIS_URL);
+let _publisher: Redis | null = null;
+let _subscriber: Redis | null = null;
+
+export function getPublisher(): Redis {
+  if (!_publisher) {
+    const config = getConfig();
+    _publisher = new Redis(config.REDIS_URL);
+    _publisher.on('error', (err) => {
+      console.error('[Redis publisher]', err.message);
+    });
+  }
+  return _publisher;
+}
+
+export function getSubscriber(): Redis {
+  if (!_subscriber) {
+    const config = getConfig();
+    _subscriber = new Redis(config.REDIS_URL);
+    _subscriber.on('error', (err) => {
+      console.error('[Redis subscriber]', err.message);
+    });
+  }
+  return _subscriber;
+}
+
+// Legacy exports for backwards compatibility (lazy via getter)
+export const publisher = new Proxy({} as Redis, {
+  get(_, prop) {
+    return (getPublisher() as any)[prop];
+  }
+});
+
+export const subscriber = new Proxy({} as Redis, {
+  get(_, prop) {
+    return (getSubscriber() as any)[prop];
+  }
+});
 
 // Event channels
 export const CHANNELS = {
@@ -16,5 +52,5 @@ export const CHANNELS = {
 
 // Publish helper
 export async function publishEvent<T>(channel: string, data: T): Promise<void> {
-  await publisher.publish(channel, JSON.stringify(data));
+  await getPublisher().publish(channel, JSON.stringify(data));
 }

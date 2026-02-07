@@ -195,6 +195,12 @@ jobs:
           docker logs ml0-0 2>&1 | tail -50 || true
           exit 1
 
+      - name: Start Redis
+        run: |
+          docker run -d --name redis-ci -p 6379:6379 redis:alpine
+          sleep 2
+          docker exec redis-ci redis-cli ping
+
       - name: Setup webhook proxy
         run: |
           # ML0 container can't reach localhost directly, so we run a socat proxy
@@ -235,12 +241,6 @@ jobs:
           HOST_IP: ${{ env.PROXY_IP }}
         run: npx tsx scripts/test-webhook.ts
 
-      - name: Start Redis for bridge
-        run: |
-          docker run -d --name redis-ci -p 6379:6379 redis:alpine
-          sleep 2
-          docker exec redis-ci redis-cli ping
-
       - name: Start bridge
         env:
           DATABASE_URL: postgresql://ottochain:ottochain@localhost:5432/ottochain_identity
@@ -257,6 +257,9 @@ jobs:
         env:
           BRIDGE_URL: http://localhost:3030
           ML0_URL: http://localhost:9200
+          FIBER_WAIT_TIMEOUT: '60'
+          DL1_SYNC_WAIT: '15'
+          ACTIVATION_WAIT: '10'
         run: npx tsx packages/traffic-generator/test/integration.test.ts
 
       - name: Collect logs on failure
