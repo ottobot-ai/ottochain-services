@@ -98,6 +98,20 @@ export async function getStateMachine(fiberId: string): Promise<unknown> {
 }
 
 /**
+ * Get a specific script fiber by ID
+ */
+export async function getScriptFiber(scriptId: string): Promise<unknown> {
+  return queryState(`/scripts/${scriptId}`);
+}
+
+/**
+ * Get all scripts
+ */
+export async function getScripts(): Promise<Record<string, unknown>> {
+  return queryState('/scripts') as Promise<Record<string, unknown>>;
+}
+
+/**
  * Get all state machines, optionally filtered by status
  */
 export async function getStateMachines(status?: string): Promise<Record<string, unknown>> {
