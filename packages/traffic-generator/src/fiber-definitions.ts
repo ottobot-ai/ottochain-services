@@ -132,6 +132,54 @@ function futureDeadline(days: number): string {
   return d.toISOString();
 }
 
+/**
+ * Safely get a participant address, throwing descriptive error if missing.
+ * Prefer this over raw `participants.get(role)!` for better debugging.
+ */
+function getParticipant(participants: Map<string, string>, role: string): string {
+  const addr = participants.get(role);
+  if (!addr) {
+    throw new Error(`Missing participant for role '${role}'. Available: [${Array.from(participants.keys()).join(', ')}]`);
+  }
+  return addr;
+}
+
+/** Market states shared across all market types */
+export const MARKET_STATES = ['PROPOSED', 'OPEN', 'CLOSED', 'RESOLVING', 'SETTLED', 'REFUNDED', 'CANCELLED'];
+export const MARKET_FINAL_STATES = ['SETTLED', 'REFUNDED', 'CANCELLED'];
+export const MARKET_ROLES: string[] = ['creator', 'oracle', 'participant'];
+
+/**
+ * Base market transitions shared by all market types.
+ * Individual markets may add extra transitions (e.g., multi-oracle, claimable).
+ */
+const BASE_MARKET_TRANSITIONS: TransitionDef[] = [
+  { from: 'PROPOSED', to: 'OPEN', event: 'open', actor: 'creator' },
+  { from: 'PROPOSED', to: 'CANCELLED', event: 'cancel', actor: 'creator' },
+  { from: 'OPEN', to: 'OPEN', event: 'commit', actor: 'participant' },
+  { from: 'OPEN', to: 'CLOSED', event: 'close', actor: 'creator' },
+  { from: 'CLOSED', to: 'RESOLVING', event: 'submit_resolution', actor: 'oracle' },
+  { from: 'CLOSED', to: 'REFUNDED', event: 'refund', actor: 'creator' },
+  { from: 'RESOLVING', to: 'SETTLED', event: 'finalize', actor: 'creator' },
+  { from: 'RESOLVING', to: 'REFUNDED', event: 'refund', actor: 'creator' },
+];
+
+/** Multi-oracle markets allow repeated resolution submissions */
+const MULTI_ORACLE_TRANSITION: TransitionDef = { from: 'RESOLVING', to: 'RESOLVING', event: 'submit_resolution', actor: 'oracle' };
+
+/** Claimable markets allow participants to claim after settlement */
+const CLAIM_TRANSITION: TransitionDef = { from: 'SETTLED', to: 'SETTLED', event: 'claim', actor: 'participant' };
+
+/** Prediction/auction markets: multi-oracle + claimable */
+export const CLAIMABLE_MARKET_TRANSITIONS: TransitionDef[] = [
+  ...BASE_MARKET_TRANSITIONS,
+  MULTI_ORACLE_TRANSITION,
+  CLAIM_TRANSITION,
+];
+
+/** Crowdfund/group-buy markets: no claims (funds go to creator) */
+export const FUNDING_MARKET_TRANSITIONS: TransitionDef[] = BASE_MARKET_TRANSITIONS;
+
 export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
   /**
    * Simple Escrow - 2-party contract
@@ -157,8 +205,8 @@ export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
       const terms = randomTerms('escrow');
       return {
         contractId: `ESC-${ctx.fiberId.slice(0, 8)}`,
-        proposer: participants.get('proposer')!,
-        counterparty: participants.get('counterparty')!,
+        proposer: getParticipant(participants, 'proposer'),
+        counterparty: getParticipant(participants, 'counterparty'),
         state: 'PROPOSED',
         terms: {
           ...terms,
@@ -193,9 +241,9 @@ export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
       const terms = randomTerms('escrow');
       return {
         contractId: `ARB-${ctx.fiberId.slice(0, 8)}`,
-        proposer: participants.get('proposer')!,
-        counterparty: participants.get('counterparty')!,
-        arbiter: participants.get('arbiter')!,
+        proposer: getParticipant(participants, 'proposer'),
+        counterparty: getParticipant(participants, 'counterparty'),
+        arbiter: getParticipant(participants, 'arbiter'),
         state: 'PROPOSED',
         terms: {
           ...terms,
@@ -229,8 +277,8 @@ export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
       const terms = randomTerms('order');
       return {
         contractId: `ORD-${ctx.fiberId.slice(0, 8)}`,
-        proposer: participants.get('proposer')!,
-        counterparty: participants.get('counterparty')!,
+        proposer: getParticipant(participants, 'proposer'),
+        counterparty: getParticipant(participants, 'counterparty'),
         state: 'PROPOSED',
         terms: {
           ...terms,
@@ -264,8 +312,8 @@ export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
     ],
     generateStateData: (participants, ctx) => ({
       gameId: `TTT-${ctx.fiberId.slice(0, 8)}`,
-      playerX: participants.get('playerX')!,
-      playerO: participants.get('playerO')!,
+      playerX: getParticipant(participants, 'playerX'),
+      playerO: getParticipant(participants, 'playerO'),
       board: [null, null, null, null, null, null, null, null, null],
       moveCount: 0,
       wager: randomTerms('game').value,
@@ -294,7 +342,7 @@ export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
     ],
     generateStateData: (participants, ctx) => ({
       voteId: `VOTE-${ctx.fiberId.slice(0, 8)}`,
-      proposer: participants.get('proposer')!,
+      proposer: getParticipant(participants, 'proposer'),
       voters: Array.from(participants.entries())
         .filter(([role]) => role.startsWith('voter'))
         .map(([, addr]) => addr),
@@ -328,14 +376,14 @@ export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
     ],
     generateStateData: (participants, ctx) => ({
       contractId: `APR-${ctx.fiberId.slice(0, 8)}`,
-      proposer: participants.get('proposer')!,
-      counterparty: participants.get('approver1')!, // First approver as counterparty for UI
+      proposer: getParticipant(participants, 'proposer'),
+      counterparty: getParticipant(participants, 'approver1'), // First approver as counterparty for UI
       state: 'DRAFT',
       terms: {
         description: 'Multi-level approval request',
         approvalChain: [
-          participants.get('approver1')!,
-          participants.get('approver2')!,
+          getParticipant(participants, 'approver1'),
+          getParticipant(participants, 'approver2'),
         ],
       },
       proposedAt: new Date().toISOString(),
@@ -355,30 +403,19 @@ export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
     name: 'Prediction Market',
     workflowType: 'Market',
     marketType: 'prediction',
-    roles: ['creator', 'oracle', 'participant'],
+    roles: MARKET_ROLES,
     isVariableParty: true,
-    states: ['PROPOSED', 'OPEN', 'CLOSED', 'RESOLVING', 'SETTLED', 'REFUNDED', 'CANCELLED'],
+    states: MARKET_STATES,
     initialState: 'PROPOSED',
-    finalStates: ['SETTLED', 'REFUNDED', 'CANCELLED'],
-    transitions: [
-      { from: 'PROPOSED', to: 'OPEN', event: 'open', actor: 'creator' },
-      { from: 'PROPOSED', to: 'CANCELLED', event: 'cancel', actor: 'creator' },
-      { from: 'OPEN', to: 'OPEN', event: 'commit', actor: 'participant' },
-      { from: 'OPEN', to: 'CLOSED', event: 'close', actor: 'creator' },
-      { from: 'CLOSED', to: 'RESOLVING', event: 'submit_resolution', actor: 'oracle' },
-      { from: 'CLOSED', to: 'REFUNDED', event: 'refund', actor: 'creator' },
-      { from: 'RESOLVING', to: 'RESOLVING', event: 'submit_resolution', actor: 'oracle' },
-      { from: 'RESOLVING', to: 'SETTLED', event: 'finalize', actor: 'creator' },
-      { from: 'RESOLVING', to: 'REFUNDED', event: 'refund', actor: 'creator' },
-      { from: 'SETTLED', to: 'SETTLED', event: 'claim', actor: 'participant' },
-    ],
+    finalStates: MARKET_FINAL_STATES,
+    transitions: CLAIMABLE_MARKET_TRANSITIONS,
     generateStateData: (participants, ctx): MarketStateData => {
       const terms = randomTerms('prediction');
       return {
         schema: 'Market',
         marketType: 'prediction',
-        creator: participants.get('creator')!,
-        oracles: [participants.get('oracle')!],
+        creator: getParticipant(participants, 'creator'),
+        oracles: [getParticipant(participants, 'oracle')],
         quorum: 1,
         deadline: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
         commitments: {},
@@ -403,29 +440,19 @@ export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
     name: 'Auction',
     workflowType: 'Market',
     marketType: 'auction',
-    roles: ['creator', 'oracle', 'participant'],
+    roles: MARKET_ROLES,
     isVariableParty: true,
-    states: ['PROPOSED', 'OPEN', 'CLOSED', 'RESOLVING', 'SETTLED', 'REFUNDED', 'CANCELLED'],
+    states: MARKET_STATES,
     initialState: 'PROPOSED',
-    finalStates: ['SETTLED', 'REFUNDED', 'CANCELLED'],
-    transitions: [
-      { from: 'PROPOSED', to: 'OPEN', event: 'open', actor: 'creator' },
-      { from: 'PROPOSED', to: 'CANCELLED', event: 'cancel', actor: 'creator' },
-      { from: 'OPEN', to: 'OPEN', event: 'commit', actor: 'participant' },
-      { from: 'OPEN', to: 'CLOSED', event: 'close', actor: 'creator' },
-      { from: 'CLOSED', to: 'RESOLVING', event: 'submit_resolution', actor: 'oracle' },
-      { from: 'CLOSED', to: 'REFUNDED', event: 'refund', actor: 'creator' },
-      { from: 'RESOLVING', to: 'SETTLED', event: 'finalize', actor: 'creator' },
-      { from: 'RESOLVING', to: 'REFUNDED', event: 'refund', actor: 'creator' },
-      { from: 'SETTLED', to: 'SETTLED', event: 'claim', actor: 'participant' },
-    ],
+    finalStates: MARKET_FINAL_STATES,
+    transitions: CLAIMABLE_MARKET_TRANSITIONS,
     generateStateData: (participants, ctx): MarketStateData => {
       const terms = randomTerms('auction');
       return {
         schema: 'Market',
         marketType: 'auction',
-        creator: participants.get('creator')!,
-        oracles: [participants.get('oracle')!],
+        creator: getParticipant(participants, 'creator'),
+        oracles: [getParticipant(participants, 'oracle')],
         quorum: 1,
         deadline: Date.now() + 3 * 24 * 60 * 60 * 1000, // 3 days
         commitments: {},
@@ -450,28 +477,19 @@ export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
     name: 'Crowdfunding',
     workflowType: 'Market',
     marketType: 'crowdfund',
-    roles: ['creator', 'oracle', 'participant'],
+    roles: MARKET_ROLES,
     isVariableParty: true,
-    states: ['PROPOSED', 'OPEN', 'CLOSED', 'RESOLVING', 'SETTLED', 'REFUNDED', 'CANCELLED'],
+    states: MARKET_STATES,
     initialState: 'PROPOSED',
-    finalStates: ['SETTLED', 'REFUNDED', 'CANCELLED'],
-    transitions: [
-      { from: 'PROPOSED', to: 'OPEN', event: 'open', actor: 'creator' },
-      { from: 'PROPOSED', to: 'CANCELLED', event: 'cancel', actor: 'creator' },
-      { from: 'OPEN', to: 'OPEN', event: 'commit', actor: 'participant' },
-      { from: 'OPEN', to: 'CLOSED', event: 'close', actor: 'creator' },
-      { from: 'CLOSED', to: 'RESOLVING', event: 'submit_resolution', actor: 'oracle' },
-      { from: 'CLOSED', to: 'REFUNDED', event: 'refund', actor: 'creator' },
-      { from: 'RESOLVING', to: 'SETTLED', event: 'finalize', actor: 'creator' },
-      { from: 'RESOLVING', to: 'REFUNDED', event: 'refund', actor: 'creator' },
-    ],
+    finalStates: MARKET_FINAL_STATES,
+    transitions: FUNDING_MARKET_TRANSITIONS,
     generateStateData: (participants, ctx): MarketStateData => {
       const terms = randomTerms('crowdfund');
       return {
         schema: 'Market',
         marketType: 'crowdfund',
-        creator: participants.get('creator')!,
-        oracles: [participants.get('oracle')!],
+        creator: getParticipant(participants, 'creator'),
+        oracles: [getParticipant(participants, 'oracle')],
         quorum: 1,
         deadline: Date.now() + 14 * 24 * 60 * 60 * 1000, // 14 days
         commitments: {},
@@ -496,28 +514,19 @@ export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
     name: 'Group Buy',
     workflowType: 'Market',
     marketType: 'group_buy',
-    roles: ['creator', 'oracle', 'participant'],
+    roles: MARKET_ROLES,
     isVariableParty: true,
-    states: ['PROPOSED', 'OPEN', 'CLOSED', 'RESOLVING', 'SETTLED', 'REFUNDED', 'CANCELLED'],
+    states: MARKET_STATES,
     initialState: 'PROPOSED',
-    finalStates: ['SETTLED', 'REFUNDED', 'CANCELLED'],
-    transitions: [
-      { from: 'PROPOSED', to: 'OPEN', event: 'open', actor: 'creator' },
-      { from: 'PROPOSED', to: 'CANCELLED', event: 'cancel', actor: 'creator' },
-      { from: 'OPEN', to: 'OPEN', event: 'commit', actor: 'participant' },
-      { from: 'OPEN', to: 'CLOSED', event: 'close', actor: 'creator' },
-      { from: 'CLOSED', to: 'RESOLVING', event: 'submit_resolution', actor: 'oracle' },
-      { from: 'CLOSED', to: 'REFUNDED', event: 'refund', actor: 'creator' },
-      { from: 'RESOLVING', to: 'SETTLED', event: 'finalize', actor: 'creator' },
-      { from: 'RESOLVING', to: 'REFUNDED', event: 'refund', actor: 'creator' },
-    ],
+    finalStates: MARKET_FINAL_STATES,
+    transitions: FUNDING_MARKET_TRANSITIONS,
     generateStateData: (participants, ctx): MarketStateData => {
       const terms = randomTerms('groupBuy');
       return {
         schema: 'Market',
         marketType: 'group_buy',
-        creator: participants.get('creator')!,
-        oracles: [participants.get('oracle')!],
+        creator: getParticipant(participants, 'creator'),
+        oracles: [getParticipant(participants, 'oracle')],
         quorum: 1,
         deadline: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
         commitments: {},

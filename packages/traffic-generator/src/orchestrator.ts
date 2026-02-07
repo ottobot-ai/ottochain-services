@@ -217,10 +217,12 @@ export class FiberOrchestrator {
       if (def.workflowType === 'Market') {
         // Use Market-specific creation
         const marketData = stateData as MarketStateData;
+        // Convert MarketStateData to plain object for bridge API
+        const marketDataRecord: Record<string, unknown> = { ...marketData };
         const result = await this.bridge.createMarket(
           proposer.privateKey,
           MARKET_SM_DEFINITION,
-          marketData as unknown as Record<string, unknown>
+          marketDataRecord
         );
         fiberId = result.fiberId;
         console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${marketData.marketType}, creator: ${proposer.address.slice(0, 10)})`);
@@ -406,6 +408,8 @@ export class FiberOrchestrator {
         await this.bridge.refundMarket(actor.privateKey, fiber.id, 'Threshold not met');
         break;
       case 'claim': {
+        // Random claim amount for traffic generation testing only.
+        // In production, claim amounts would be calculated from actual commitments and outcomes.
         const claimAmount = Math.floor(Math.random() * 100) + 10;
         await this.bridge.claimFromMarket(actor.privateKey, fiber.id, claimAmount);
         break;
