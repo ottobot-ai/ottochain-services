@@ -387,9 +387,12 @@ export class StatsCollector {
 // Singleton instance
 let collector: StatsCollector | null = null;
 
-export function getStatsCollector(prisma: PrismaClient): StatsCollector {
+export function getStatsCollector(
+  prisma: PrismaClient, 
+  options?: Partial<Omit<StatsCollectorOptions, 'prisma'>>
+): StatsCollector {
   if (!collector) {
-    collector = new StatsCollector({ prisma });
+    collector = new StatsCollector({ prisma, ...options });
   }
   return collector;
 }

@@ -238,7 +238,7 @@ export const resolvers = {
         try {
           const res = await fetch(`${ML0_URL}/snapshots/latest/ordinal`, { signal: AbortSignal.timeout(2000) });
           if (!res.ok) return 0;
-          const data = await res.json();
+          const data = await res.json() as { value?: number };
           return data?.value ?? 0;
         } catch {
           return 0;

@@ -9,8 +9,8 @@ import { processSnapshot } from './processor.js';
 import { startConfirmationPoller, stopConfirmationPoller, getConfirmationStats } from './confirmations.js';
 import { startSnapshotPoller, stopSnapshotPoller, getPollerStats } from './poller.js';
 
-// Stats collector for time-series metrics
-const statsCollector = getStatsCollector(prisma);
+// Stats collector - initialized in server.listen with config
+let statsCollector: ReturnType<typeof getStatsCollector> | null = null;
 
 const app = express();
 app.use(express.json());
@@ -141,7 +141,7 @@ process.on('SIGTERM', () => {
   console.log('Received SIGTERM, shutting down...');
   stopSnapshotPoller();
   stopConfirmationPoller();
-  statsCollector.stop();
+  statsCollector?.stop();
   process.exit(0);
 });
 
@@ -149,7 +149,7 @@ process.on('SIGINT', () => {
   console.log('Received SIGINT, shutting down...');
   stopSnapshotPoller();
   stopConfirmationPoller();
-  statsCollector.stop();
+  statsCollector?.stop();
   process.exit(0);
 });
 
@@ -204,7 +204,9 @@ app.listen(port, '0.0.0.0', async () => {
   // Start stats collector for time-series metrics (trend calculations)
   const statsCollectInterval = parseInt(process.env.STATS_COLLECT_INTERVAL || '300000'); // 5 min
   const statsAggregateInterval = parseInt(process.env.STATS_AGGREGATE_INTERVAL || '900000'); // 15 min
-  statsCollector.options.collectIntervalMs = statsCollectInterval;
-  statsCollector.options.aggregateIntervalMs = statsAggregateInterval;
+  statsCollector = getStatsCollector(prisma, {
+    collectIntervalMs: statsCollectInterval,
+    aggregateIntervalMs: statsAggregateInterval
+  });
   statsCollector.start();
 });
