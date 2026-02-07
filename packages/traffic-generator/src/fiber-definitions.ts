@@ -21,7 +21,7 @@ export interface FiberDefinition {
   type: string;
   name: string;
   /** SDK workflowType - determines which UI view shows it */
-  workflowType: 'Contract' | 'AgentIdentity' | 'Custom';
+  workflowType: 'Contract' | 'AgentIdentity' | 'Custom' | 'Market';
   roles: string[];  // e.g., ['proposer', 'counterparty'] or ['playerX', 'playerO']
   isVariableParty: boolean;  // true for voting, multi-sig
   /** Contract states from SDK: PROPOSED → ACTIVE → COMPLETED/REJECTED/DISPUTED */
@@ -29,8 +29,10 @@ export interface FiberDefinition {
   initialState: string;
   finalStates: string[];
   transitions: TransitionDef[];
+  /** Market type for Market workflows */
+  marketType?: 'prediction' | 'auction' | 'crowdfund' | 'group_buy';
   /** Generate initial stateData for this fiber type */
-  generateStateData: (participants: Map<string, string>, context: FiberContext) => ContractStateData | CustomStateData;
+  generateStateData: (participants: Map<string, string>, context: FiberContext) => ContractStateData | CustomStateData | MarketStateData;
 }
 
 export interface FiberContext {
@@ -63,6 +65,25 @@ export interface CustomStateData {
   [key: string]: unknown;
 }
 
+/** Market fiber stateData */
+export interface MarketStateData {
+  schema: 'Market';
+  marketType: 'prediction' | 'auction' | 'crowdfund' | 'group_buy';
+  creator: string;
+  oracles: string[];
+  quorum: number;
+  deadline: number | null;
+  commitments: Record<string, { amount: number; data: Record<string, unknown> }>;
+  totalCommitted: number;
+  resolutions: Array<{ oracle: string; outcome: string | number }>;
+  claims: Record<string, number>;
+  status: string;
+  title: string;
+  description: string;
+  threshold: number | null;
+  terms: Record<string, unknown>;
+}
+
 /** Sample contract terms generators */
 const SAMPLE_TERMS = {
   escrow: [
@@ -80,9 +101,27 @@ const SAMPLE_TERMS = {
   game: [
     { description: 'Tic-Tac-Toe match', value: 10, currency: 'OTTO', wager: true },
   ],
+  prediction: [
+    { question: 'Will ETH hit $5000 by end of month?', outcomes: ['YES', 'NO'], feePercent: 2 },
+    { question: 'Will project X ship by deadline?', outcomes: ['YES', 'NO'], feePercent: 2 },
+    { question: 'Will token Y get listed on major exchange?', outcomes: ['YES', 'NO'], feePercent: 3 },
+  ],
+  auction: [
+    { item: 'Rare digital collectible #1', reservePrice: 50, buyNowPrice: 200 },
+    { item: 'Premium domain name', reservePrice: 100, buyNowPrice: 500 },
+    { item: 'Limited edition artwork', reservePrice: 75, buyNowPrice: 300 },
+  ],
+  crowdfund: [
+    { goal: 500, rewards: [{ tier: 'supporter', minAmount: 10 }, { tier: 'backer', minAmount: 50 }], allOrNothing: true },
+    { goal: 1000, rewards: [{ tier: 'bronze', minAmount: 25 }, { tier: 'silver', minAmount: 100 }, { tier: 'gold', minAmount: 250 }], allOrNothing: true },
+  ],
+  groupBuy: [
+    { product: 'Hardware wallet bulk order', unitPrice: 50, bulkPrice: 35, minUnits: 10 },
+    { product: 'Developer tool license', unitPrice: 100, bulkPrice: 70, minUnits: 5 },
+  ],
 };
 
-function randomTerms(category: keyof typeof SAMPLE_TERMS): typeof SAMPLE_TERMS.escrow[0] {
+function randomTerms<K extends keyof typeof SAMPLE_TERMS>(category: K): (typeof SAMPLE_TERMS)[K][number] {
   const options = SAMPLE_TERMS[category];
   return options[Math.floor(Math.random() * options.length)];
 }
@@ -301,5 +340,196 @@ export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
       },
       proposedAt: new Date().toISOString(),
     }),
+  },
+
+  // =========================================================================
+  // Market Workflows
+  // =========================================================================
+
+  /**
+   * Prediction Market - Multi-party betting on outcomes
+   * creator proposes → opens → participants commit → closes → oracle resolves → finalize/claim
+   */
+  predictionMarket: {
+    type: 'predictionMarket',
+    name: 'Prediction Market',
+    workflowType: 'Market',
+    marketType: 'prediction',
+    roles: ['creator', 'oracle', 'participant'],
+    isVariableParty: true,
+    states: ['PROPOSED', 'OPEN', 'CLOSED', 'RESOLVING', 'SETTLED', 'REFUNDED', 'CANCELLED'],
+    initialState: 'PROPOSED',
+    finalStates: ['SETTLED', 'REFUNDED', 'CANCELLED'],
+    transitions: [
+      { from: 'PROPOSED', to: 'OPEN', event: 'open', actor: 'creator' },
+      { from: 'PROPOSED', to: 'CANCELLED', event: 'cancel', actor: 'creator' },
+      { from: 'OPEN', to: 'OPEN', event: 'commit', actor: 'participant' },
+      { from: 'OPEN', to: 'CLOSED', event: 'close', actor: 'creator' },
+      { from: 'CLOSED', to: 'RESOLVING', event: 'submit_resolution', actor: 'oracle' },
+      { from: 'CLOSED', to: 'REFUNDED', event: 'refund', actor: 'creator' },
+      { from: 'RESOLVING', to: 'RESOLVING', event: 'submit_resolution', actor: 'oracle' },
+      { from: 'RESOLVING', to: 'SETTLED', event: 'finalize', actor: 'creator' },
+      { from: 'RESOLVING', to: 'REFUNDED', event: 'refund', actor: 'creator' },
+      { from: 'SETTLED', to: 'SETTLED', event: 'claim', actor: 'participant' },
+    ],
+    generateStateData: (participants, ctx): MarketStateData => {
+      const terms = randomTerms('prediction');
+      return {
+        schema: 'Market',
+        marketType: 'prediction',
+        creator: participants.get('creator')!,
+        oracles: [participants.get('oracle')!],
+        quorum: 1,
+        deadline: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
+        commitments: {},
+        totalCommitted: 0,
+        resolutions: [],
+        claims: {},
+        status: 'PROPOSED',
+        title: `Prediction #${ctx.fiberId.slice(0, 8)}`,
+        description: terms.question,
+        threshold: null,
+        terms,
+      };
+    },
+  },
+
+  /**
+   * Auction - Competitive bidding for items
+   * creator proposes → opens → bidders commit → closes → determine winner → settle
+   */
+  auctionMarket: {
+    type: 'auctionMarket',
+    name: 'Auction',
+    workflowType: 'Market',
+    marketType: 'auction',
+    roles: ['creator', 'oracle', 'participant'],
+    isVariableParty: true,
+    states: ['PROPOSED', 'OPEN', 'CLOSED', 'RESOLVING', 'SETTLED', 'REFUNDED', 'CANCELLED'],
+    initialState: 'PROPOSED',
+    finalStates: ['SETTLED', 'REFUNDED', 'CANCELLED'],
+    transitions: [
+      { from: 'PROPOSED', to: 'OPEN', event: 'open', actor: 'creator' },
+      { from: 'PROPOSED', to: 'CANCELLED', event: 'cancel', actor: 'creator' },
+      { from: 'OPEN', to: 'OPEN', event: 'commit', actor: 'participant' },
+      { from: 'OPEN', to: 'CLOSED', event: 'close', actor: 'creator' },
+      { from: 'CLOSED', to: 'RESOLVING', event: 'submit_resolution', actor: 'oracle' },
+      { from: 'CLOSED', to: 'REFUNDED', event: 'refund', actor: 'creator' },
+      { from: 'RESOLVING', to: 'SETTLED', event: 'finalize', actor: 'creator' },
+      { from: 'RESOLVING', to: 'REFUNDED', event: 'refund', actor: 'creator' },
+      { from: 'SETTLED', to: 'SETTLED', event: 'claim', actor: 'participant' },
+    ],
+    generateStateData: (participants, ctx): MarketStateData => {
+      const terms = randomTerms('auction');
+      return {
+        schema: 'Market',
+        marketType: 'auction',
+        creator: participants.get('creator')!,
+        oracles: [participants.get('oracle')!],
+        quorum: 1,
+        deadline: Date.now() + 3 * 24 * 60 * 60 * 1000, // 3 days
+        commitments: {},
+        totalCommitted: 0,
+        resolutions: [],
+        claims: {},
+        status: 'PROPOSED',
+        title: `Auction #${ctx.fiberId.slice(0, 8)}`,
+        description: `Bidding on: ${terms.item}`,
+        threshold: terms.reservePrice,
+        terms,
+      };
+    },
+  },
+
+  /**
+   * Crowdfunding - Collective funding with threshold
+   * creator proposes → opens → backers pledge → closes → check threshold → settle or refund
+   */
+  crowdfundMarket: {
+    type: 'crowdfundMarket',
+    name: 'Crowdfunding',
+    workflowType: 'Market',
+    marketType: 'crowdfund',
+    roles: ['creator', 'oracle', 'participant'],
+    isVariableParty: true,
+    states: ['PROPOSED', 'OPEN', 'CLOSED', 'RESOLVING', 'SETTLED', 'REFUNDED', 'CANCELLED'],
+    initialState: 'PROPOSED',
+    finalStates: ['SETTLED', 'REFUNDED', 'CANCELLED'],
+    transitions: [
+      { from: 'PROPOSED', to: 'OPEN', event: 'open', actor: 'creator' },
+      { from: 'PROPOSED', to: 'CANCELLED', event: 'cancel', actor: 'creator' },
+      { from: 'OPEN', to: 'OPEN', event: 'commit', actor: 'participant' },
+      { from: 'OPEN', to: 'CLOSED', event: 'close', actor: 'creator' },
+      { from: 'CLOSED', to: 'RESOLVING', event: 'submit_resolution', actor: 'oracle' },
+      { from: 'CLOSED', to: 'REFUNDED', event: 'refund', actor: 'creator' },
+      { from: 'RESOLVING', to: 'SETTLED', event: 'finalize', actor: 'creator' },
+      { from: 'RESOLVING', to: 'REFUNDED', event: 'refund', actor: 'creator' },
+    ],
+    generateStateData: (participants, ctx): MarketStateData => {
+      const terms = randomTerms('crowdfund');
+      return {
+        schema: 'Market',
+        marketType: 'crowdfund',
+        creator: participants.get('creator')!,
+        oracles: [participants.get('oracle')!],
+        quorum: 1,
+        deadline: Date.now() + 14 * 24 * 60 * 60 * 1000, // 14 days
+        commitments: {},
+        totalCommitted: 0,
+        resolutions: [],
+        claims: {},
+        status: 'PROPOSED',
+        title: `Crowdfund #${ctx.fiberId.slice(0, 8)}`,
+        description: `Funding goal: ${terms.goal} OTTO`,
+        threshold: terms.goal,
+        terms,
+      };
+    },
+  },
+
+  /**
+   * Group Buy - Collective purchasing for bulk discounts
+   * creator proposes → opens → buyers order → closes → check min units → settle or refund
+   */
+  groupBuyMarket: {
+    type: 'groupBuyMarket',
+    name: 'Group Buy',
+    workflowType: 'Market',
+    marketType: 'group_buy',
+    roles: ['creator', 'oracle', 'participant'],
+    isVariableParty: true,
+    states: ['PROPOSED', 'OPEN', 'CLOSED', 'RESOLVING', 'SETTLED', 'REFUNDED', 'CANCELLED'],
+    initialState: 'PROPOSED',
+    finalStates: ['SETTLED', 'REFUNDED', 'CANCELLED'],
+    transitions: [
+      { from: 'PROPOSED', to: 'OPEN', event: 'open', actor: 'creator' },
+      { from: 'PROPOSED', to: 'CANCELLED', event: 'cancel', actor: 'creator' },
+      { from: 'OPEN', to: 'OPEN', event: 'commit', actor: 'participant' },
+      { from: 'OPEN', to: 'CLOSED', event: 'close', actor: 'creator' },
+      { from: 'CLOSED', to: 'RESOLVING', event: 'submit_resolution', actor: 'oracle' },
+      { from: 'CLOSED', to: 'REFUNDED', event: 'refund', actor: 'creator' },
+      { from: 'RESOLVING', to: 'SETTLED', event: 'finalize', actor: 'creator' },
+      { from: 'RESOLVING', to: 'REFUNDED', event: 'refund', actor: 'creator' },
+    ],
+    generateStateData: (participants, ctx): MarketStateData => {
+      const terms = randomTerms('groupBuy');
+      return {
+        schema: 'Market',
+        marketType: 'group_buy',
+        creator: participants.get('creator')!,
+        oracles: [participants.get('oracle')!],
+        quorum: 1,
+        deadline: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
+        commitments: {},
+        totalCommitted: 0,
+        resolutions: [],
+        claims: {},
+        status: 'PROPOSED',
+        title: `Group Buy #${ctx.fiberId.slice(0, 8)}`,
+        description: `Bulk purchase: ${terms.product}`,
+        threshold: terms.minUnits * terms.unitPrice,
+        terms,
+      };
+    },
   },
 };
