@@ -1,5 +1,6 @@
 import { BridgeClient } from './bridge-client.js';
-import { FIBER_DEFINITIONS, type FiberDefinition } from './fiber-definitions.js';
+import { FIBER_DEFINITIONS, type FiberDefinition, type MarketStateData } from './fiber-definitions.js';
+import { MARKET_SM_DEFINITION } from './market-workflows.js';
 import { Agent } from './types.js';
 
 export interface TrafficConfig {
@@ -213,7 +214,19 @@ export class FiberOrchestrator {
     try {
       let fiberId: string;
       
-      if (def.workflowType === 'Contract' && counterparty) {
+      if (def.workflowType === 'Market') {
+        // Use Market-specific creation
+        const marketData = stateData as MarketStateData;
+        // Convert MarketStateData to plain object for bridge API
+        const marketDataRecord: Record<string, unknown> = { ...marketData };
+        const result = await this.bridge.createMarket(
+          proposer.privateKey,
+          MARKET_SM_DEFINITION,
+          marketDataRecord
+        );
+        fiberId = result.fiberId;
+        console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${marketData.marketType}, creator: ${proposer.address.slice(0, 10)})`);
+      } else if (def.workflowType === 'Contract' && counterparty) {
         // Use SDK-compliant contract creation
         const result = await this.bridge.proposeContract(
           proposer.privateKey,
@@ -295,7 +308,9 @@ export class FiberOrchestrator {
     
     // Execute the transition using appropriate bridge method
     try {
-      if (def.workflowType === 'Contract') {
+      if (def.workflowType === 'Market') {
+        await this.executeMarketTransition(fiber, transition, actorAgent);
+      } else if (def.workflowType === 'Contract') {
         await this.executeContractTransition(fiber, transition, actorAgent);
       } else {
         // Generic fiber transition
@@ -349,6 +364,97 @@ export class FiberOrchestrator {
       default:
         // Fallback to generic transition
         await this.bridge.transitionContract(actor.privateKey, fiber.id, transition.event, { agent: actor.address });
+    }
+  }
+
+  /**
+   * Execute a market-specific transition using bridge market methods
+   */
+  private async executeMarketTransition(
+    fiber: ActiveFiber,
+    transition: { event: string; actor: string },
+    actor: { address: string; privateKey: string }
+  ): Promise<void> {
+    switch (transition.event) {
+      case 'open':
+        await this.bridge.openMarket(actor.privateKey, fiber.id);
+        break;
+      case 'cancel':
+        await this.bridge.cancelMarket(actor.privateKey, fiber.id, 'Cancelled by creator');
+        break;
+      case 'commit': {
+        // Generate a random commitment amount based on market type
+        const amount = Math.floor(Math.random() * 50) + 10;
+        const data = this.generateCommitData(fiber);
+        await this.bridge.commitToMarket(actor.privateKey, fiber.id, amount, data);
+        break;
+      }
+      case 'close':
+        await this.bridge.closeMarket(actor.privateKey, fiber.id);
+        break;
+      case 'submit_resolution': {
+        // Generate outcome based on market type
+        const outcome = this.generateResolutionOutcome(fiber);
+        await this.bridge.submitResolution(actor.privateKey, fiber.id, outcome, `proof-${Date.now().toString(36)}`);
+        break;
+      }
+      case 'finalize': {
+        // Use resolved outcome or generate one
+        const finalOutcome = this.generateResolutionOutcome(fiber);
+        await this.bridge.finalizeMarket(actor.privateKey, fiber.id, finalOutcome, { finalizedAt: Date.now() });
+        break;
+      }
+      case 'refund':
+        await this.bridge.refundMarket(actor.privateKey, fiber.id, 'Threshold not met');
+        break;
+      case 'claim': {
+        // Random claim amount for traffic generation testing only.
+        // In production, claim amounts would be calculated from actual commitments and outcomes.
+        const claimAmount = Math.floor(Math.random() * 100) + 10;
+        await this.bridge.claimFromMarket(actor.privateKey, fiber.id, claimAmount);
+        break;
+      }
+      default:
+        // Fallback to generic fiber transition
+        await this.bridge.transitionFiber(actor.privateKey, fiber.id, transition.event, { agent: actor.address });
+    }
+  }
+
+  /**
+   * Generate commit data based on market type
+   */
+  private generateCommitData(fiber: ActiveFiber): Record<string, unknown> {
+    const marketType = fiber.definition.marketType;
+    switch (marketType) {
+      case 'prediction':
+        return { prediction: Math.random() > 0.5 ? 'YES' : 'NO' };
+      case 'auction':
+        return { bidType: 'standard' };
+      case 'crowdfund':
+        return { tier: Math.random() > 0.5 ? 'backer' : 'supporter' };
+      case 'group_buy':
+        return { units: Math.floor(Math.random() * 3) + 1 };
+      default:
+        return {};
+    }
+  }
+
+  /**
+   * Generate resolution outcome based on market type
+   */
+  private generateResolutionOutcome(fiber: ActiveFiber): string {
+    const marketType = fiber.definition.marketType;
+    switch (marketType) {
+      case 'prediction':
+        return Math.random() > 0.5 ? 'YES' : 'NO';
+      case 'auction':
+        // Would normally pick highest bidder, use placeholder
+        return 'WINNER_DETERMINED';
+      case 'crowdfund':
+      case 'group_buy':
+        return Math.random() > 0.4 ? 'SUCCESS' : 'FAILED';
+      default:
+        return 'RESOLVED';
     }
   }
 
