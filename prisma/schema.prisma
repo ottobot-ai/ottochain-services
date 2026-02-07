@@ -114,8 +114,10 @@ model Fiber {
   stateData       Json
   definition      Json     // full state machine definition
   sequenceNumber  Int      @default(0)
-  createdOrdinal  BigInt
-  updatedOrdinal  BigInt
+  createdOrdinal  BigInt            // ML0 ordinal when created
+  updatedOrdinal  BigInt            // ML0 ordinal when last updated
+  createdGl0Ordinal BigInt?         // GL0 ordinal when creation confirmed
+  updatedGl0Ordinal BigInt?         // GL0 ordinal when last update confirmed
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -139,7 +141,8 @@ model FiberTransition {
   success         Boolean  @default(true)
   gasUsed         Int      @default(0)
   payload         Json?
-  snapshotOrdinal BigInt
+  snapshotOrdinal BigInt            // ML0 ordinal
+  gl0Ordinal      BigInt?           // GL0 ordinal when confirmed
   createdAt       DateTime @default(now())
   fiber           Fiber    @relation(fields: [fiberId], references: [fiberId], onDelete: Cascade)
 

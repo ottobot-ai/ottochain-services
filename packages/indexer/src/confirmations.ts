@@ -84,13 +84,32 @@ async function checkConfirmations(): Promise<void> {
     }
     
     if (pending) {
+      const gl0OrdinalBigInt = BigInt(gl0Ordinal);
+      
+      // Update the indexed snapshot
       await prisma.indexedSnapshot.update({
         where: { ordinal: pending.ordinal },
         data: {
           status: 'CONFIRMED',
-          gl0Ordinal: BigInt(gl0Ordinal),
+          gl0Ordinal: gl0OrdinalBigInt,
           confirmedAt: new Date(),
         }
+      });
+      
+      // Backfill gl0Ordinal on fibers created/updated in this snapshot
+      await prisma.fiber.updateMany({
+        where: { createdOrdinal: pending.ordinal, createdGl0Ordinal: null },
+        data: { createdGl0Ordinal: gl0OrdinalBigInt }
+      });
+      await prisma.fiber.updateMany({
+        where: { updatedOrdinal: pending.ordinal, updatedGl0Ordinal: null },
+        data: { updatedGl0Ordinal: gl0OrdinalBigInt }
+      });
+      
+      // Backfill gl0Ordinal on fiber transitions in this snapshot
+      await prisma.fiberTransition.updateMany({
+        where: { snapshotOrdinal: pending.ordinal, gl0Ordinal: null },
+        data: { gl0Ordinal: gl0OrdinalBigInt }
       });
       
       console.log(`✅ Confirmed ML0 snapshot ${pending.ordinal} in GL0 ordinal ${gl0Ordinal} (hash: ${confirmedHash.slice(0, 12)}...)`);
