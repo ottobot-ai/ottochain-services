@@ -2,12 +2,25 @@
 
 import { z } from 'zod';
 
+// Custom Redis URL validator (redis:// URLs may not pass standard URL validation)
+const redisUrl = z.string().refine(
+  (val) => {
+    try {
+      const url = new URL(val);
+      return url.protocol === 'redis:' || url.protocol === 'rediss:';
+    } catch {
+      return false;
+    }
+  },
+  { message: 'Invalid Redis URL (expected redis:// or rediss://)' }
+);
+
 const ConfigSchema = z.object({
   // Database
   DATABASE_URL: z.string().url(),
 
   // Redis
-  REDIS_URL: z.string().url().default('redis://localhost:6379'),
+  REDIS_URL: redisUrl.default('redis://localhost:6379'),
   
   // Global L0 (for confirmation checking)
   GL0_URL: z.string().url().optional(),
@@ -45,4 +58,14 @@ export function getConfig(): Config {
 
 export function isProduction(): boolean {
   return getConfig().NODE_ENV === 'production';
+}
+
+/** Parse Redis URL into ioredis connection options */
+export function getRedisOptions(): { host: string; port: number; tls?: object } {
+  const url = new URL(getConfig().REDIS_URL);
+  return {
+    host: url.hostname,
+    port: url.port ? parseInt(url.port, 10) : 6379,
+    ...(url.protocol === 'rediss:' && { tls: {} }),
+  };
 }
