@@ -71,13 +71,24 @@ pnpm dev
 ### Using Docker Compose
 
 ```bash
-# Start everything (Postgres + all services)
-docker-compose up -d
+# Start services (Gateway, Bridge, Indexer + Redis/Postgres)
+make up
 
-# View logs
-docker-compose logs -f gateway
-docker-compose logs -f indexer
+# Or manually:
+docker compose -f compose.base.yml -f compose.services.yml up -d
+
+# With traffic generator for testing
+make traffic
 ```
+
+| File | Purpose |
+|------|---------|
+| `compose.base.yml` | Infrastructure (Redis, Postgres) |
+| `compose.services.yml` | App services (Gateway, Bridge, Indexer) |
+| `compose.traffic.yml` | Traffic generator (testing) |
+
+For monitoring, see [ottochain-monitoring](https://github.com/ottobot-ai/ottochain-monitoring).
+For full orchestration, see [ottochain-deploy](https://github.com/ottobot-ai/ottochain-deploy).
 
 ### Environment Variables
 

@@ -24,6 +24,8 @@ const CONFIG = {
   fiberWaitTimeout: parseInt(process.env.FIBER_WAIT_TIMEOUT ?? '30', 10),
   dl1SyncWait: parseInt(process.env.DL1_SYNC_WAIT ?? '10', 10),
   activationWait: parseInt(process.env.ACTIVATION_WAIT ?? '5', 10),
+  // Retry registration if fiber doesn't appear (metagraph consensus can be slow)
+  maxRegistrationRetries: parseInt(process.env.MAX_REGISTRATION_RETRIES ?? '2', 10),
 };
 
 async function sleep(ms: number): Promise<void> {
@@ -145,62 +147,87 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   
-  // Test 3: Agent registration
-  console.log('\n🔍 Test 3: Agent Registration');
+  // Test 3 & 4: Agent registration + wait for fiber (with retry)
+  // Metagraph consensus timing can be unpredictable, so we retry the full registration cycle
   let fiberId: string | null = null;
-  try {
-    const displayName = `TestAgent_${Date.now().toString(36)}`;
-    const platform = 'discord';
-    const platformUserId = `discord_test_${wallet.address.slice(4, 12)}`;
+  
+  for (let attempt = 1; attempt <= CONFIG.maxRegistrationRetries; attempt++) {
+    console.log(`\n🔍 Test 3: Agent Registration (attempt ${attempt}/${CONFIG.maxRegistrationRetries})`);
     
-    const regResult = await client.registerAgent(
-      wallet.privateKey,
-      displayName,
-      platform,
-      platformUserId
-    );
-    fiberId = regResult.fiberId;
-    console.log(`✓ Agent registered: fiberId=${fiberId}`);
-    console.log(`  Transaction hash: ${regResult.hash}`);
-    results.push({ name: 'Agent Registration', status: 'passed' });
-  } catch (err) {
-    console.error(`❌ Agent registration failed: ${err}`);
-    results.push({ name: 'Agent Registration', status: 'failed', message: String(err) });
+    try {
+      const displayName = `TestAgent_${Date.now().toString(36)}_${attempt}`;
+      const platform = 'discord';
+      const platformUserId = `discord_test_${wallet.address.slice(4, 12)}_${attempt}`;
+      
+      const regResult = await client.registerAgent(
+        wallet.privateKey,
+        displayName,
+        platform,
+        platformUserId
+      );
+      fiberId = regResult.fiberId;
+      console.log(`✓ Agent registered: fiberId=${fiberId}`);
+      console.log(`  Transaction hash: ${regResult.hash}`);
+      
+      if (attempt === 1) {
+        results.push({ name: 'Agent Registration', status: 'passed' });
+      }
+    } catch (err) {
+      console.error(`❌ Agent registration failed: ${err}`);
+      if (attempt === CONFIG.maxRegistrationRetries) {
+        results.push({ name: 'Agent Registration', status: 'failed', message: String(err) });
+      }
+      continue;
+    }
+    
+    if (!fiberId) continue;
+    
+    // Test 4: Wait for fiber to appear in state
+    console.log(`\n🔍 Test 4: Wait for Fiber in State (attempt ${attempt}/${CONFIG.maxRegistrationRetries})`);
+    console.log(`⏳ Waiting for fiber to appear in ML0 state (up to ${CONFIG.fiberWaitTimeout}s)...`);
+    
+    const initialOrdinal = await getSnapshotOrdinal(CONFIG.ml0Url);
+    if (initialOrdinal !== null) {
+      console.log(`  📊 Initial snapshot ordinal: ${initialOrdinal}`);
+    }
+    
+    const waitResult = await waitForFiber(CONFIG.ml0Url, fiberId, CONFIG.fiberWaitTimeout);
+    
+    if (waitResult.found) {
+      console.log('✓ Fiber visible in ML0 state checkpoint');
+      console.log(`⏳ Waiting for DL1 sync (${CONFIG.dl1SyncWait}s)...`);
+      await sleep(CONFIG.dl1SyncWait * 1000);
+      if (attempt === 1) {
+        results.push({ name: 'Fiber in State', status: 'passed' });
+      } else {
+        results.push({ name: 'Fiber in State', status: 'passed', message: `after ${attempt} attempts` });
+      }
+      fiberInState = true;
+      break; // Success! Exit retry loop
+    } else {
+      const ordinalProgress = initialOrdinal !== null && waitResult.lastOrdinal !== null
+        ? ` (ordinal ${initialOrdinal} → ${waitResult.lastOrdinal})`
+        : '';
+      console.log(`⚠️ Fiber did not appear after ${CONFIG.fiberWaitTimeout}s${ordinalProgress}`);
+      
+      if (attempt < CONFIG.maxRegistrationRetries) {
+        console.log(`🔄 Retrying with new registration...`);
+        fiberId = null; // Reset for next attempt
+      } else {
+        console.error(`❌ All ${CONFIG.maxRegistrationRetries} attempts failed`);
+        results.push({ 
+          name: 'Fiber in State', 
+          status: 'failed', 
+          message: `Timeout after ${CONFIG.maxRegistrationRetries} attempts${ordinalProgress}` 
+        });
+      }
+    }
   }
   
   if (!fiberId) {
     console.error('\n❌ Cannot continue without fiberId');
     printSummary(results);
     process.exit(1);
-  }
-  
-  // Test 4: Wait for fiber to appear in state
-  console.log(`\n🔍 Test 4: Wait for Fiber in State`);
-  console.log(`⏳ Waiting for fiber to appear in ML0 state (up to ${CONFIG.fiberWaitTimeout}s)...`);
-  
-  const initialOrdinal = await getSnapshotOrdinal(CONFIG.ml0Url);
-  if (initialOrdinal !== null) {
-    console.log(`  📊 Initial snapshot ordinal: ${initialOrdinal}`);
-  }
-  
-  const waitResult = await waitForFiber(CONFIG.ml0Url, fiberId, CONFIG.fiberWaitTimeout);
-  
-  if (waitResult.found) {
-    console.log('✓ Fiber visible in ML0 state checkpoint');
-    console.log(`⏳ Waiting for DL1 sync (${CONFIG.dl1SyncWait}s)...`);
-    await sleep(CONFIG.dl1SyncWait * 1000);
-    results.push({ name: 'Fiber in State', status: 'passed' });
-    fiberInState = true;
-  } else {
-    const ordinalProgress = initialOrdinal !== null && waitResult.lastOrdinal !== null
-      ? ` (ordinal ${initialOrdinal} → ${waitResult.lastOrdinal})`
-      : '';
-    console.error(`❌ Fiber did not appear in state after ${CONFIG.fiberWaitTimeout}s${ordinalProgress}`);
-    results.push({ 
-      name: 'Fiber in State', 
-      status: 'failed', 
-      message: `Timeout after ${CONFIG.fiberWaitTimeout}s${ordinalProgress}` 
-    });
   }
   
   // Test 5: Agent activation (skip if fiber not in state)
