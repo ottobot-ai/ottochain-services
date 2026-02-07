@@ -1,5 +1,5 @@
 import { BridgeClient } from './bridge-client.js';
-import { FIBER_DEFINITIONS, type FiberDefinition, type MarketStateData, type DAOStateData, type GovernanceStateData } from './fiber-definitions.js';
+import { FIBER_DEFINITIONS, type FiberDefinition, type MarketStateData, type DAOStateData, type GovernanceStateData, type CorporateEntityStateData, type CorporateBoardStateData, type CorporateShareholdersStateData, type CorporateSecuritiesStateData } from './fiber-definitions.js';
 import { MARKET_SM_DEFINITION } from './market-workflows.js';
 import { Agent } from './types.js';
 
@@ -243,6 +243,42 @@ export class FiberOrchestrator {
         );
         fiberId = result.fiberId;
         console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${Object.keys(govData.members).length} members)`);
+      } else if (def.workflowType === 'CorporateEntity') {
+        // Use Corporate Entity-specific creation
+        const entityData = stateData as CorporateEntityStateData;
+        const result = await this.bridge.createCorporateEntity(
+          proposer.privateKey,
+          entityData as unknown as Record<string, unknown>
+        );
+        fiberId = result.fiberId;
+        console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${entityData.legalName}, ${entityData.entityType})`);
+      } else if (def.workflowType === 'CorporateBoard') {
+        // Use Corporate Board-specific creation
+        const boardData = stateData as CorporateBoardStateData;
+        const result = await this.bridge.createCorporateBoard(
+          proposer.privateKey,
+          boardData as unknown as Record<string, unknown>
+        );
+        fiberId = result.fiberId;
+        console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${boardData.directors.length} directors, ${boardData.seats.authorized} seats)`);
+      } else if (def.workflowType === 'CorporateShareholders') {
+        // Use Corporate Shareholders-specific creation
+        const shareholdersData = stateData as CorporateShareholdersStateData;
+        const result = await this.bridge.createCorporateShareholders(
+          proposer.privateKey,
+          shareholdersData as unknown as Record<string, unknown>
+        );
+        fiberId = result.fiberId;
+        console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${shareholdersData.meetingType}, ${shareholdersData.eligibleVoters.length} voters)`);
+      } else if (def.workflowType === 'CorporateSecurities') {
+        // Use Corporate Securities-specific creation
+        const securitiesData = stateData as CorporateSecuritiesStateData;
+        const result = await this.bridge.createCorporateSecurities(
+          proposer.privateKey,
+          securitiesData as unknown as Record<string, unknown>
+        );
+        fiberId = result.fiberId;
+        console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${securitiesData.shareClassName}, ${securitiesData.shareCount} shares)`);
       } else if (def.workflowType === 'Contract' && counterparty) {
         // Use SDK-compliant contract creation
         const contractData = stateData as Record<string, unknown>;
@@ -335,6 +371,14 @@ export class FiberOrchestrator {
         await this.executeGovernanceTransition(fiber, transition, actorAgent);
       } else if (def.workflowType === 'Contract') {
         await this.executeContractTransition(fiber, transition, actorAgent);
+      } else if (def.workflowType === 'CorporateEntity') {
+        await this.executeCorporateEntityTransition(fiber, transition, actorAgent);
+      } else if (def.workflowType === 'CorporateBoard') {
+        await this.executeCorporateBoardTransition(fiber, transition, actorAgent);
+      } else if (def.workflowType === 'CorporateShareholders') {
+        await this.executeCorporateShareholdersTransition(fiber, transition, actorAgent);
+      } else if (def.workflowType === 'CorporateSecurities') {
+        await this.executeCorporateSecuritiesTransition(fiber, transition, actorAgent);
       } else {
         // Generic fiber transition
         await this.bridge.transitionFiber(
@@ -696,6 +740,372 @@ export class FiberOrchestrator {
       default:
         return {};
     }
+  }
+
+  // =========================================================================
+  // Corporate Governance Transition Executors
+  // =========================================================================
+
+  /**
+   * Execute a Corporate Entity transition
+   * Handles: incorporate, create_class, issue_shares, transfer_shares
+   */
+  private async executeCorporateEntityTransition(
+    fiber: ActiveFiber,
+    transition: { event: string; actor: string },
+    actor: { address: string; privateKey: string }
+  ): Promise<void> {
+    switch (transition.event) {
+      case 'incorporate': {
+        const stateFileNumber = `FILE-${Date.now().toString(36).toUpperCase()}`;
+        await this.bridge.corpEntityIncorporate(
+          actor.privateKey,
+          fiber.id,
+          new Date().toISOString().split('T')[0],
+          stateFileNumber
+        );
+        break;
+      }
+      case 'create_class': {
+        const classData = this.generateShareClass();
+        await this.bridge.corpEntityCreateClass(actor.privateKey, fiber.id, classData);
+        break;
+      }
+      case 'issue_shares': {
+        const shares = Math.floor(Math.random() * 10000) + 1000;
+        const holderId = `HOLDER-${Math.random().toString(36).slice(2, 10)}`;
+        await this.bridge.corpEntityIssueShares(
+          actor.privateKey,
+          fiber.id,
+          'COMMON',
+          shares,
+          holderId,
+          Math.random() * 10 + 0.01
+        );
+        break;
+      }
+      case 'transfer_shares': {
+        const shares = Math.floor(Math.random() * 1000) + 100;
+        const fromHolder = `HOLDER-${Math.random().toString(36).slice(2, 10)}`;
+        const toHolder = `HOLDER-${Math.random().toString(36).slice(2, 10)}`;
+        await this.bridge.corpEntityTransferShares(
+          actor.privateKey,
+          fiber.id,
+          'COMMON',
+          shares,
+          fromHolder,
+          toHolder
+        );
+        break;
+      }
+      case 'amend_charter': {
+        const amendmentId = `AMEND-${Date.now().toString(36)}`;
+        await this.bridge.corpEntityAmendCharter(
+          actor.privateKey,
+          fiber.id,
+          amendmentId,
+          'Charter amendment for share authorization increase'
+        );
+        break;
+      }
+      case 'suspend': {
+        await this.bridge.corpEntitySuspend(
+          actor.privateKey,
+          fiber.id,
+          'FRANCHISE_TAX_DELINQUENT'
+        );
+        break;
+      }
+      case 'reinstate': {
+        await this.bridge.corpEntityReinstate(actor.privateKey, fiber.id);
+        break;
+      }
+      case 'dissolve_voluntary':
+      case 'dissolve_administrative': {
+        await this.bridge.corpEntityDissolve(actor.privateKey, fiber.id, transition.event === 'dissolve_voluntary' ? 'VOLUNTARY' : 'ADMINISTRATIVE');
+        break;
+      }
+      default:
+        await this.bridge.transitionFiber(actor.privateKey, fiber.id, transition.event, { agent: actor.address });
+    }
+  }
+
+  /**
+   * Execute a Corporate Board transition
+   * Handles: elect_director, call_meeting, pass_resolution, written_consent
+   */
+  private async executeCorporateBoardTransition(
+    fiber: ActiveFiber,
+    transition: { event: string; actor: string },
+    actor: { address: string; privateKey: string }
+  ): Promise<void> {
+    switch (transition.event) {
+      case 'elect_director': {
+        const directorId = `DIR-${Math.random().toString(36).slice(2, 10)}`;
+        const directorName = `Director ${directorId.slice(4)}`;
+        const termYears = Math.floor(Math.random() * 3) + 1;
+        await this.bridge.corpBoardElectDirector(
+          actor.privateKey,
+          fiber.id,
+          directorId,
+          directorName,
+          termYears,
+          Math.random() > 0.5
+        );
+        break;
+      }
+      case 'resign_director': {
+        // Get a random director to resign
+        const directorId = `DIR-${actor.address.slice(2, 10)}`;
+        await this.bridge.corpBoardResignDirector(actor.privateKey, fiber.id, directorId);
+        break;
+      }
+      case 'call_meeting': {
+        const meetingId = `MTG-${Date.now().toString(36)}`;
+        const meetingType = Math.random() > 0.7 ? 'SPECIAL' : 'REGULAR';
+        const scheduledDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+        await this.bridge.corpBoardCallMeeting(
+          actor.privateKey,
+          fiber.id,
+          meetingId,
+          meetingType as 'REGULAR' | 'SPECIAL' | 'ANNUAL',
+          scheduledDate
+        );
+        break;
+      }
+      case 'open_meeting': {
+        await this.bridge.corpBoardOpenMeeting(actor.privateKey, fiber.id);
+        break;
+      }
+      case 'pass_resolution': {
+        const resolutionId = `RES-${Date.now().toString(36)}`;
+        const resolutionTypes = ['STOCK_ISSUANCE', 'OFFICER_APPOINTMENT', 'CONTRACT_APPROVAL', 'DIVIDEND_DECLARATION'];
+        const resolutionType = resolutionTypes[Math.floor(Math.random() * resolutionTypes.length)];
+        await this.bridge.corpBoardPassResolution(
+          actor.privateKey,
+          fiber.id,
+          resolutionId,
+          resolutionType,
+          `Resolution for ${resolutionType.toLowerCase().replace('_', ' ')}`
+        );
+        break;
+      }
+      case 'written_consent': {
+        const consentId = `CONSENT-${Date.now().toString(36)}`;
+        await this.bridge.corpBoardWrittenConsent(
+          actor.privateKey,
+          fiber.id,
+          consentId,
+          'Unanimous written consent action'
+        );
+        break;
+      }
+      case 'adjourn': {
+        await this.bridge.corpBoardAdjourn(actor.privateKey, fiber.id);
+        break;
+      }
+      default:
+        await this.bridge.transitionFiber(actor.privateKey, fiber.id, transition.event, { agent: actor.address });
+    }
+  }
+
+  /**
+   * Execute a Corporate Shareholders transition
+   * Handles: schedule_meeting, cast_vote, grant_proxy, close_voting
+   */
+  private async executeCorporateShareholdersTransition(
+    fiber: ActiveFiber,
+    transition: { event: string; actor: string },
+    actor: { address: string; privateKey: string }
+  ): Promise<void> {
+    switch (transition.event) {
+      case 'set_record_date': {
+        const recordDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        await this.bridge.corpShareholdersSetRecordDate(actor.privateKey, fiber.id, recordDate);
+        break;
+      }
+      case 'register_shareholders': {
+        const shareholders = this.generateShareholders(Math.floor(Math.random() * 10) + 3);
+        await this.bridge.corpShareholdersRegister(actor.privateKey, fiber.id, shareholders);
+        break;
+      }
+      case 'open_proxy_period': {
+        await this.bridge.corpShareholdersOpenProxy(actor.privateKey, fiber.id);
+        break;
+      }
+      case 'grant_proxy': {
+        const proxyHolderId = `PROXY-${Math.random().toString(36).slice(2, 10)}`;
+        await this.bridge.corpShareholdersGrantProxy(
+          actor.privateKey,
+          fiber.id,
+          actor.address,
+          proxyHolderId
+        );
+        break;
+      }
+      case 'schedule_meeting':
+      case 'open_polls': {
+        await this.bridge.corpShareholdersOpenPolls(actor.privateKey, fiber.id);
+        break;
+      }
+      case 'cast_vote': {
+        const voteId = `VOTE-${Date.now().toString(36)}`;
+        const agendaItemId = 'ITEM-001'; // Vote on first agenda item
+        const votes = Math.floor(Math.random() * 10000) + 1000;
+        const voteType = Math.random() > 0.3 ? 'for' : (Math.random() > 0.5 ? 'against' : 'abstain');
+        await this.bridge.corpShareholdersCastVote(
+          actor.privateKey,
+          fiber.id,
+          voteId,
+          agendaItemId,
+          voteType,
+          votes
+        );
+        break;
+      }
+      case 'close_voting': {
+        await this.bridge.corpShareholdersClosePolls(actor.privateKey, fiber.id);
+        break;
+      }
+      case 'certify_results': {
+        await this.bridge.corpShareholdersCertify(actor.privateKey, fiber.id);
+        break;
+      }
+      case 'adjourn_without_action': {
+        await this.bridge.corpShareholdersAdjourn(actor.privateKey, fiber.id, 'Quorum not achieved');
+        break;
+      }
+      default:
+        await this.bridge.transitionFiber(actor.privateKey, fiber.id, transition.event, { agent: actor.address });
+    }
+  }
+
+  /**
+   * Execute a Corporate Securities transition
+   * Handles: authorize_shares, issue_shares, transfer, declare_dividend
+   */
+  private async executeCorporateSecuritiesTransition(
+    fiber: ActiveFiber,
+    transition: { event: string; actor: string },
+    actor: { address: string; privateKey: string }
+  ): Promise<void> {
+    switch (transition.event) {
+      case 'authorize_shares': {
+        const shares = Math.floor(Math.random() * 1000000) + 100000;
+        await this.bridge.corpSecuritiesAuthorize(
+          actor.privateKey,
+          fiber.id,
+          shares
+        );
+        break;
+      }
+      case 'issue_shares': {
+        const holderId = `HOLDER-${Math.random().toString(36).slice(2, 10)}`;
+        const holderName = `Holder ${holderId.slice(7)}`;
+        const shares = Math.floor(Math.random() * 10000) + 1000;
+        const price = Math.random() * 10 + 0.01;
+        await this.bridge.corpSecuritiesIssue(
+          actor.privateKey,
+          fiber.id,
+          holderId,
+          holderName,
+          shares,
+          price
+        );
+        break;
+      }
+      case 'transfer': {
+        const toHolderId = `HOLDER-${Math.random().toString(36).slice(2, 10)}`;
+        const toHolderName = `Holder ${toHolderId.slice(7)}`;
+        await this.bridge.corpSecuritiesTransfer(
+          actor.privateKey,
+          fiber.id,
+          toHolderId,
+          toHolderName,
+          Math.random() * 5 + 0.5
+        );
+        break;
+      }
+      case 'complete_transfer': {
+        await this.bridge.corpSecuritiesCompleteTransfer(actor.privateKey, fiber.id);
+        break;
+      }
+      case 'repurchase': {
+        const price = Math.random() * 10 + 1;
+        await this.bridge.corpSecuritiesRepurchase(actor.privateKey, fiber.id, price);
+        break;
+      }
+      case 'stock_split': {
+        const ratio = `${Math.floor(Math.random() * 3) + 2}:1`;
+        await this.bridge.corpSecuritiesSplit(actor.privateKey, fiber.id, ratio);
+        break;
+      }
+      case 'declare_dividend': {
+        const dividendType = Math.random() > 0.7 ? 'STOCK' : 'CASH';
+        const amount = dividendType === 'CASH' ? Math.random() * 0.5 + 0.01 : Math.floor(Math.random() * 100) + 10;
+        await this.bridge.corpSecuritiesDividend(
+          actor.privateKey,
+          fiber.id,
+          dividendType,
+          amount
+        );
+        break;
+      }
+      case 'retire': {
+        await this.bridge.corpSecuritiesRetire(actor.privateKey, fiber.id);
+        break;
+      }
+      case 'remove_restriction': {
+        await this.bridge.corpSecuritiesRemoveRestriction(actor.privateKey, fiber.id, 'RULE_144');
+        break;
+      }
+      default:
+        await this.bridge.transitionFiber(actor.privateKey, fiber.id, transition.event, { agent: actor.address });
+    }
+  }
+
+  /**
+   * Generate a random share class for corporate entity
+   */
+  private generateShareClass(): {
+    classId: string;
+    className: string;
+    authorized: number;
+    parValue: number;
+    votingRights: boolean;
+    votesPerShare: number;
+  } {
+    const classes = ['Series A Preferred', 'Series B Preferred', 'Class B Common', 'Founders Stock'];
+    const className = classes[Math.floor(Math.random() * classes.length)];
+    return {
+      classId: className.replace(/\s+/g, '_').toUpperCase(),
+      className,
+      authorized: Math.floor(Math.random() * 1000000) + 100000,
+      parValue: Math.random() > 0.5 ? 0.0001 : 1.0,
+      votingRights: Math.random() > 0.3,
+      votesPerShare: Math.random() > 0.8 ? 10 : 1,
+    };
+  }
+
+  /**
+   * Generate random shareholders for shareholder meeting
+   */
+  private generateShareholders(count: number): Array<{
+    shareholderId: string;
+    name: string;
+    shares: number;
+    shareClass: string;
+  }> {
+    const shareholders = [];
+    for (let i = 0; i < count; i++) {
+      shareholders.push({
+        shareholderId: `SH-${Math.random().toString(36).slice(2, 10)}`,
+        name: `Shareholder ${i + 1}`,
+        shares: Math.floor(Math.random() * 50000) + 1000,
+        shareClass: 'COMMON',
+      });
+    }
+    return shareholders;
   }
 
   private tickCount = 0;
