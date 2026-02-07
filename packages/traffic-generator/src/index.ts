@@ -23,10 +23,13 @@
  */
 
 import 'dotenv/config';
-import type { GeneratorConfig, GenerationStats } from './types.js';
+import type { GeneratorConfig, GenerationStats, Agent } from './types.js';
 import { DEFAULT_CONFIG } from './types.js';
 import { Simulator } from './simulator.js';
 import { HighThroughputSimulator, runHighThroughput } from './high-throughput.js';
+import { FiberOrchestrator, TrafficConfig } from './orchestrator.js';
+import { BridgeClient } from './bridge-client.js';
+import { loadWalletPool, type WalletPool } from './wallets.js';
 
 // =============================================================================
 // Configuration from Environment
@@ -77,10 +80,174 @@ function formatStats(stats: GenerationStats): string {
 }
 
 // =============================================================================
+// Weighted Orchestrator Mode
+// =============================================================================
+
+function loadTrafficConfig(): TrafficConfig {
+  // Parse fiber weights from env or use defaults
+  const defaultWeights: Record<string, number> = {
+    escrow: 0.25,
+    arbitratedEscrow: 0.15,
+    ticTacToe: 0.20,
+    simpleOrder: 0.15,
+    voting: 0.10,
+    approval: 0.15,
+  };
+  
+  // Allow override via FIBER_WEIGHTS env var (JSON string)
+  let fiberWeights = defaultWeights;
+  if (process.env.FIBER_WEIGHTS) {
+    try {
+      fiberWeights = JSON.parse(process.env.FIBER_WEIGHTS);
+    } catch (e) {
+      console.warn('⚠️  Invalid FIBER_WEIGHTS JSON, using defaults');
+    }
+  }
+  
+  return {
+    generationIntervalMs: parseInt(process.env.GENERATION_INTERVAL_MS ?? '30000', 10),
+    targetActiveFibers: parseInt(process.env.TARGET_ACTIVE_FIBERS ?? '20', 10),
+    fiberWeights,
+  };
+}
+
+async function runWeightedOrchestrator(): Promise<void> {
+  const config = loadTrafficConfig();
+  const walletPoolPath = process.argv.includes('--wallets') 
+    ? process.argv[process.argv.indexOf('--wallets') + 1]
+    : process.env.WALLET_POOL_PATH ?? './wallets.json';
+  
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log(' OttoChain WEIGHTED Traffic Generator');
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log(`   Target active fibers: ${config.targetActiveFibers}`);
+  console.log(`   Generation interval: ${config.generationIntervalMs}ms`);
+  console.log(`   Fiber weights:`);
+  for (const [type, weight] of Object.entries(config.fiberWeights)) {
+    console.log(`     ${type}: ${(weight * 100).toFixed(0)}%`);
+  }
+  
+  // Load wallet pool
+  const walletPool = await loadWalletPool(walletPoolPath);
+  if (!walletPool) {
+    console.error(`❌ Failed to load wallet pool from ${walletPoolPath}`);
+    console.error('   Run: node dist/wallets.js generate --count 200');
+    process.exit(1);
+  }
+  console.log(`   Wallet pool: ${walletPool.wallets.length} wallets loaded`);
+  
+  // Create bridge client
+  const bridgeUrl = process.env.BRIDGE_URL ?? 'http://localhost:3030';
+  const ml0Url = process.env.ML0_URL ?? 'http://localhost:9200';
+  const monitorUrl = process.env.MONITOR_URL ?? 'http://localhost:3032';
+  
+  const bridge = new BridgeClient({ bridgeUrl, ml0Url });
+  
+  // Convert wallet pool to agents
+  const agents: Agent[] = walletPool.wallets.map((w, i) => ({
+    address: w.address,
+    privateKey: w.privateKey,
+    fiberId: w.agentId ?? null,
+    state: w.agentId ? 'REGISTERED' : 'UNREGISTERED',
+    fitness: { reputation: 0, completionRate: 0, networkEffect: 0, age: 0, total: 0 },
+    meta: {
+      birthGeneration: 0,
+      displayName: `Agent_${i}`,
+      platform: w.platform ?? 'simulation',
+      vouchedFor: new Set(),
+      receivedVouches: new Set(),
+      activeContracts: new Set(),
+      completedContracts: 0,
+      failedContracts: 0,
+      riskTolerance: 0.5,
+    },
+  }));
+  
+  // Create orchestrator
+  const orchestrator = new FiberOrchestrator(
+    config,
+    bridge,
+    () => agents.filter(a => a.state !== 'UNREGISTERED') // Only return registered agents
+  );
+  
+  console.log('──────────────────────────────────────────────────────────────');
+  
+  // Bootstrap: Register agents first (needed before contracts)
+  const targetAgents = Math.min(config.targetActiveFibers * 3, agents.length);
+  await orchestrator.bootstrapAgents(targetAgents);
+  
+  console.log('\n🚀 Starting weighted orchestrator...\n');
+  
+  // Main loop
+  let generation = 0;
+  const interval = setInterval(async () => {
+    generation++;
+    
+    // Check network health first
+    try {
+      const syncStatus = await bridge.checkSyncStatus();
+      if (!syncStatus.ready) {
+        const reason = !syncStatus.allReady ? 'Nodes not ready' :
+                       !syncStatus.allHealthy ? 'Nodes unhealthy' :
+                       syncStatus.gl0?.fork ? 'GL0 fork detected' :
+                       syncStatus.ml0?.fork ? 'ML0 fork detected' :
+                       'Unknown';
+        console.log(`⏸️  Skipping generation - network not ready: ${reason}`);
+        return;
+      }
+    } catch (e) {
+      console.log(`⏸️  Skipping generation - sync check failed: ${e}`);
+      return;
+    }
+    
+    // Run orchestrator tick
+    try {
+      const result = await orchestrator.tick();
+      
+      if (result.skipped) {
+        console.log(`Generation ${generation}: ⏸️  Skipped (network not ready)`);
+        return;
+      }
+      
+      const stats = orchestrator.getStats();
+      console.log(`Generation ${generation}:`);
+      console.log(`  Active: ${stats.activeFibers} | Created: ${result.created} | Driven: ${result.driven} | Completed: ${result.completed}`);
+      console.log(`  Distribution: ${JSON.stringify(stats.fiberTypeDistribution)}`);
+    } catch (e) {
+      console.error(`❌ Tick error: ${e}`);
+    }
+  }, config.generationIntervalMs);
+  
+  // Graceful shutdown
+  process.on('SIGINT', () => {
+    console.log('\n📊 Shutting down...');
+    clearInterval(interval);
+    const stats = orchestrator.getStats();
+    console.log(`Final: ${stats.activeFibers} active, ${stats.completedFibers} completed`);
+    process.exit(0);
+  });
+  
+  process.on('SIGTERM', () => {
+    clearInterval(interval);
+    process.exit(0);
+  });
+}
+
+// =============================================================================
 // Main
 // =============================================================================
 
 async function main(): Promise<void> {
+  // Check for weighted mode
+  const isWeighted = 
+    process.argv.includes('--weighted') ||
+    process.argv.includes('-W') ||
+    process.env.MODE === 'weighted';
+  
+  if (isWeighted) {
+    return runWeightedOrchestrator();
+  }
+  
   // Check for high-throughput mode
   const isHighThroughput = 
     process.argv.includes('--high-throughput') ||
@@ -164,8 +331,10 @@ main().catch((err) => {
 // Re-export for programmatic use
 export { Simulator } from './simulator.js';
 export { HighThroughputSimulator, runHighThroughput } from './high-throughput.js';
+export { FiberOrchestrator } from './orchestrator.js';
 export { BridgeClient } from './bridge-client.js';
 export * from './types.js';
 export * from './selection.js';
 export * from './workflows.js';
 export * from './wallets.js';
+export * from './fiber-definitions.js';

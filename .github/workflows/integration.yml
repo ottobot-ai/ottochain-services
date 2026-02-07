@@ -70,6 +70,17 @@ jobs:
         with:
           version: 9
 
+      - name: Get pnpm store directory
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Cache pnpm
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+
       - name: Install dependencies
         run: pnpm install
 
@@ -104,6 +115,14 @@ jobs:
           cp modules/dag-l1/target/scala-2.13/tessellation-dag-l1-assembly*.jar docker/jars/gl1.jar
           cp modules/currency-l0/target/scala-2.13/tessellation-currency-l0-assembly*.jar docker/jars/ml0.jar
           cp modules/currency-l1/target/scala-2.13/tessellation-currency-l1-assembly*.jar docker/jars/cl1.jar
+
+      - name: Cache ottochain assemblies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ottochain/modules/*/target
+          key: ottochain-${{ hashFiles('ottochain/build.sbt', 'ottochain/project/*.sbt', 'ottochain/project/*.scala') }}
+          restore-keys: ottochain-
 
       - name: Build ottochain metagraph
         working-directory: ottochain
@@ -176,17 +195,6 @@ jobs:
           docker logs ml0-0 2>&1 | tail -50 || true
           exit 1
 
-      - name: Start indexer
-        env:
-          DATABASE_URL: postgresql://ottochain:ottochain@localhost:5432/ottochain_identity
-          METAGRAPH_ML0_URL: http://localhost:9200
-          METAGRAPH_DL1_URL: http://localhost:9400
-          INDEXER_PORT: 3031
-        run: |
-          node packages/indexer/dist/index.js &
-          sleep 3
-          curl -s http://localhost:3031/health | grep -q '"status":"ok"'
-
       - name: Setup webhook proxy
         run: |
           # ML0 container can't reach localhost directly, so we run a socat proxy
@@ -203,8 +211,21 @@ jobs:
           PROXY_IP=$(docker inspect webhook-proxy --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
           echo "PROXY_IP=$PROXY_IP" >> $GITHUB_ENV
           echo "Webhook proxy running at $PROXY_IP:3031"
-          
-          # Verify proxy works
+
+      - name: Start indexer
+        env:
+          DATABASE_URL: postgresql://ottochain:ottochain@localhost:5432/ottochain_identity
+          METAGRAPH_ML0_URL: http://localhost:9200
+          METAGRAPH_DL1_URL: http://localhost:9400
+          INDEXER_PORT: 3031
+        run: |
+          # Use proxy IP from previous step for webhook callback
+          export INDEXER_CALLBACK_URL="http://${PROXY_IP}:3031/webhook/snapshot"
+          echo "Indexer callback URL: $INDEXER_CALLBACK_URL"
+          node packages/indexer/dist/index.js &
+          sleep 3
+          curl -s http://localhost:3031/health | grep -q '"status":"ok"'
+          # Verify proxy connectivity from ML0
           docker exec ml0-0 curl -sf http://$PROXY_IP:3031/health
 
       - name: Run webhook integration tests

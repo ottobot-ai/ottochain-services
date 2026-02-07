@@ -621,30 +621,34 @@ export class Simulator {
     
     try {
       stats.transactions++;
+      const taskDescription = `Task from ${agent.meta.displayName} to ${counterparty.meta.displayName}`;
       const result = await this.client.proposeContract(
         agent.privateKey,
-        counterparty.fiberId,
-        `Task from ${agent.meta.displayName} to ${counterparty.meta.displayName}`,
-        { value: Math.floor(Math.random() * 100) + 10 }
+        counterparty.address,  // Use address, not fiberId
+        { 
+          description: taskDescription,
+          value: Math.floor(Math.random() * 100) + 10,
+        },
+        { title: taskDescription }
       );
       stats.successes++;
-      console.log(`  ✅ Contract proposed: ${result.fiberId}`);
+      console.log(`  ✅ Contract proposed: ${result.contractId}`);
       
       // Track contract
       const contract: Contract = {
-        fiberId: result.fiberId,
+        fiberId: result.contractId,  // contractId is the fiber ID
         proposer: agent.address,
         counterparty: counterparty.address,
         state: 'PROPOSED',
-        task: `Simulated task`,
+        task: taskDescription,
         terms: {},
         createdGeneration: this.generation,
         expectedCompletion: this.generation + Math.floor(Math.random() * 10) + 3,
       };
       
-      this.contracts.set(result.fiberId, contract);
-      agent.meta.activeContracts.add(result.fiberId);
-      counterparty.meta.activeContracts.add(result.fiberId);
+      this.contracts.set(result.contractId, contract);
+      agent.meta.activeContracts.add(result.contractId);
+      counterparty.meta.activeContracts.add(result.contractId);
       
     } catch (err) {
       stats.failures++;

@@ -53,6 +53,16 @@ export interface ContractState {
   sequenceNumber: number;
 }
 
+export interface SyncStatus {
+  ready: boolean;
+  allReady?: boolean;
+  allHealthy?: boolean;
+  gl0?: { nodes: Array<{ name: string; ordinal?: number; state: string }>; fork: boolean; ordinal?: number };
+  ml0?: { nodes: Array<{ name: string; ordinal?: number; state: string }>; fork: boolean; ordinal?: number };
+  dl1?: { nodes: Array<{ name: string; ordinal?: number; state: string }>; ordinal?: number; lag?: number };
+  error?: string;
+}
+
 export class BridgeClient {
   private baseUrl: string;
   private ml0Url: string;
@@ -140,23 +150,124 @@ export class BridgeClient {
   }
 
   // ==========================================================================
-  // Contract Operations (convenience wrappers)
+  // Contract Operations (SDK-compliant)
   // ==========================================================================
 
+  /**
+   * Propose a new contract (SDK: ProposeContract)
+   * Creates a Contract fiber with PROPOSED state
+   */
   async proposeContract(
     privateKey: string,
-    counterpartyFiberId: string,
-    task: string,
-    terms: Record<string, unknown>
-  ): Promise<{ fiberId: string; hash: string }> {
+    counterpartyAddress: string,
+    terms: Record<string, unknown>,
+    options?: { title?: string; description?: string }
+  ): Promise<{ contractId: string; proposer: string; counterparty: string; hash: string }> {
     return this.post('/contract/propose', {
       privateKey,
-      counterpartyFiberId,
-      task,
+      counterpartyAddress,
       terms,
+      title: options?.title,
+      description: options?.description,
     });
   }
 
+  /**
+   * Accept a contract (SDK: AcceptContract)
+   * Counterparty only - transitions PROPOSED → ACTIVE
+   */
+  async acceptContract(
+    privateKey: string,
+    contractId: string
+  ): Promise<{ hash: string; contractId: string; status: string }> {
+    return this.post('/contract/accept', {
+      privateKey,
+      contractId,
+    });
+  }
+
+  /**
+   * Reject a contract
+   * Counterparty only - transitions PROPOSED → REJECTED
+   */
+  async rejectContract(
+    privateKey: string,
+    contractId: string,
+    reason?: string
+  ): Promise<{ hash: string; contractId: string; status: string }> {
+    return this.post('/contract/reject', {
+      privateKey,
+      contractId,
+      reason,
+    });
+  }
+
+  /**
+   * Submit completion proof (SDK: CompleteContract)
+   * Either party - records completion, both must complete to finalize
+   */
+  async submitCompletion(
+    privateKey: string,
+    contractId: string,
+    proof?: string
+  ): Promise<{ hash: string; contractId: string; message: string }> {
+    return this.post('/contract/complete', {
+      privateKey,
+      contractId,
+      proof,
+    });
+  }
+
+  /**
+   * Finalize a contract
+   * Transitions ACTIVE → COMPLETED after both parties submit completion
+   */
+  async finalizeContract(
+    privateKey: string,
+    contractId: string
+  ): Promise<{ hash: string; contractId: string; status: string }> {
+    return this.post('/contract/finalize', {
+      privateKey,
+      contractId,
+    });
+  }
+
+  /**
+   * Dispute a contract
+   * Either party - transitions ACTIVE → DISPUTED
+   */
+  async disputeContract(
+    privateKey: string,
+    contractId: string,
+    reason: string
+  ): Promise<{ hash: string; contractId: string; status: string }> {
+    return this.post('/contract/dispute', {
+      privateKey,
+      contractId,
+      reason,
+    });
+  }
+
+  /**
+   * Get contract state by ID
+   */
+  async getContract(contractId: string): Promise<ContractState | null> {
+    try {
+      return await this.get<ContractState>(`/contract/${contractId}`);
+    } catch (err) {
+      if ((err as Error).message.includes('404')) return null;
+      throw err;
+    }
+  }
+
+  /**
+   * List all contracts
+   */
+  async listContracts(): Promise<{ count: number; contracts: Record<string, ContractState> }> {
+    return this.get('/contract');
+  }
+
+  // Legacy method for backward compatibility
   async transitionContract(
     privateKey: string,
     fiberId: string,
@@ -169,15 +280,6 @@ export class BridgeClient {
       event,
       payload,
     });
-  }
-
-  async getContract(fiberId: string): Promise<ContractState | null> {
-    try {
-      return await this.get<ContractState>(`/contract/${fiberId}`);
-    } catch (err) {
-      if ((err as Error).message.includes('404')) return null;
-      throw err;
-    }
   }
 
   // ==========================================================================
@@ -296,6 +398,39 @@ export class BridgeClient {
     } catch (err) {
       if ((err as Error).message.includes('404')) return null;
       throw err;
+    }
+  }
+
+  // ==========================================================================
+  // Sync Status (Monitor API)
+  // ==========================================================================
+
+  /**
+   * Check network sync status from monitor service
+   * Returns { ready, allReady, allHealthy, gl0, ml0, dl1 }
+   */
+  async checkSyncStatus(monitorUrl?: string): Promise<SyncStatus> {
+    const url = monitorUrl ?? process.env.MONITOR_URL ?? 'http://localhost:3032';
+    try {
+      const res = await fetch(`${url}/api/sync-status`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(this.timeout),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Monitor sync-status failed: ${res.status}`);
+      }
+
+      return res.json() as Promise<SyncStatus>;
+    } catch (err) {
+      // Return not-ready if monitor is unavailable
+      return {
+        ready: false,
+        allReady: false,
+        allHealthy: false,
+        error: (err as Error).message,
+      };
     }
   }
 

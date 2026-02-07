@@ -79,6 +79,33 @@ export const typeDefs = /* GraphQL */ `
     lastSnapshotOrdinal: Int!
   }
 
+  type ClusterStats {
+    gl0Nodes: Int!
+    ml0Nodes: Int!
+    dl1Nodes: Int!
+    tps: Float!
+    epoch: Int!
+  }
+
+  type StatsDelta {
+    period: String!
+    agentsDelta: Int!
+    contractsDelta: Int!
+    attestationsDelta: Int!
+    fibersDelta: Int!
+    agentsPct: Float!
+    contractsPct: Float!
+    successRatePct: Float!
+    avgSnapshotsPerHour: Float!
+    computedAt: DateTime!
+  }
+
+  type StatsTrends {
+    oneHour: StatsDelta
+    twentyFourHour: StatsDelta
+    sevenDay: StatsDelta
+  }
+
   # === Generic Fiber Types (chain-agnostic) ===
 
   type Fiber {
@@ -204,6 +231,8 @@ export const typeDefs = /* GraphQL */ `
     
     recentActivity(limit: Int = 50): [ActivityEvent!]!
     networkStats: NetworkStats!
+    clusterStats: ClusterStats!
+    statsTrends: StatsTrends!
     searchAgents(query: String!, limit: Int = 10): [Agent!]!
     
     # Unified Search

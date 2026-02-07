@@ -94,3 +94,16 @@ jobs:
           echo "| Indexer | $INDEXER |" >> $GITHUB_STEP_SUMMARY
           echo "| Bridge | HTTP $BRIDGE |" >> $GITHUB_STEP_SUMMARY
           echo "| Gateway | HTTP $GATEWAY |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Update release/scratch branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Force push to release/scratch
+        run: |
+          git push origin main:release/scratch --force
+          echo "## 📌 Release Branch Updated" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Pushed \`main\` → \`release/scratch\` at $(git rev-parse --short HEAD)" >> $GITHUB_STEP_SUMMARY
