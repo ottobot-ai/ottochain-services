@@ -145,7 +145,7 @@ export class Simulator {
   }
 
   /**
-   * Retry activation with exponential backoff.
+   * Retry activation with faster backoff.
    * DL1 may not have synced the fiber yet even after it appears in ML0.
    */
   private async retryActivation(privateKey: string, fiberId: string, maxAttempts: number = 3): Promise<void> {
@@ -159,7 +159,7 @@ export class Simulator {
         const errMsg = String(err);
         // Only retry on CidNotFound or similar sync errors
         if (errMsg.includes('CidNotFound') || errMsg.includes('Bad Request') || errMsg.includes('400')) {
-          const delay = 5000 * Math.pow(2, i); // 5s, 10s, 20s
+          const delay = 1000 * Math.pow(2, i); // 1s, 2s, 4s (faster)
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
           throw err;
@@ -171,21 +171,21 @@ export class Simulator {
 
   /**
    * Wait for a fiber to appear in the ML0 state checkpoint.
-   * Necessary because DL1 needs time to include transactions in snapshots.
+   * Reduced delays for faster throughput (bridge handles sync internally).
    */
-  private async waitForFiber(fiberId: string, maxAttempts: number = 20): Promise<boolean> {
+  private async waitForFiber(fiberId: string, maxAttempts: number = 5): Promise<boolean> {
     for (let i = 0; i < maxAttempts; i++) {
       try {
         const checkpoint = await this.client.getCheckpoint();
         if (checkpoint.state?.stateMachines?.[fiberId]) {
-          // Add extra delay for DL1 to sync (needs 2-3 snapshot cycles)
-          await new Promise(resolve => setTimeout(resolve, 10000));
+          // Reduced delay - bridge waitForSync handles the rest
+          await new Promise(resolve => setTimeout(resolve, 2000));
           return true;
         }
       } catch {
         // Ignore fetch errors
       }
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
     return false;
   }
