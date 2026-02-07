@@ -4,10 +4,13 @@
 // Low-frequency fallback poller catches missed webhooks + detects forks across peers
 
 import express from 'express';
-import { prisma, getConfig, SnapshotNotificationSchema } from '@ottochain/shared';
+import { prisma, getConfig, SnapshotNotificationSchema, getStatsCollector } from '@ottochain/shared';
 import { processSnapshot } from './processor.js';
 import { startConfirmationPoller, stopConfirmationPoller, getConfirmationStats } from './confirmations.js';
 import { startSnapshotPoller, stopSnapshotPoller, getPollerStats } from './poller.js';
+
+// Stats collector for time-series metrics
+const statsCollector = getStatsCollector(prisma);
 
 const app = express();
 app.use(express.json());
@@ -138,6 +141,7 @@ process.on('SIGTERM', () => {
   console.log('Received SIGTERM, shutting down...');
   stopSnapshotPoller();
   stopConfirmationPoller();
+  statsCollector.stop();
   process.exit(0);
 });
 
@@ -145,6 +149,7 @@ process.on('SIGINT', () => {
   console.log('Received SIGINT, shutting down...');
   stopSnapshotPoller();
   stopConfirmationPoller();
+  statsCollector.stop();
   process.exit(0);
 });
 
@@ -195,4 +200,11 @@ app.listen(port, '0.0.0.0', async () => {
   // Start GL0 confirmation poller (confirms indexed snapshots against GL0)
   const confirmPollInterval = parseInt(process.env.GL0_POLL_INTERVAL || '15000');
   startConfirmationPoller(confirmPollInterval);
+  
+  // Start stats collector for time-series metrics (trend calculations)
+  const statsCollectInterval = parseInt(process.env.STATS_COLLECT_INTERVAL || '300000'); // 5 min
+  const statsAggregateInterval = parseInt(process.env.STATS_AGGREGATE_INTERVAL || '900000'); // 15 min
+  statsCollector.options.collectIntervalMs = statsCollectInterval;
+  statsCollector.options.aggregateIntervalMs = statsAggregateInterval;
+  statsCollector.start();
 });

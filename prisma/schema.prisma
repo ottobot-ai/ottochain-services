@@ -223,3 +223,57 @@ enum ContractState {
   DISPUTED
   CANCELLED
 }
+
+/// Time-series stats for trend calculations
+/// Stored in time buckets (5-min granularity for 24h, hourly for 7d, daily for 30d)
+model StatsSnapshot {
+  id                 Int              @id @default(autoincrement())
+  bucketTime         DateTime         // Rounded to bucket interval
+  granularity        StatsGranularity @default(FIVE_MIN)
+  
+  // Core metrics
+  totalAgents        Int
+  activeAgents       Int
+  totalContracts     Int
+  completedContracts Int
+  totalAttestations  Int
+  totalFibers        Int
+  snapshotOrdinal    BigInt
+  
+  // Derived metrics (for settlement time proxy)
+  snapshotsInPeriod  Int              @default(1)  // How many ML0 snapshots in this bucket
+  
+  createdAt          DateTime         @default(now())
+
+  @@unique([bucketTime, granularity])
+  @@index([bucketTime])
+  @@index([granularity, bucketTime])
+}
+
+enum StatsGranularity {
+  FIVE_MIN  // Kept for 24 hours
+  HOURLY    // Kept for 7 days  
+  DAILY     // Kept for 30 days
+}
+
+/// Pre-computed deltas cached for fast API reads
+model StatsDelta {
+  id           Int      @id @default(autoincrement())
+  period       String   @unique @db.VarChar(16)  // "1h", "24h", "7d"
+  
+  // Absolute deltas
+  agentsDelta        Int      @default(0)
+  contractsDelta     Int      @default(0)
+  attestationsDelta  Int      @default(0)
+  fibersDelta        Int      @default(0)
+  
+  // Percentage changes
+  agentsPct          Float    @default(0)
+  contractsPct       Float    @default(0)
+  successRatePct     Float    @default(0)
+  
+  // Activity metrics
+  avgSnapshotsPerHour Float   @default(0)  // Proxy for "throughput"
+  
+  computedAt   DateTime @default(now())
+}

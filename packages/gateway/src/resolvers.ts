@@ -259,6 +259,21 @@ export const resolvers = {
       return { gl0Nodes, ml0Nodes, dl1Nodes, tps, epoch };
     },
 
+    statsTrends: async () => {
+      // Fetch pre-computed deltas from stats collector
+      const [oneHour, twentyFourHour, sevenDay] = await Promise.all([
+        prisma.statsDelta.findUnique({ where: { period: '1h' } }),
+        prisma.statsDelta.findUnique({ where: { period: '24h' } }),
+        prisma.statsDelta.findUnique({ where: { period: '7d' } }),
+      ]);
+
+      return {
+        oneHour: oneHour ? { ...oneHour, period: '1h' } : null,
+        twentyFourHour: twentyFourHour ? { ...twentyFourHour, period: '24h' } : null,
+        sevenDay: sevenDay ? { ...sevenDay, period: '7d' } : null,
+      };
+    },
+
     searchAgents: async (_: unknown, { query, limit = 10 }: { query: string; limit?: number }) => {
       return prisma.agent.findMany({
         where: {
