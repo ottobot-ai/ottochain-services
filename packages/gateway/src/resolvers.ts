@@ -423,6 +423,19 @@ export const resolvers = {
         take: limit,
       });
     },
+
+    recentSnapshots: async (_: unknown, { limit = 20 }: { limit?: number }) => {
+      return prisma.indexedSnapshot.findMany({
+        orderBy: { ordinal: 'desc' },
+        take: limit,
+      });
+    },
+
+    snapshot: async (_: unknown, { ordinal }: { ordinal: bigint }) => {
+      return prisma.indexedSnapshot.findUnique({
+        where: { ordinal },
+      });
+    },
   },
 
   // === Mutations ===

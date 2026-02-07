@@ -13,6 +13,8 @@ export const typeDefs = /* GraphQL */ `
     displayName: String
     reputation: Int!
     state: AgentState!
+    fiberId: String
+    snapshotOrdinal: BigInt!
     createdAt: DateTime!
     
     platformLinks: [PlatformLink!]!
@@ -37,8 +39,10 @@ export const typeDefs = /* GraphQL */ `
     issuerPlatform: Platform
     delta: Int!
     reason: String
-    createdAt: DateTime!
+    metadata: JSON
     txHash: String!
+    snapshotOrdinal: BigInt!
+    createdAt: DateTime!
   }
 
   type Contract {
@@ -48,6 +52,8 @@ export const typeDefs = /* GraphQL */ `
     counterparty: Agent!
     state: ContractState!
     terms: JSON!
+    fiberId: String!
+    snapshotOrdinal: BigInt!
     proposedAt: DateTime!
     acceptedAt: DateTime
     completedAt: DateTime
@@ -56,6 +62,7 @@ export const typeDefs = /* GraphQL */ `
   type ActivityEvent {
     eventType: EventType!
     timestamp: DateTime!
+    snapshotOrdinal: BigInt
     agent: Agent
     action: String!
     reputationDelta: Int
@@ -64,9 +71,11 @@ export const typeDefs = /* GraphQL */ `
   }
 
   type ReputationPoint {
+    id: Int!
     reputation: Int!
     delta: Int!
     reason: String
+    snapshotOrdinal: BigInt!
     recordedAt: DateTime!
   }
 
@@ -143,6 +152,24 @@ export const typeDefs = /* GraphQL */ `
     description: String
     count: Int!
     states: [String!]!
+  }
+
+  type IndexedSnapshot {
+    ordinal: BigInt!
+    hash: String!
+    status: SnapshotStatus!
+    gl0Ordinal: BigInt
+    confirmedAt: DateTime
+    indexedAt: DateTime!
+    agentsUpdated: Int!
+    contractsUpdated: Int!
+    fibersUpdated: Int!
+  }
+
+  enum SnapshotStatus {
+    PENDING
+    CONFIRMED
+    ORPHANED
   }
 
   # === Enums ===
@@ -257,6 +284,10 @@ export const typeDefs = /* GraphQL */ `
     
     workflowTypes: [WorkflowType!]!
     fibersByOwner(address: String!, limit: Int = 20): [Fiber!]!
+    
+    # Indexer status
+    recentSnapshots(limit: Int = 20): [IndexedSnapshot!]!
+    snapshot(ordinal: BigInt!): IndexedSnapshot
   }
 
   # === Mutations ===
