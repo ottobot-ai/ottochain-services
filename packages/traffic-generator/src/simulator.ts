@@ -918,10 +918,11 @@ export class Simulator {
     const currentTimestamp = Date.now();
     
     for (const [fiberId, market] of this.markets.entries()) {
-      // Skip final states
+      // Clean up final state markets (stats were recorded when they transitioned)
       if (market.state === MS.SETTLED || market.state === MS.REFUNDED || market.state === MS.CANCELLED) {
-        // Clean up from tracking
         this.markets.delete(fiberId);
+        // Log cleanup for visibility
+        console.log(`  🧹 Cleaned up ${market.state.toLowerCase()} market ${fiberId.slice(0, 8)}`);
         continue;
       }
       
@@ -954,6 +955,20 @@ export class Simulator {
             break;
             
           case MS.CLOSED:
+            // Check if market should be refunded (threshold not met)
+            if (market.threshold && market.totalCommitted < market.threshold) {
+              stats.transactions++;
+              await this.client.refundMarket(creator.privateKey, fiberId, 'threshold_not_met');
+              market.state = MS.REFUNDED;
+              stats.marketsRefunded++;
+              stats.successes++;
+              console.log(`  💸 Market ${fiberId.slice(0, 8)} refunded (threshold not met: ${market.totalCommitted}/${market.threshold})`);
+              
+              // Update participant stats for refund
+              this.processMarketRefund(market);
+              break;
+            }
+            
             // Find an oracle to submit resolution
             await this.processMarketResolution(market, stats);
             break;
@@ -1169,6 +1184,26 @@ export class Simulator {
         
       default:
         return 0;
+    }
+  }
+
+  /**
+   * Handle refunds for a market that didn't meet its threshold.
+   */
+  private processMarketRefund(market: Market): void {
+    const creator = this.agents.get(market.creator);
+    if (creator) {
+      creator.meta.activeMarkets.delete(market.fiberId);
+    }
+    
+    // All participants get refunded - mark as losses since they don't win
+    for (const [addr, _commitment] of Object.entries(market.commitments)) {
+      const agent = this.agents.get(addr);
+      if (!agent) continue;
+      
+      agent.meta.activeMarkets.delete(market.fiberId);
+      // Refunds aren't wins or losses - they just get their money back
+      // Don't increment marketLosses since it's not a real loss
     }
   }
 

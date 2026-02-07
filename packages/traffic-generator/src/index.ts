@@ -161,6 +161,15 @@ async function runWeightedOrchestrator(): Promise<void> {
       completedContracts: 0,
       failedContracts: 0,
       riskTolerance: 0.5,
+      // Market-related fields
+      activeMarkets: new Set(),
+      marketsCreated: 0,
+      marketWins: 0,
+      marketLosses: 0,
+      totalMarketCommitments: 0,
+      totalMarketWinnings: 0,
+      isOracle: Math.random() < 0.1,
+      oracleResolutions: 0,
     },
   }));
   
