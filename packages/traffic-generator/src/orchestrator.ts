@@ -1,5 +1,5 @@
 import { BridgeClient } from './bridge-client.js';
-import { FIBER_DEFINITIONS } from './fiber-definitions.js';
+import { FIBER_DEFINITIONS, type FiberDefinition } from './fiber-definitions.js';
 import { Agent } from './types.js';
 
 export interface TrafficConfig {
@@ -11,8 +11,11 @@ export interface TrafficConfig {
 export interface ActiveFiber {
   id: string;
   type: string;
+  definition: FiberDefinition;
   participants: Map<string, { address: string; privateKey: string }>;
   currentState: string;
+  /** Index of next transition to execute */
+  transitionIndex: number;
   startedAt: number;
 }
 
@@ -49,15 +52,26 @@ export class FiberOrchestrator {
     let drivenFibers = 0;
     let completedFibers = 0;
 
-    // Drive existing fibers forward (placeholder for actual logic)
+    // Drive existing fibers forward
+    const fibersToRemove: string[] = [];
     for (const fiber of this.activeFibers) {
-      // TODO: Implement actual fiber progression logic
-      // This would involve:
-      // 1. Determining next transition for this fiber
-      // 2. Identifying the actor (agent) for that transition
-      // 3. Calling bridge.transitionFiber() for that actor
-      drivenFibers++;
+      try {
+        const result = await this.driveFiber(fiber);
+        if (result === 'progressed') {
+          drivenFibers++;
+        } else if (result === 'completed') {
+          completedFibers++;
+          this.completedFibers++;
+          fibersToRemove.push(fiber.id);
+        }
+        // 'waiting' means no action needed yet
+      } catch (err) {
+        console.log(`  ⚠️  Error driving fiber ${fiber.id.slice(0, 8)}: ${(err as Error).message}`);
+      }
     }
+    
+    // Remove completed fibers
+    this.activeFibers = this.activeFibers.filter(f => !fibersToRemove.includes(f.id));
 
     // Start new fibers if needed
     const currentActive = this.activeFibers.length;
@@ -135,40 +149,149 @@ export class FiberOrchestrator {
       generation: this.tickCount,
     });
 
-    // Create fiber via bridge with proper workflowType and stateData
+    // Create fiber using appropriate bridge method based on workflowType
     const proposer = participants.get(def.roles[0])!;
+    const counterparty = participants.get(def.roles[1]);
     
     try {
-      const createResult = await this.bridge.createFiber(
-        proposer.privateKey,
-        {
-          workflowType: def.workflowType,
-          type: def.type,
-          name: def.name,
-          initialState: def.initialState,
-          states: def.states,
-          // Include basic transition definitions
-          transitions: def.transitions.map(t => ({
-            from: t.from,
-            to: t.to,
-            event: t.event,
-          })),
-        },
-        stateData as Record<string, unknown>
-      );
+      let fiberId: string;
+      
+      if (def.workflowType === 'Contract' && counterparty) {
+        // Use SDK-compliant contract creation
+        const result = await this.bridge.proposeContract(
+          proposer.privateKey,
+          counterparty.address,
+          stateData.terms as Record<string, unknown> ?? {},
+          {
+            title: (stateData as Record<string, unknown>).contractId as string ?? def.name,
+            description: (stateData.terms as Record<string, unknown>)?.description as string ?? def.name,
+          }
+        );
+        fiberId = result.contractId;
+        console.log(`  ✅ Proposed ${def.name}: ${fiberId.slice(0, 12)}... (${proposer.address.slice(0, 10)} → ${counterparty.address.slice(0, 10)})`);
+      } else {
+        // Use generic fiber creation for custom types
+        const createResult = await this.bridge.createFiber(
+          proposer.privateKey,
+          {
+            workflowType: def.workflowType,
+            type: def.type,
+            name: def.name,
+            initialState: def.initialState,
+            states: def.states,
+            transitions: def.transitions.map(t => ({
+              from: t.from,
+              to: t.to,
+              event: t.event,
+            })),
+          },
+          stateData as Record<string, unknown>
+        );
+        fiberId = createResult.fiberId;
+        console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}...`);
+      }
 
       // Add to active fibers
       this.activeFibers.push({
-        id: createResult.fiberId,
+        id: fiberId,
         type,
+        definition: def,
         participants,
         currentState: def.initialState,
+        transitionIndex: 0,
         startedAt: Date.now(),
       });
-
-      console.log(`  ✅ Created ${def.name}: ${createResult.fiberId.slice(0, 12)}...`);
     } catch (err) {
       console.log(`  ❌ Failed to create ${def.name}: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Drive a single fiber forward through its state machine
+   * Returns: 'progressed' | 'completed' | 'waiting'
+   */
+  private async driveFiber(fiber: ActiveFiber): Promise<'progressed' | 'completed' | 'waiting'> {
+    const def = fiber.definition;
+    
+    // Check if already in final state
+    if (def.finalStates.includes(fiber.currentState)) {
+      return 'completed';
+    }
+    
+    // Find next available transition from current state
+    const availableTransitions = def.transitions.filter(t => t.from === fiber.currentState);
+    if (availableTransitions.length === 0) {
+      return 'waiting'; // No transitions available
+    }
+    
+    // Pick a transition (prefer non-rejection paths for now)
+    const transition = availableTransitions.find(t => 
+      !t.event.includes('reject') && !t.event.includes('cancel') && !t.event.includes('dispute')
+    ) ?? availableTransitions[0];
+    
+    // Get the actor for this transition
+    const actorAgent = fiber.participants.get(transition.actor);
+    if (!actorAgent) {
+      console.log(`  ⚠️  No agent for role ${transition.actor} in fiber ${fiber.id.slice(0, 8)}`);
+      return 'waiting';
+    }
+    
+    // Execute the transition using appropriate bridge method
+    try {
+      if (def.workflowType === 'Contract') {
+        await this.executeContractTransition(fiber, transition, actorAgent);
+      } else {
+        // Generic fiber transition
+        await this.bridge.transitionFiber(
+          actorAgent.privateKey,
+          fiber.id,
+          transition.event,
+          { agent: actorAgent.address }
+        );
+      }
+      
+      // Update state
+      fiber.currentState = transition.to;
+      fiber.transitionIndex++;
+      
+      console.log(`  → ${fiber.type}[${fiber.id.slice(0, 8)}]: ${transition.from} --${transition.event}--> ${transition.to}`);
+      
+      return def.finalStates.includes(transition.to) ? 'completed' : 'progressed';
+    } catch (err) {
+      console.log(`  ⚠️  Transition failed: ${(err as Error).message}`);
+      return 'waiting';
+    }
+  }
+
+  /**
+   * Execute a contract-specific transition using SDK-compliant methods
+   */
+  private async executeContractTransition(
+    fiber: ActiveFiber,
+    transition: { event: string; actor: string },
+    actor: { address: string; privateKey: string }
+  ): Promise<void> {
+    switch (transition.event) {
+      case 'accept':
+        await this.bridge.acceptContract(actor.privateKey, fiber.id);
+        break;
+      case 'reject':
+        await this.bridge.rejectContract(actor.privateKey, fiber.id, 'Declined by counterparty');
+        break;
+      case 'deliver':
+      case 'confirm':
+      case 'submit_completion':
+        await this.bridge.submitCompletion(actor.privateKey, fiber.id, `Completed by ${actor.address.slice(0, 10)}`);
+        break;
+      case 'finalize':
+        await this.bridge.finalizeContract(actor.privateKey, fiber.id);
+        break;
+      case 'dispute':
+        await this.bridge.disputeContract(actor.privateKey, fiber.id, 'Disputed by party');
+        break;
+      default:
+        // Fallback to generic transition
+        await this.bridge.transitionContract(actor.privateKey, fiber.id, transition.event, { agent: actor.address });
     }
   }
 
