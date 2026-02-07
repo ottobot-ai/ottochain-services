@@ -54,12 +54,21 @@ jobs:
           pnpm run build
           SCRIPT
 
-      - name: Run migrations
+      - name: Apply schema changes
+        run: |
+          ssh services << 'SCRIPT'
+          cd /opt/ottochain-services
+          # Always sync schema with db push (dev-friendly, no migration files needed)
+          npx prisma db push
+          SCRIPT
+
+      - name: Reset database (full wipe)
         if: ${{ github.event.inputs.reset_db == 'true' }}
         run: |
           ssh services << 'SCRIPT'
           cd /opt/ottochain-services
-          npx prisma db push --accept-data-loss
+          # Drop all data and recreate schema
+          npx prisma db push --force-reset --accept-data-loss
           SCRIPT
 
       - name: Restart services
