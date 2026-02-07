@@ -63,6 +63,23 @@ export interface SyncStatus {
   error?: string;
 }
 
+export interface MarketState {
+  stateData: {
+    marketType?: string;
+    creator?: string;
+    title?: string;
+    status?: string;
+    commitments?: Record<string, { amount: number; data: Record<string, unknown> }>;
+    totalCommitted?: number;
+    oracles?: string[];
+    resolutions?: Array<{ oracle: string; outcome: string | number }>;
+    deadline?: number;
+    threshold?: number;
+  };
+  currentState: { value: string };
+  sequenceNumber: number;
+}
+
 export class BridgeClient {
   private baseUrl: string;
   private ml0Url: string;
@@ -280,6 +297,160 @@ export class BridgeClient {
       event,
       payload,
     });
+  }
+
+  // ==========================================================================
+  // Market Operations
+  // ==========================================================================
+
+  /**
+   * Create a new market fiber with the given definition and initial data.
+   */
+  async createMarket(
+    privateKey: string,
+    definition: Record<string, unknown>,
+    initialData: Record<string, unknown>
+  ): Promise<{ fiberId: string; hash: string }> {
+    return this.createFiber(privateKey, definition, initialData);
+  }
+
+  /**
+   * Submit a commitment (stake/bid/pledge/order) to an open market.
+   */
+  async commitToMarket(
+    privateKey: string,
+    fiberId: string,
+    amount: number,
+    data: Record<string, unknown> = {}
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'commit', {
+      agent: '', // Will be filled by bridge from privateKey
+      amount,
+      data,
+    });
+  }
+
+  /**
+   * Open a market for participation (creator only).
+   */
+  async openMarket(
+    privateKey: string,
+    fiberId: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'open', {
+      agent: '', // Will be filled by bridge from privateKey
+    });
+  }
+
+  /**
+   * Close a market for new commitments (creator or deadline).
+   */
+  async closeMarket(
+    privateKey: string,
+    fiberId: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'close', {
+      agent: '', // Will be filled by bridge from privateKey
+    });
+  }
+
+  /**
+   * Submit a resolution (oracle or creator).
+   */
+  async submitResolution(
+    privateKey: string,
+    fiberId: string,
+    outcome: string | number,
+    proof?: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'submit_resolution', {
+      agent: '', // Will be filled by bridge from privateKey
+      outcome,
+      proof,
+    });
+  }
+
+  /**
+   * Finalize a market after quorum is reached.
+   */
+  async finalizeMarket(
+    privateKey: string,
+    fiberId: string,
+    outcome: string | number,
+    settlement: Record<string, unknown> = {}
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'finalize', {
+      outcome,
+      settlement,
+    });
+  }
+
+  /**
+   * Cancel a market (creator only, from PROPOSED state).
+   */
+  async cancelMarket(
+    privateKey: string,
+    fiberId: string,
+    reason?: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'cancel', {
+      agent: '', // Will be filled by bridge from privateKey
+      reason,
+    });
+  }
+
+  /**
+   * Trigger a refund (threshold not met or dispute).
+   */
+  async refundMarket(
+    privateKey: string,
+    fiberId: string,
+    reason?: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'refund', {
+      agent: '', // Will be filled by bridge from privateKey
+      reason,
+    });
+  }
+
+  /**
+   * Claim winnings/rewards after settlement.
+   */
+  async claimFromMarket(
+    privateKey: string,
+    fiberId: string,
+    amount: number
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'claim', {
+      agent: '', // Will be filled by bridge from privateKey
+      amount,
+    });
+  }
+
+  /**
+   * Get market state by fiber ID.
+   */
+  async getMarket(fiberId: string): Promise<MarketState | null> {
+    try {
+      return await this.get<MarketState>(`/fiber/${fiberId}`);
+    } catch (err) {
+      if ((err as Error).message.includes('404')) return null;
+      throw err;
+    }
+  }
+
+  /**
+   * List all markets.
+   */
+  async listMarkets(limit = 100): Promise<{
+    count: number;
+    fibers: Array<{
+      fiberId: string;
+      currentState?: string;
+      stateData?: Record<string, unknown>;
+    }>;
+  }> {
+    return this.listFibers('Market', limit);
   }
 
   // ==========================================================================

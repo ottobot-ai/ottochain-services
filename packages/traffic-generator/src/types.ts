@@ -13,6 +13,95 @@ import {
 export { SdkAgentState, SdkContractState };
 
 // ============================================================================
+// Market Types
+// ============================================================================
+
+/**
+ * Market states from the Market state machine definition
+ */
+export enum MarketState {
+  PROPOSED = 'PROPOSED',
+  OPEN = 'OPEN',
+  CLOSED = 'CLOSED',
+  RESOLVING = 'RESOLVING',
+  SETTLED = 'SETTLED',
+  REFUNDED = 'REFUNDED',
+  CANCELLED = 'CANCELLED',
+}
+
+/**
+ * Supported market types
+ */
+export type MarketType = 'prediction' | 'auction' | 'crowdfund' | 'group_buy';
+
+/**
+ * Commitment from a participant in a market
+ */
+export interface MarketCommitment {
+  amount: number;
+  data: Record<string, unknown>;
+  lastCommitAt: number;
+}
+
+/**
+ * Oracle resolution submission
+ */
+export interface MarketResolution {
+  oracle: string;
+  outcome: string | number;
+  proof?: string;
+  submittedAt: number;
+}
+
+/**
+ * Market claim record
+ */
+export interface MarketClaim {
+  claimedAt: number;
+  amount: number;
+}
+
+/**
+ * Market instance tracked by the simulator
+ */
+export interface Market {
+  /** Market fiber ID */
+  fiberId: string;
+  /** Type of market */
+  marketType: MarketType;
+  /** Current state */
+  state: MarketState;
+  /** Creator agent address */
+  creator: string;
+  /** Market title */
+  title: string;
+  /** Market description */
+  description: string;
+  /** Deadline timestamp (optional) */
+  deadline: number | null;
+  /** Minimum threshold for success (optional) */
+  threshold: number | null;
+  /** Oracle addresses (for prediction markets) */
+  oracles: string[];
+  /** Required oracle quorum */
+  quorum: number;
+  /** Participant commitments (address -> commitment) */
+  commitments: Record<string, MarketCommitment>;
+  /** Total committed amount */
+  totalCommitted: number;
+  /** Oracle resolutions */
+  resolutions: MarketResolution[];
+  /** Winner claims */
+  claims: Record<string, MarketClaim>;
+  /** Market-type-specific terms */
+  terms: Record<string, unknown>;
+  /** Generation when created */
+  createdGeneration: number;
+  /** Final outcome (after settlement) */
+  finalOutcome?: string | number;
+}
+
+// ============================================================================
 // State Type Helpers
 // ============================================================================
 
@@ -93,6 +182,23 @@ export interface AgentMeta {
   failedContracts: number;
   /** Risk tolerance (0-1, affects transition choices) */
   riskTolerance: number;
+  // Market-related fields
+  /** Active market fiber IDs this agent participates in */
+  activeMarkets: Set<string>;
+  /** Markets this agent has created */
+  marketsCreated: number;
+  /** Markets where this agent won (prediction correct, auction won) */
+  marketWins: number;
+  /** Markets where this agent lost */
+  marketLosses: number;
+  /** Total amount committed to markets */
+  totalMarketCommitments: number;
+  /** Total winnings from markets */
+  totalMarketWinnings: number;
+  /** Is this agent an oracle? */
+  isOracle: boolean;
+  /** Number of markets resolved as oracle */
+  oracleResolutions: number;
 }
 
 // ============================================================================
@@ -162,6 +268,23 @@ export interface GenerationStats {
   avgFitness: number;
   /** Max fitness */
   maxFitness: number;
+  // Market stats
+  /** Markets created this generation */
+  marketsCreated: number;
+  /** Markets opened for participation */
+  marketsOpened: number;
+  /** Markets closed */
+  marketsClosed: number;
+  /** Markets settled */
+  marketsSettled: number;
+  /** Markets refunded */
+  marketsRefunded: number;
+  /** Total commitments made to markets */
+  marketCommitments: number;
+  /** Total value committed to markets */
+  marketCommitmentValue: number;
+  /** Active market count */
+  activeMarkets: number;
 }
 
 // ============================================================================
@@ -223,6 +346,17 @@ export interface GeneratorConfig {
   platforms: string[];
   /** Seed for reproducible runs (optional) */
   seed?: number;
+  // Market configuration
+  /** Market creation rate (per active agent) */
+  marketCreationRate: number;
+  /** Market participation rate (per active agent per market) */
+  marketParticipationRate: number;
+  /** Fraction of agents that can act as oracles */
+  oracleFraction: number;
+  /** Distribution of market types [prediction, auction, crowdfund, group_buy] */
+  marketTypeWeights: [number, number, number, number];
+  /** Default market deadline (generations from creation) */
+  marketDeadlineGenerations: number;
 }
 
 export const DEFAULT_CONFIG: GeneratorConfig = {
@@ -241,4 +375,10 @@ export const DEFAULT_CONFIG: GeneratorConfig = {
   ml0Url: 'http://localhost:9200',
   platforms: ['discord', 'telegram', 'twitter', 'github'],
   seed: undefined,
+  // Market defaults
+  marketCreationRate: 0.1,
+  marketParticipationRate: 0.3,
+  oracleFraction: 0.2,
+  marketTypeWeights: [0.4, 0.3, 0.2, 0.1], // prediction, auction, crowdfund, group_buy
+  marketDeadlineGenerations: 5,
 };

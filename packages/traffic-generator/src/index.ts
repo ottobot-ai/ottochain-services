@@ -73,6 +73,7 @@ function formatStats(stats: GenerationStats): string {
     `  Population: ${stats.populationSize} (births: ${stats.births}, deaths: ${stats.deaths})`,
     `  Transactions: ${stats.successes}/${stats.transactions} (${stats.failures} failed)`,
     `  Contracts: ${stats.completions} completed, ${stats.rejections} rejected, ${stats.disputes} disputed`,
+    `  Markets: ${stats.activeMarkets} active (${stats.marketsCreated} created, ${stats.marketsSettled} settled, ${stats.marketCommitments} commits)`,
     `  Mutations: ${stats.mutations}`,
     `  Fitness: avg=${stats.avgFitness.toFixed(3)}, max=${stats.maxFitness.toFixed(3)}`,
   ];
@@ -309,6 +310,7 @@ async function main(): Promise<void> {
     console.log(`  Generations: ${stats.generation}`);
     console.log(`  Population: ${stats.population}`);
     console.log(`  Active contracts: ${stats.activeContracts}`);
+    console.log(`  Active markets: ${stats.activeMarkets}`);
     console.log(`  Average fitness: ${stats.avgFitness.toFixed(3)}`);
     
     process.exit(0);
@@ -338,3 +340,4 @@ export * from './selection.js';
 export * from './workflows.js';
 export * from './wallets.js';
 export * from './fiber-definitions.js';
+export * from './market-workflows.js';

@@ -219,6 +219,15 @@ export class HighThroughputSimulator {
           completedContracts: 0,
           failedContracts: 0,
           riskTolerance: Math.random(),
+          // Market-related fields
+          activeMarkets: new Set(),
+          marketsCreated: 0,
+          marketWins: 0,
+          marketLosses: 0,
+          totalMarketCommitments: 0,
+          totalMarketWinnings: 0,
+          isOracle: Math.random() < 0.2, // 20% are oracles
+          oracleResolutions: 0,
         },
       };
       

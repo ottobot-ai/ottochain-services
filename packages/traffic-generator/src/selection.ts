@@ -16,21 +16,36 @@ import type { Agent, TransitionChoice, SimulationContext } from './types.js';
  * Higher fitness = more likely to be selected for activity.
  */
 export function computeFitness(agent: Agent): number {
-  const { fitness } = agent;
+  const { fitness, meta } = agent;
   
   // Weighted sum of fitness components
   const weights = {
-    reputation: 0.4,      // On-chain reputation is primary
-    completionRate: 0.25, // Reliability matters
-    networkEffect: 0.2,   // Well-connected agents are valuable
-    age: 0.15,            // Survival bonus
+    reputation: 0.35,     // On-chain reputation is primary
+    completionRate: 0.20, // Reliability matters
+    networkEffect: 0.15,  // Well-connected agents are valuable
+    age: 0.10,            // Survival bonus
+    marketSuccess: 0.15,  // Market performance
+    creatorBonus: 0.05,   // Bonus for successful market creators
   };
+  
+  // Calculate market success rate
+  const totalMarkets = meta.marketWins + meta.marketLosses;
+  const marketSuccessRate = totalMarkets > 0 
+    ? meta.marketWins / totalMarkets 
+    : 0.5; // Neutral for new agents
+  
+  // Creator bonus: successful market creators get reputation boost
+  const creatorBonus = meta.marketsCreated > 0
+    ? Math.min(1, meta.marketsCreated * 0.1) * (meta.marketWins / Math.max(1, meta.marketWins + meta.marketLosses))
+    : 0;
   
   return (
     weights.reputation * normalizeReputation(fitness.reputation) +
     weights.completionRate * fitness.completionRate +
     weights.networkEffect * fitness.networkEffect +
-    weights.age * normalizeAge(fitness.age)
+    weights.age * normalizeAge(fitness.age) +
+    weights.marketSuccess * marketSuccessRate +
+    weights.creatorBonus * creatorBonus
   );
 }
 
@@ -258,6 +273,16 @@ function getTransitionWeight(
     reject: 0.2 + (1 - marketHealth) * 0.3,
     complete: 0.9,
     dispute: 0.05 + riskTolerance * 0.15,
+    
+    // Market events
+    open: 0.9, // Usually open quickly after creation
+    cancel: 0.1, // Rarely cancel
+    commit: 0.5 + riskTolerance * 0.3, // Risk-tolerant agents commit more
+    close: 0.6, // Close when appropriate
+    submit_resolution: 0.8, // Oracles usually resolve
+    finalize: 0.9, // Finalize when quorum met
+    refund: 0.2, // Refund is fallback
+    claim: 1.0, // Always claim winnings
   };
   
   const baseWeight = baseWeights[event] ?? 0.5;
@@ -331,6 +356,43 @@ function generatePayload(
       
     case 'withdraw':
       return { timestamp };
+    
+    // Market events
+    case 'open':
+      return { agent: agent.address };
+      
+    case 'cancel':
+      return { agent: agent.address, reason: 'Simulated cancellation' };
+      
+    case 'commit':
+      const commitAmount = Math.floor(Math.random() * 50) + 5;
+      return {
+        agent: agent.address,
+        amount: Math.floor(commitAmount * (0.5 + agent.meta.riskTolerance)),
+        data: {},
+      };
+      
+    case 'close':
+      return { agent: agent.address };
+      
+    case 'submit_resolution':
+      return {
+        agent: agent.address,
+        outcome: Math.random() > 0.5 ? 'YES' : 'NO',
+        proof: `sim-proof-${timestamp}`,
+      };
+      
+    case 'finalize':
+      return {
+        outcome: 'RESOLVED',
+        settlement: { finalizedAt: timestamp },
+      };
+      
+    case 'refund':
+      return { agent: agent.address, reason: 'Simulated refund' };
+      
+    case 'claim':
+      return { agent: agent.address, amount: 0 };
       
     default:
       return { timestamp };
