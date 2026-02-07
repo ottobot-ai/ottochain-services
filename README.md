@@ -70,50 +70,25 @@ pnpm dev
 
 ### Using Docker Compose
 
-The stack uses layered compose files for flexible deployment:
+```bash
+# Start services (Gateway, Bridge, Indexer + Redis/Postgres)
+make up
+
+# Or manually:
+docker compose -f compose.base.yml -f compose.services.yml up -d
+
+# With traffic generator for testing
+make traffic
+```
 
 | File | Purpose |
 |------|---------|
-| `compose.base.yml` | Core infra (Redis, Postgres) |
+| `compose.base.yml` | Infrastructure (Redis, Postgres) |
 | `compose.services.yml` | App services (Gateway, Bridge, Indexer) |
-| `compose.monitoring.yml` | Observability (Prometheus, Alertmanager, Grafana) |
-| `compose.exporters.yml` | Metrics (node-exporter, postgres-exporter, redis-exporter) |
-| `compose.logging.yml` | Logs (Loki, Promtail) |
-| `compose.traffic.yml` | Load testing (Traffic Generator) |
+| `compose.traffic.yml` | Traffic generator (testing) |
 
-```bash
-# Development: just infra + services
-docker compose -f compose.base.yml -f compose.services.yml up -d
-
-# With monitoring
-docker compose -f compose.base.yml -f compose.services.yml -f compose.monitoring.yml up -d
-
-# Full stack (all layers)
-docker compose \
-  -f compose.base.yml \
-  -f compose.services.yml \
-  -f compose.monitoring.yml \
-  -f compose.exporters.yml \
-  -f compose.logging.yml \
-  up -d
-
-# Traffic testing
-docker compose -f compose.base.yml -f compose.services.yml -f compose.traffic.yml up -d
-
-# View logs
-docker compose -f compose.base.yml -f compose.services.yml logs -f gateway indexer
-```
-
-**Tip:** Create a `COMPOSE_FILE` env var for your common profile:
-
-```bash
-# In .env or shell profile:
-export COMPOSE_FILE=compose.base.yml:compose.services.yml:compose.monitoring.yml
-
-# Then just:
-docker compose up -d
-docker compose logs -f
-```
+For monitoring, see [ottochain-monitoring](https://github.com/ottobot-ai/ottochain-monitoring).
+For full orchestration, see [ottochain-deploy](https://github.com/ottobot-ai/ottochain-deploy).
 
 ### Environment Variables
 
