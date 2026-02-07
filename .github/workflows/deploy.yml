@@ -89,17 +89,20 @@ jobs:
 
       - name: Deploy monitoring stack
         run: |
+          METAGRAPH_IP="${{ secrets.HETZNER_NODE1_IP }}"
+          
           ssh services << SCRIPT
           cd /opt/ottochain-services/packages/monitoring
           
-          # Create .env if it doesn't exist
-          if [ ! -f .env ]; then
-            cp .env.example .env
-            echo "Created .env from example"
-          fi
-          
-          # Configure alertmanager with telegram credentials from main .env
+          # Source main .env for credentials
           source /opt/ottochain-services/.env
+          
+          # Generate prometheus.yml from template
+          export METAGRAPH_HOST="$METAGRAPH_IP"
+          envsubst < prometheus.yml.template > prometheus.yml
+          echo "Generated prometheus.yml with METAGRAPH_HOST=$METAGRAPH_IP"
+          
+          # Configure alertmanager with telegram credentials
           if [ -n "\$TELEGRAM_BOT_TOKEN" ] && [ -n "\$TELEGRAM_CHAT_ID" ]; then
             sed -i "s|YOUR_TELEGRAM_BOT_TOKEN|\$TELEGRAM_BOT_TOKEN|g" alertmanager.yml
             sed -i "s|chat_id: 0|chat_id: \$TELEGRAM_CHAT_ID|g" alertmanager.yml

@@ -11,25 +11,25 @@ rule_files:
   - /etc/prometheus/alert_rules.yml
 
 scrape_configs:
-  # Tessellation Nodes (5.78.90.207)
+  # Tessellation Nodes - replace METAGRAPH_HOST with your node IP
   - job_name: 'gl0'
     static_configs:
-      - targets: ['5.78.90.207:9000']
+      - targets: ['${METAGRAPH_HOST}:9000']
     metrics_path: /metrics
 
   - job_name: 'ml0'
     static_configs:
-      - targets: ['5.78.90.207:9200']
+      - targets: ['${METAGRAPH_HOST}:9200']
     metrics_path: /metrics
 
   - job_name: 'cl1'
     static_configs:
-      - targets: ['5.78.90.207:9300']
+      - targets: ['${METAGRAPH_HOST}:9300']
     metrics_path: /metrics
 
   - job_name: 'dl1'
     static_configs:
-      - targets: ['5.78.90.207:9400']
+      - targets: ['${METAGRAPH_HOST}:9400']
     metrics_path: /metrics
 
   # OttoChain Services (local via host.docker.internal)

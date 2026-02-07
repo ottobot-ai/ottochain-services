@@ -1,5 +1,8 @@
 # Environment file (contains secrets)
 .env
 
+# Generated from template at deploy time
+prometheus.yml
+
 # Docker volumes (handled by Docker)
 # Don't ignore prometheus_data or grafana_data - they're docker volumes
