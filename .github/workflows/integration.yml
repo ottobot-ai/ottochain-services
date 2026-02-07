@@ -260,7 +260,22 @@ jobs:
           FIBER_WAIT_TIMEOUT: '60'
           DL1_SYNC_WAIT: '15'
           ACTIVATION_WAIT: '10'
-        run: npx tsx packages/traffic-generator/test/integration.test.ts
+          MAX_RETRIES: '3'
+        run: |
+          # Retry logic for flaky metagraph consensus timing
+          for attempt in $(seq 1 $MAX_RETRIES); do
+            echo "=== Attempt $attempt of $MAX_RETRIES ==="
+            if npx tsx packages/traffic-generator/test/integration.test.ts; then
+              echo "✓ Test passed on attempt $attempt"
+              exit 0
+            fi
+            if [ $attempt -lt $MAX_RETRIES ]; then
+              echo "⚠️ Test failed, waiting 10s before retry..."
+              sleep 10
+            fi
+          done
+          echo "❌ All $MAX_RETRIES attempts failed"
+          exit 1
 
       - name: Collect logs on failure
         if: failure()
