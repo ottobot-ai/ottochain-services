@@ -1,4 +1,15 @@
-import { FiberDefinition } from './types';
+/**
+ * Fiber Definitions for Traffic Generator
+ * 
+ * Defines workflow templates with roles and transitions
+ * for weighted traffic generation.
+ */
+
+export interface TransitionDef {
+  from: string;
+  event: string;
+  actor: string; // role name
+}
 
 export interface FiberDefinition {
   type: string;
@@ -6,12 +17,6 @@ export interface FiberDefinition {
   roles: string[];  // e.g., ['buyer', 'seller'] or ['player1', 'player2']
   isVariableParty: boolean;  // true for voting, multi-sig
   transitions: TransitionDef[];
-}
-
-interface TransitionDef {
-  from: string;
-  event: string;
-  actor: string; // role name
 }
 
 export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
