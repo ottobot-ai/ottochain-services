@@ -20,9 +20,10 @@ export interface ActiveFiber {
 }
 
 export interface TickResult {
-  newFibers: number;
-  drivenFibers: number;
-  completedFibers: number;
+  skipped: boolean;
+  created: number;
+  driven: number;
+  completed: number;
 }
 
 /**
@@ -91,9 +92,21 @@ export class FiberOrchestrator {
    */
   async tick(): Promise<TickResult> {
     this.tickCount++;
-    let newFibers = 0;
-    let drivenFibers = 0;
-    let completedFibers = 0;
+    
+    // Check network health first
+    try {
+      const syncStatus = await this.bridge.checkSyncStatus();
+      if (!syncStatus.ready) {
+        return { skipped: true, created: 0, driven: 0, completed: 0 };
+      }
+    } catch (err) {
+      console.log(`  ⚠️  Sync check failed: ${(err as Error).message}`);
+      return { skipped: true, created: 0, driven: 0, completed: 0 };
+    }
+    
+    let created = 0;
+    let driven = 0;
+    let completed = 0;
 
     // Drive existing fibers forward
     const fibersToRemove: string[] = [];
@@ -101,9 +114,9 @@ export class FiberOrchestrator {
       try {
         const result = await this.driveFiber(fiber);
         if (result === 'progressed') {
-          drivenFibers++;
+          driven++;
         } else if (result === 'completed') {
-          completedFibers++;
+          completed++;
           this.completedFibers++;
           fibersToRemove.push(fiber.id);
         }
@@ -123,14 +136,15 @@ export class FiberOrchestrator {
       for (let i = 0; i < fibersToStart; i++) {
         const fiberType = this.selectFiberType();
         await this.startFiber(fiberType);
-        newFibers++;
+        created++;
       }
     }
 
     return {
-      newFibers,
-      drivenFibers,
-      completedFibers
+      skipped: false,
+      created,
+      driven,
+      completed,
     };
   }
 

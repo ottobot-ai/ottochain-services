@@ -203,12 +203,15 @@ async function runWeightedOrchestrator(): Promise<void> {
     // Run orchestrator tick
     try {
       const result = await orchestrator.tick();
-      const stats = orchestrator.getStats();
       
+      if (result.skipped) {
+        console.log(`Generation ${generation}: ⏸️  Skipped (network not ready)`);
+        return;
+      }
+      
+      const stats = orchestrator.getStats();
       console.log(`Generation ${generation}:`);
-      console.log(`  Active fibers: ${stats.activeFibers}`);
-      console.log(`  Completed: ${stats.completedFibers}`);
-      console.log(`  New this tick: ${result.newFibers}`);
+      console.log(`  Active: ${stats.activeFibers} | Created: ${result.created} | Driven: ${result.driven} | Completed: ${result.completed}`);
       console.log(`  Distribution: ${JSON.stringify(stats.fiberTypeDistribution)}`);
     } catch (e) {
       console.error(`❌ Tick error: ${e}`);

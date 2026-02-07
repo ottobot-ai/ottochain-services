@@ -17,15 +17,23 @@ const mockAgents: Agent[] = Array.from({ length: 10 }, (_, i) => ({
   address: `DAG${i}${'0'.repeat(37)}`,
   fiberId: null,
   state: 'UNREGISTERED' as const,
+  fitness: {
+    reputation: 10,
+    completionRate: 0,
+    networkEffect: 0,
+    age: 0,
+    total: 10,
+  },
   meta: {
+    birthGeneration: 0,
     displayName: `Agent_${i}`,
     platform: 'test',
-    platformUserId: `user${i}`,
-    reputation: 10,
-    vouches: [],
-    completedContracts: 0,
-    violations: 0,
+    vouchedFor: new Set<string>(),
+    receivedVouches: new Set<string>(),
     activeContracts: new Set<string>(),
+    completedContracts: 0,
+    failedContracts: 0,
+    riskTolerance: 0.5,
   },
 }));
 
@@ -116,12 +124,14 @@ describe('FiberOrchestrator', () => {
       const stats = await orchestrator.tick();
       
       expect(stats.skipped).toBe(true);
+      expect(stats.created).toBe(0);
       expect(bridge.proposeContract).not.toHaveBeenCalled();
     });
 
     it('should create fibers when below target', async () => {
       const stats = await orchestrator.tick();
       
+      expect(stats.skipped).toBe(false);
       expect(stats.created).toBeGreaterThan(0);
       // Should have called either proposeContract or createFiber
       const totalCreations = 
