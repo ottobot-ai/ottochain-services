@@ -86,21 +86,32 @@ function formatStats(stats: GenerationStats): string {
 
 function loadTrafficConfig(): TrafficConfig {
   // Parse fiber weights from env or use defaults
-  // Includes both Contract/Custom workflows and Market workflows
+  // Includes Contract/Custom, Market, DAO, Governance, and Corporate workflows
   const defaultWeights: Record<string, number> = {
-    // Contract workflows
-    escrow: 0.15,
-    arbitratedEscrow: 0.10,
-    simpleOrder: 0.10,
-    approval: 0.10,
-    // Custom workflows
-    ticTacToe: 0.10,
-    voting: 0.05,
-    // Market workflows
-    predictionMarket: 0.12,
-    auctionMarket: 0.10,
-    crowdfundMarket: 0.10,
-    groupBuyMarket: 0.08,
+    // Contract workflows (27%)
+    escrow: 0.10,
+    arbitratedEscrow: 0.07,
+    simpleOrder: 0.06,
+    approval: 0.04,
+    // Custom workflows (9%)
+    ticTacToe: 0.05,
+    voting: 0.04,
+    // Market workflows (28%)
+    predictionMarket: 0.08,
+    auctionMarket: 0.07,
+    crowdfundMarket: 0.07,
+    groupBuyMarket: 0.06,
+    // DAO workflows (15%)
+    tokenDAO: 0.06,
+    multisigDAO: 0.05,
+    thresholdDAO: 0.04,
+    // Governance workflows (5%)
+    simpleGovernance: 0.05,
+    // Corporate Governance workflows (16%)
+    corporateEntity: 0.05,
+    corporateBoard: 0.04,
+    corporateShareholders: 0.04,
+    corporateSecurities: 0.03,
   };
   
   // Allow override via FIBER_WEIGHTS env var (JSON string)
