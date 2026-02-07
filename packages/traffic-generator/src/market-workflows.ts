@@ -31,6 +31,23 @@ export const MARKET_SM_DEFINITION = {
     CANCELLED: { id: { value: 'CANCELLED' }, isFinal: true },
   },
   initialState: { value: 'PROPOSED' },
+  transitions: [
+    // PROPOSED transitions
+    { eventName: 'open', from: { value: 'PROPOSED' }, to: { value: 'OPEN' } },
+    { eventName: 'cancel', from: { value: 'PROPOSED' }, to: { value: 'CANCELLED' } },
+    // OPEN transitions
+    { eventName: 'commit', from: { value: 'OPEN' }, to: { value: 'OPEN' } }, // Self-loop for commits
+    { eventName: 'close', from: { value: 'OPEN' }, to: { value: 'CLOSED' } },
+    // CLOSED transitions
+    { eventName: 'submit_resolution', from: { value: 'CLOSED' }, to: { value: 'RESOLVING' } },
+    { eventName: 'refund', from: { value: 'CLOSED' }, to: { value: 'REFUNDED' } },
+    // RESOLVING transitions
+    { eventName: 'submit_resolution', from: { value: 'RESOLVING' }, to: { value: 'RESOLVING' } }, // Additional oracles
+    { eventName: 'finalize', from: { value: 'RESOLVING' }, to: { value: 'SETTLED' } },
+    { eventName: 'refund', from: { value: 'RESOLVING' }, to: { value: 'REFUNDED' } },
+    // SETTLED transitions (claims don't change state, just distribute)
+    { eventName: 'claim', from: { value: 'SETTLED' }, to: { value: 'SETTLED' } },
+  ],
 };
 
 // ============================================================================
