@@ -291,6 +291,16 @@ export class Simulator {
       // 2. Select active agents for this generation
       const population = Array.from(this.agents.values());
       const activeCount = Math.ceil(population.length * this.config.activityRate);
+      
+      // Debug: log agent state distribution
+      if (this.generation % 5 === 0) {
+        const stateCount = population.reduce((acc, a) => {
+          acc[a.state] = (acc[a.state] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+        console.log(`  [debug] Agent states: ${JSON.stringify(stateCount)}, total=${population.length}`);
+      }
+      
       const activeAgents = selectActiveAgents(population, activeCount);
       
       // 3. Process agent activities
