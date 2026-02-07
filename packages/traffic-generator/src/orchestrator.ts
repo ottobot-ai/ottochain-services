@@ -34,12 +34,55 @@ export interface TickResult {
 export class FiberOrchestrator {
   private activeFibers: ActiveFiber[] = [];
   private completedFibers: number = 0;
+  private registeredAgents: Set<string> = new Set(); // Track registered agent addresses
 
   constructor(
     private config: TrafficConfig,
     private bridge: BridgeClient,
     private getAvailableAgents: () => Agent[]
   ) {}
+
+  /**
+   * Bootstrap: Register agents that don't have identity fibers yet
+   * Should be called before starting the main loop
+   */
+  async bootstrapAgents(count: number = 20): Promise<number> {
+    const agents = this.getAvailableAgents();
+    let registered = 0;
+    
+    console.log(`🆔 Bootstrapping agent identities (target: ${count})...`);
+    
+    for (const agent of agents.slice(0, count)) {
+      if (this.registeredAgents.has(agent.address)) continue;
+      
+      try {
+        const result = await this.bridge.registerAgent(
+          agent.privateKey,
+          `Agent_${agent.address.slice(4, 12)}`,
+          'simulation',
+          agent.address.slice(0, 16)
+        );
+        
+        // Activate the agent
+        await this.bridge.activateAgent(agent.privateKey, result.fiberId);
+        
+        this.registeredAgents.add(agent.address);
+        registered++;
+        console.log(`  ✅ Registered: ${agent.address.slice(0, 12)}... (${result.fiberId.slice(0, 8)})`);
+      } catch (err) {
+        // May already be registered
+        const msg = (err as Error).message;
+        if (msg.includes('already') || msg.includes('exists')) {
+          this.registeredAgents.add(agent.address);
+        } else {
+          console.log(`  ⚠️  Failed to register ${agent.address.slice(0, 12)}: ${msg.slice(0, 50)}`);
+        }
+      }
+    }
+    
+    console.log(`  📊 Registered ${registered} new agents (${this.registeredAgents.size} total known)`);
+    return registered;
+  }
 
   /**
    * Main orchestration loop tick

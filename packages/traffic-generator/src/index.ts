@@ -171,7 +171,12 @@ async function runWeightedOrchestrator(): Promise<void> {
   );
   
   console.log('──────────────────────────────────────────────────────────────');
-  console.log('🚀 Starting weighted orchestrator...\n');
+  
+  // Bootstrap: Register agents first (needed before contracts)
+  const targetAgents = Math.min(config.targetActiveFibers * 3, agents.length);
+  await orchestrator.bootstrapAgents(targetAgents);
+  
+  console.log('\n🚀 Starting weighted orchestrator...\n');
   
   // Main loop
   let generation = 0;
