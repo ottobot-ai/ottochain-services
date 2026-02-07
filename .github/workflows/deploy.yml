@@ -66,10 +66,55 @@ jobs:
         run: |
           ssh services << 'SCRIPT'
           cd /opt/ottochain-services
-          pm2 restart all
+          
+          # Source environment
+          set -a
+          source .env
+          set +a
+          
+          # Start or restart PM2 apps
+          if pm2 list | grep -q "online\|stopped"; then
+            pm2 restart ecosystem.config.cjs
+          else
+            pm2 start ecosystem.config.cjs
+          fi
+          
+          # Ensure PM2 survives reboot
           pm2 save
+          pm2 startup systemd -u root --hp /root 2>/dev/null || true
+          
           sleep 5
           pm2 list
+          SCRIPT
+
+      - name: Deploy monitoring stack
+        run: |
+          METAGRAPH_IP="${{ secrets.HETZNER_NODE1_IP }}"
+          
+          ssh services << SCRIPT
+          cd /opt/ottochain-services/packages/monitoring
+          
+          # Source main .env for credentials
+          source /opt/ottochain-services/.env
+          
+          # Generate prometheus.yml from template
+          export METAGRAPH_HOST="$METAGRAPH_IP"
+          envsubst < prometheus.yml.template > prometheus.yml
+          echo "Generated prometheus.yml with METAGRAPH_HOST=$METAGRAPH_IP"
+          
+          # Configure alertmanager with telegram credentials
+          if [ -n "\$TELEGRAM_BOT_TOKEN" ] && [ -n "\$TELEGRAM_CHAT_ID" ]; then
+            sed -i "s|YOUR_TELEGRAM_BOT_TOKEN|\$TELEGRAM_BOT_TOKEN|g" alertmanager.yml
+            sed -i "s|chat_id: 0|chat_id: \$TELEGRAM_CHAT_ID|g" alertmanager.yml
+            echo "Configured alertmanager with Telegram credentials"
+          fi
+          
+          # Start or update the monitoring stack
+          docker compose pull
+          docker compose up -d
+          
+          echo "Monitoring stack status:"
+          docker compose ps
           SCRIPT
 
       - name: Health check
@@ -80,11 +125,17 @@ jobs:
           INDEXER=$(ssh services 'curl -sf http://localhost:3031/health | jq -r .status' || echo "down")
           BRIDGE=$(ssh services 'curl -sf -o /dev/null -w "%{http_code}" http://localhost:3030/health' || echo "000")
           GATEWAY=$(ssh services 'curl -sf -o /dev/null -w "%{http_code}" http://localhost:4000/graphql' || echo "000")
+          PROMETHEUS=$(ssh services 'curl -sf -o /dev/null -w "%{http_code}" http://localhost:9090/-/ready' || echo "000")
+          ALERTMANAGER=$(ssh services 'curl -sf -o /dev/null -w "%{http_code}" http://localhost:9093/-/ready' || echo "000")
+          GRAFANA=$(ssh services 'curl -sf -o /dev/null -w "%{http_code}" http://localhost:3000/api/health' || echo "000")
 
           echo "Explorer: HTTP $EXPLORER"
           echo "Indexer: $INDEXER"
           echo "Bridge: HTTP $BRIDGE"
           echo "Gateway: HTTP $GATEWAY"
+          echo "Prometheus: HTTP $PROMETHEUS"
+          echo "Alertmanager: HTTP $ALERTMANAGER"
+          echo "Grafana: HTTP $GRAFANA"
 
           echo "## 🚀 Services Deployed" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -94,3 +145,6 @@ jobs:
           echo "| Indexer | $INDEXER |" >> $GITHUB_STEP_SUMMARY
           echo "| Bridge | HTTP $BRIDGE |" >> $GITHUB_STEP_SUMMARY
           echo "| Gateway | HTTP $GATEWAY |" >> $GITHUB_STEP_SUMMARY
+          echo "| Prometheus | HTTP $PROMETHEUS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Alertmanager | HTTP $ALERTMANAGER |" >> $GITHUB_STEP_SUMMARY
+          echo "| Grafana | HTTP $GRAFANA |" >> $GITHUB_STEP_SUMMARY
