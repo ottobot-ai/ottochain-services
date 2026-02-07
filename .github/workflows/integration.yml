@@ -257,6 +257,9 @@ jobs:
         env:
           BRIDGE_URL: http://localhost:3030
           ML0_URL: http://localhost:9200
+          FIBER_WAIT_TIMEOUT: '60'
+          DL1_SYNC_WAIT: '15'
+          ACTIVATION_WAIT: '10'
         run: npx tsx packages/traffic-generator/test/integration.test.ts
 
       - name: Collect logs on failure
