@@ -1,5 +1,6 @@
 // GraphQL Resolvers
 
+import { GraphQLScalarType, Kind } from 'graphql';
 import { prisma, getBridgeClient } from '@ottochain/shared';
 import { pubsub, CHANNELS } from './pubsub.js';
 import type { Context } from './context.js';
@@ -13,7 +14,26 @@ export const EVENTS = {
   STATS_UPDATED: 'STATS_UPDATED',
 } as const;
 
+// BigInt scalar for ordinal numbers
+const BigIntScalar = new GraphQLScalarType({
+  name: 'BigInt',
+  description: 'BigInt custom scalar type',
+  serialize(value: unknown): string {
+    return String(value);
+  },
+  parseValue(value: unknown): bigint {
+    return BigInt(value as string | number);
+  },
+  parseLiteral(ast): bigint | null {
+    if (ast.kind === Kind.INT || ast.kind === Kind.STRING) {
+      return BigInt(ast.value);
+    }
+    return null;
+  },
+});
+
 export const resolvers = {
+  BigInt: BigIntScalar,
   // === Queries ===
   Query: {
     agent: async (_: unknown, { address }: { address: string }) => {

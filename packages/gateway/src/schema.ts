@@ -3,6 +3,7 @@
 export const typeDefs = /* GraphQL */ `
   scalar DateTime
   scalar JSON
+  scalar BigInt
 
   # === Types ===
 
@@ -118,17 +119,22 @@ export const typeDefs = /* GraphQL */ `
     stateData: JSON!
     definition: JSON!
     sequenceNumber: Int!
+    createdOrdinal: BigInt!
+    updatedOrdinal: BigInt!
     createdAt: DateTime!
     updatedAt: DateTime!
     transitions(limit: Int): [FiberTransition!]!
   }
 
   type FiberTransition {
+    id: Int!
     eventName: String!
     fromState: String!
     toState: String!
     success: Boolean!
     gasUsed: Int!
+    payload: JSON
+    snapshotOrdinal: BigInt!
     createdAt: DateTime!
   }
 
