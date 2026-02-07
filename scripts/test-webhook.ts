@@ -106,7 +106,7 @@ async function main() {
     }
 
     // Check webhook was delivered
-    await new Promise((r) => setTimeout(r, 2000));
+    await new Promise((r) => setTimeout(r, 5000)); // Increased from 2s for webhook delivery timing
     const subscribers = await fetchJson<{ subscribers: Array<{ lastDeliveryAt: string | null; failCount: number }> }>(
       `${ML0_URL}/data-application/v1/webhooks/subscribers`
     );
