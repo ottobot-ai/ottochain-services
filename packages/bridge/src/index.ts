@@ -9,6 +9,7 @@ import { contractRoutes } from './routes/contract.js';
 import { fiberRoutes } from './routes/fiber.js';
 import { smRoutes } from './routes/sm.js';
 import { scriptRoutes } from './routes/script.js';
+import { governanceRoutes } from './routes/governance.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' })); // Larger limit for state machine definitions
@@ -25,6 +26,7 @@ app.use('/contract', contractRoutes);
 app.use('/fiber', fiberRoutes);    // Generic fiber API
 app.use('/sm', smRoutes);          // Generic state machine API
 app.use('/script', scriptRoutes);  // Generic script oracle API
+app.use('/governance', governanceRoutes); // DAO/Governance API
 
 // Start server
 const config = getConfig();
@@ -46,4 +48,12 @@ app.listen(port, () => {
   console.log(`             POST http://localhost:${port}/script/invoke`);
   console.log(`             GET  http://localhost:${port}/script/:scriptId`);
   console.log(`             GET  http://localhost:${port}/script/:scriptId/result`);
+  console.log(`   Govern:   POST http://localhost:${port}/governance/create-dao`);
+  console.log(`             POST http://localhost:${port}/governance/propose`);
+  console.log(`             POST http://localhost:${port}/governance/vote`);
+  console.log(`             POST http://localhost:${port}/governance/execute`);
+  console.log(`             POST http://localhost:${port}/governance/delegate`);
+  console.log(`             POST http://localhost:${port}/governance/veto`);
+  console.log(`             GET  http://localhost:${port}/governance/:daoId`);
+  console.log(`             GET  http://localhost:${port}/governance/:daoId/proposals`);
 });
