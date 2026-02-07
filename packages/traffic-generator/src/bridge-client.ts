@@ -53,6 +53,16 @@ export interface ContractState {
   sequenceNumber: number;
 }
 
+export interface SyncStatus {
+  ready: boolean;
+  allReady?: boolean;
+  allHealthy?: boolean;
+  gl0?: { nodes: Array<{ name: string; ordinal?: number; state: string }>; fork: boolean; ordinal?: number };
+  ml0?: { nodes: Array<{ name: string; ordinal?: number; state: string }>; fork: boolean; ordinal?: number };
+  dl1?: { nodes: Array<{ name: string; ordinal?: number; state: string }>; ordinal?: number; lag?: number };
+  error?: string;
+}
+
 export class BridgeClient {
   private baseUrl: string;
   private ml0Url: string;
@@ -296,6 +306,39 @@ export class BridgeClient {
     } catch (err) {
       if ((err as Error).message.includes('404')) return null;
       throw err;
+    }
+  }
+
+  // ==========================================================================
+  // Sync Status (Monitor API)
+  // ==========================================================================
+
+  /**
+   * Check network sync status from monitor service
+   * Returns { ready, allReady, allHealthy, gl0, ml0, dl1 }
+   */
+  async checkSyncStatus(monitorUrl?: string): Promise<SyncStatus> {
+    const url = monitorUrl ?? process.env.MONITOR_URL ?? 'http://localhost:3032';
+    try {
+      const res = await fetch(`${url}/api/sync-status`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(this.timeout),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Monitor sync-status failed: ${res.status}`);
+      }
+
+      return res.json() as Promise<SyncStatus>;
+    } catch (err) {
+      // Return not-ready if monitor is unavailable
+      return {
+        ready: false,
+        allReady: false,
+        allHealthy: false,
+        error: (err as Error).message,
+      };
     }
   }
 
