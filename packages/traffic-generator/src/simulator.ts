@@ -8,13 +8,15 @@
 import type {
   Agent,
   Contract,
+  Market,
+  MarketType,
   GeneratorConfig,
   SimulationContext,
   GenerationStats,
   TransitionResult,
   AgentFitness,
 } from './types.js';
-import { DEFAULT_CONFIG } from './types.js';
+import { DEFAULT_CONFIG, MarketState as MS } from './types.js';
 import { BridgeClient } from './bridge-client.js';
 import {
   computeFitness,
@@ -32,6 +34,16 @@ import {
   type WalletPool,
   type PersistedWallet,
 } from './wallets.js';
+import {
+  MARKET_SM_DEFINITION,
+  getAvailableMarketEvents,
+  selectMarketType,
+  generateMarketData,
+  computeMarketTransitionWeight,
+  shouldAutoClose,
+  shouldParticipateInMarket,
+  selectOracles,
+} from './market-workflows.js';
 
 export interface SimulatorEvents {
   onGenerationStart?: (gen: number) => void;
@@ -50,6 +62,7 @@ export class Simulator {
   // Population state
   private agents: Map<string, Agent> = new Map();
   private contracts: Map<string, Contract> = new Map();
+  private markets: Map<string, Market> = new Map();
   private context: SimulationContext;
   
   // Wallet pool (for persistence)
@@ -121,6 +134,7 @@ export class Simulator {
     generation: number;
     population: number;
     activeContracts: number;
+    activeMarkets: number;
     avgFitness: number;
     temperature: number;
   } {
@@ -130,11 +144,16 @@ export class Simulator {
       activeAgents.length > 0
         ? activeAgents.reduce((sum, a) => sum + a.fitness.total, 0) / activeAgents.length
         : 0;
+    
+    const activeMarkets = Array.from(this.markets.values()).filter(
+      m => m.state === MS.OPEN || m.state === MS.PROPOSED || m.state === MS.CLOSED || m.state === MS.RESOLVING
+    ).length;
 
     return {
       generation: this.generation,
       population: this.agents.size,
       activeContracts: this.contracts.size,
+      activeMarkets,
       avgFitness,
       temperature: this.context.temperature,
     };
@@ -187,6 +206,9 @@ export class Simulator {
    * Create an agent object from a persisted wallet (no registration needed)
    */
   private createAgentFromWallet(wallet: PersistedWallet, fiberId: string): Agent {
+    // Determine if this agent is an oracle based on config fraction
+    const isOracle = Math.random() < this.config.oracleFraction;
+    
     return {
       address: wallet.address,
       privateKey: wallet.privateKey,
@@ -209,6 +231,15 @@ export class Simulator {
         completedContracts: 0,
         failedContracts: 0,
         riskTolerance: Math.random(),
+        // Market-related fields
+        activeMarkets: new Set(),
+        marketsCreated: 0,
+        marketWins: 0,
+        marketLosses: 0,
+        totalMarketCommitments: 0,
+        totalMarketWinnings: 0,
+        isOracle,
+        oracleResolutions: 0,
       },
     };
   }
@@ -286,6 +317,9 @@ export class Simulator {
       displayName = `Agent_${index}_${Date.now().toString(36)}`;
     }
     
+    // Determine if this agent is an oracle based on config fraction
+    const isOracle = Math.random() < this.config.oracleFraction;
+    
     // Create agent object
     const agent: Agent = {
       address: walletAddress,
@@ -309,6 +343,15 @@ export class Simulator {
         completedContracts: 0,
         failedContracts: 0,
         riskTolerance: Math.random(), // Random risk profile
+        // Market-related fields
+        activeMarkets: new Set(),
+        marketsCreated: 0,
+        marketWins: 0,
+        marketLosses: 0,
+        totalMarketCommitments: 0,
+        totalMarketWinnings: 0,
+        isOracle,
+        oracleResolutions: 0,
       },
     };
     
@@ -379,6 +422,15 @@ export class Simulator {
       populationSize: this.agents.size,
       avgFitness: 0,
       maxFitness: 0,
+      // Market stats
+      marketsCreated: 0,
+      marketsOpened: 0,
+      marketsClosed: 0,
+      marketsSettled: 0,
+      marketsRefunded: 0,
+      marketCommitments: 0,
+      marketCommitmentValue: 0,
+      activeMarkets: 0,
     };
 
     try {
@@ -408,10 +460,18 @@ export class Simulator {
       // 4. Process contract lifecycle
       await this.processContracts(stats);
       
-      // 5. Update fitness scores
+      // 5. Process market lifecycle
+      await this.processMarkets(stats);
+      
+      // 6. Market creation and participation
+      for (const agent of activeAgents) {
+        await this.processMarketActivity(agent, stats);
+      }
+      
+      // 7. Update fitness scores
       this.updateAllFitness();
       
-      // 6. Update context
+      // 8. Update context
       this.updateContext(stats);
       
       // Compute final stats
@@ -423,6 +483,9 @@ export class Simulator {
         stats.maxFitness = Math.max(...activeAgentList.map((a) => a.fitness.total));
       }
       stats.populationSize = this.agents.size;
+      stats.activeMarkets = Array.from(this.markets.values()).filter(
+        m => m.state === MS.OPEN || m.state === MS.PROPOSED || m.state === MS.CLOSED || m.state === MS.RESOLVING
+      ).length;
       
     } catch (err) {
       this.events.onError?.(err as Error, `generation(${this.generation})`);
@@ -842,5 +905,459 @@ export class Simulator {
       0.3,
       Math.min(1, this.context.marketHealth + (Math.random() - 0.5) * 0.1)
     );
+  }
+
+  // ==========================================================================
+  // Market Operations
+  // ==========================================================================
+
+  /**
+   * Process market lifecycle: auto-close, resolve, finalize.
+   */
+  private async processMarkets(stats: GenerationStats): Promise<void> {
+    const currentTimestamp = Date.now();
+    
+    for (const [fiberId, market] of this.markets.entries()) {
+      // Clean up final state markets (stats were recorded when they transitioned)
+      if (market.state === MS.SETTLED || market.state === MS.REFUNDED || market.state === MS.CANCELLED) {
+        this.markets.delete(fiberId);
+        // Log cleanup for visibility
+        console.log(`  🧹 Cleaned up ${market.state.toLowerCase()} market ${fiberId.slice(0, 8)}`);
+        continue;
+      }
+      
+      const creator = this.agents.get(market.creator);
+      if (!creator) continue;
+      
+      try {
+        // Auto-close markets past deadline
+        if (shouldAutoClose(market, currentTimestamp)) {
+          stats.transactions++;
+          await this.client.closeMarket(creator.privateKey, fiberId);
+          market.state = MS.CLOSED;
+          stats.marketsClosed++;
+          stats.successes++;
+          console.log(`  ⏰ Market ${fiberId.slice(0, 8)} auto-closed (deadline)`);
+        }
+        
+        // Process based on current state
+        switch (market.state) {
+          case MS.PROPOSED:
+            // Creator may open the market
+            if (Math.random() < 0.7) {
+              stats.transactions++;
+              await this.client.openMarket(creator.privateKey, fiberId);
+              market.state = MS.OPEN;
+              stats.marketsOpened++;
+              stats.successes++;
+              console.log(`  📖 Market ${fiberId.slice(0, 8)} opened`);
+            }
+            break;
+            
+          case MS.CLOSED:
+            // Check if market should be refunded (threshold not met)
+            if (market.threshold && market.totalCommitted < market.threshold) {
+              stats.transactions++;
+              await this.client.refundMarket(creator.privateKey, fiberId, 'threshold_not_met');
+              market.state = MS.REFUNDED;
+              stats.marketsRefunded++;
+              stats.successes++;
+              console.log(`  💸 Market ${fiberId.slice(0, 8)} refunded (threshold not met: ${market.totalCommitted}/${market.threshold})`);
+              
+              // Update participant stats for refund
+              this.processMarketRefund(market);
+              break;
+            }
+            
+            // Find an oracle to submit resolution
+            await this.processMarketResolution(market, stats);
+            break;
+            
+          case MS.RESOLVING:
+            // Check if we can finalize
+            if (market.resolutions.length >= market.quorum) {
+              stats.transactions++;
+              const finalOutcome = this.determineFinalOutcome(market);
+              await this.client.finalizeMarket(
+                creator.privateKey,
+                fiberId,
+                finalOutcome,
+                { finalizedAt: Date.now() }
+              );
+              market.state = MS.SETTLED;
+              market.finalOutcome = finalOutcome;
+              stats.marketsSettled++;
+              stats.successes++;
+              console.log(`  ✅ Market ${fiberId.slice(0, 8)} settled: ${finalOutcome}`);
+              
+              // Update participant stats
+              this.processMarketSettlement(market);
+            }
+            break;
+        }
+      } catch (err) {
+        stats.failures++;
+        // Log but continue
+      }
+    }
+  }
+
+  /**
+   * Have oracles submit resolutions for closed markets.
+   */
+  private async processMarketResolution(market: Market, stats: GenerationStats): Promise<void> {
+    // Find oracles who haven't submitted
+    const pendingOracles = market.oracles.filter(
+      addr => !market.resolutions.some(r => r.oracle === addr)
+    );
+    
+    for (const oracleAddr of pendingOracles) {
+      const oracle = this.agents.get(oracleAddr);
+      if (!oracle || oracle.state !== 'ACTIVE') continue;
+      
+      // Oracle decides whether to submit this generation
+      if (Math.random() < 0.6) {
+        try {
+          stats.transactions++;
+          const outcome = this.generateOracleOutcome(market);
+          await this.client.submitResolution(
+            oracle.privateKey,
+            market.fiberId,
+            outcome,
+            `oracle-proof-${Date.now().toString(36)}`
+          );
+          
+          // Update local state
+          market.resolutions.push({
+            oracle: oracleAddr,
+            outcome,
+            submittedAt: Date.now(),
+          });
+          
+          if (market.state === MS.CLOSED) {
+            market.state = MS.RESOLVING;
+          }
+          
+          oracle.meta.oracleResolutions++;
+          stats.successes++;
+          console.log(`  🔮 Oracle ${oracle.meta.displayName} resolved market ${market.fiberId.slice(0, 8)}: ${outcome}`);
+        } catch (err) {
+          stats.failures++;
+        }
+      }
+    }
+  }
+
+  /**
+   * Generate an oracle's outcome based on market type.
+   */
+  private generateOracleOutcome(market: Market): string | number {
+    switch (market.marketType) {
+      case 'prediction':
+        return Math.random() > 0.5 ? 'YES' : 'NO';
+        
+      case 'auction':
+        // Find highest bidder
+        let highestBidder = '';
+        let highestBid = 0;
+        for (const [addr, commitment] of Object.entries(market.commitments)) {
+          if (commitment.amount > highestBid) {
+            highestBid = commitment.amount;
+            highestBidder = addr;
+          }
+        }
+        return highestBidder || 'NO_BIDS';
+        
+      case 'crowdfund':
+      case 'group_buy':
+        return market.totalCommitted >= (market.threshold ?? 0) ? 'SUCCESS' : 'FAILED';
+        
+      default:
+        return 'RESOLVED';
+    }
+  }
+
+  /**
+   * Determine final outcome from oracle resolutions.
+   */
+  private determineFinalOutcome(market: Market): string | number {
+    const outcomes = market.resolutions.map(r => r.outcome);
+    const counts: Record<string, number> = {};
+    
+    for (const o of outcomes) {
+      const key = String(o);
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    
+    // Majority wins
+    let maxCount = 0;
+    let winner = outcomes[0];
+    for (const [outcome, count] of Object.entries(counts)) {
+      if (count > maxCount) {
+        maxCount = count;
+        winner = outcome;
+      }
+    }
+    
+    return winner;
+  }
+
+  /**
+   * Update agent stats after market settlement.
+   */
+  private processMarketSettlement(market: Market): void {
+    const creator = this.agents.get(market.creator);
+    if (creator) {
+      creator.meta.activeMarkets.delete(market.fiberId);
+    }
+    
+    for (const [addr, commitment] of Object.entries(market.commitments)) {
+      const agent = this.agents.get(addr);
+      if (!agent) continue;
+      
+      agent.meta.activeMarkets.delete(market.fiberId);
+      
+      // Determine if agent won
+      const isWinner = this.isMarketWinner(market, addr, commitment);
+      if (isWinner) {
+        agent.meta.marketWins++;
+        // Calculate winnings (simplified)
+        const winnings = this.calculateWinnings(market, addr, commitment);
+        agent.meta.totalMarketWinnings += winnings;
+      } else {
+        agent.meta.marketLosses++;
+      }
+    }
+  }
+
+  /**
+   * Check if an agent won in a market.
+   */
+  private isMarketWinner(
+    market: Market,
+    agentAddr: string,
+    commitment: { amount: number; data: Record<string, unknown> }
+  ): boolean {
+    switch (market.marketType) {
+      case 'prediction':
+        return commitment.data?.prediction === market.finalOutcome;
+        
+      case 'auction':
+        return agentAddr === market.finalOutcome;
+        
+      case 'crowdfund':
+      case 'group_buy':
+        // All participants "win" if threshold met
+        return market.finalOutcome === 'SUCCESS';
+        
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * Calculate winnings for a market participant.
+   */
+  private calculateWinnings(
+    market: Market,
+    agentAddr: string,
+    commitment: { amount: number; data: Record<string, unknown> }
+  ): number {
+    switch (market.marketType) {
+      case 'prediction':
+        // Proportional share of losing pool
+        const winningPool = Object.entries(market.commitments)
+          .filter(([_, c]) => c.data?.prediction === market.finalOutcome)
+          .reduce((sum, [_, c]) => sum + c.amount, 0);
+        const losingPool = market.totalCommitted - winningPool;
+        const share = winningPool > 0 ? commitment.amount / winningPool : 0;
+        return commitment.amount + Math.floor(losingPool * share * 0.98);
+        
+      case 'auction':
+        // Winner gets item (no monetary winnings)
+        return 0;
+        
+      case 'crowdfund':
+      case 'group_buy':
+        // Value delivered, not monetary
+        return 0;
+        
+      default:
+        return 0;
+    }
+  }
+
+  /**
+   * Handle refunds for a market that didn't meet its threshold.
+   */
+  private processMarketRefund(market: Market): void {
+    const creator = this.agents.get(market.creator);
+    if (creator) {
+      creator.meta.activeMarkets.delete(market.fiberId);
+    }
+    
+    // All participants get refunded - mark as losses since they don't win
+    for (const [addr, _commitment] of Object.entries(market.commitments)) {
+      const agent = this.agents.get(addr);
+      if (!agent) continue;
+      
+      agent.meta.activeMarkets.delete(market.fiberId);
+      // Refunds aren't wins or losses - they just get their money back
+      // Don't increment marketLosses since it's not a real loss
+    }
+  }
+
+  /**
+   * Process market activity for an agent: creation and participation.
+   */
+  private async processMarketActivity(agent: Agent, stats: GenerationStats): Promise<void> {
+    if (!agent.fiberId || agent.state !== 'ACTIVE') return;
+    
+    // Maybe create a market
+    if (Math.random() < this.config.marketCreationRate) {
+      await this.maybeCreateMarket(agent, stats);
+    }
+    
+    // Maybe participate in existing markets
+    for (const market of this.markets.values()) {
+      if (market.state !== MS.OPEN) continue;
+      
+      if (shouldParticipateInMarket(agent, market, this.context)) {
+        await this.maybeCommitToMarket(agent, market, stats);
+      }
+    }
+  }
+
+  /**
+   * Agent creates a new market.
+   */
+  private async maybeCreateMarket(agent: Agent, stats: GenerationStats): Promise<void> {
+    // Limit active markets per creator
+    const createdCount = Array.from(this.markets.values()).filter(
+      m => m.creator === agent.address && 
+           (m.state === MS.PROPOSED || m.state === MS.OPEN || m.state === MS.CLOSED || m.state === MS.RESOLVING)
+    ).length;
+    
+    if (createdCount >= 2) return;
+    
+    // Select market type
+    const marketType = selectMarketType(this.config.marketTypeWeights);
+    
+    // Select oracles from population
+    const population = Array.from(this.agents.values());
+    const oracles = selectOracles(population, 3, agent.address);
+    
+    // If no oracles available for prediction markets, skip
+    if (marketType === 'prediction' && oracles.length === 0) {
+      return;
+    }
+    
+    // Calculate deadline
+    const deadlineTimestamp = Date.now() + 
+      this.config.marketDeadlineGenerations * this.config.generationIntervalMs;
+    
+    // Generate market data
+    const marketData = generateMarketData(
+      marketType,
+      agent.address,
+      oracles,
+      deadlineTimestamp
+    );
+    
+    try {
+      stats.transactions++;
+      const result = await this.client.createMarket(
+        agent.privateKey,
+        MARKET_SM_DEFINITION,
+        marketData
+      );
+      stats.successes++;
+      stats.marketsCreated++;
+      
+      // Track market locally
+      const market: Market = {
+        fiberId: result.fiberId,
+        marketType,
+        state: MS.PROPOSED,
+        creator: agent.address,
+        title: marketData.title as string,
+        description: marketData.description as string,
+        deadline: deadlineTimestamp,
+        threshold: marketData.threshold as number | null,
+        oracles,
+        quorum: Math.min(oracles.length, 3) || 1,
+        commitments: {},
+        totalCommitted: 0,
+        resolutions: [],
+        claims: {},
+        terms: marketData.terms as Record<string, unknown>,
+        createdGeneration: this.generation,
+      };
+      
+      this.markets.set(result.fiberId, market);
+      agent.meta.activeMarkets.add(result.fiberId);
+      agent.meta.marketsCreated++;
+      
+      console.log(`  🏪 ${agent.meta.displayName} created ${marketType} market: ${result.fiberId.slice(0, 8)}`);
+    } catch (err) {
+      stats.failures++;
+      console.log(`  ❌ Market creation failed: ${(err as Error).message?.slice(0, 80)}`);
+    }
+  }
+
+  /**
+   * Agent commits to an existing market.
+   */
+  private async maybeCommitToMarket(
+    agent: Agent,
+    market: Market,
+    stats: GenerationStats
+  ): Promise<void> {
+    // Generate commitment based on market type and agent risk tolerance
+    const { weight, payload } = computeMarketTransitionWeight(
+      market,
+      'commit',
+      agent,
+      this.context
+    );
+    
+    // Skip if weight too low
+    if (weight < 0.2) return;
+    
+    const amount = (payload.amount as number) ?? Math.floor(Math.random() * 50) + 5;
+    const data = (payload.data as Record<string, unknown>) ?? {};
+    
+    try {
+      stats.transactions++;
+      await this.client.commitToMarket(agent.privateKey, market.fiberId, amount, data);
+      stats.successes++;
+      stats.marketCommitments++;
+      stats.marketCommitmentValue += amount;
+      
+      // Update local state
+      const existingCommitment = market.commitments[agent.address];
+      if (existingCommitment) {
+        existingCommitment.amount += amount;
+        existingCommitment.data = { ...existingCommitment.data, ...data };
+        existingCommitment.lastCommitAt = Date.now();
+      } else {
+        market.commitments[agent.address] = {
+          amount,
+          data,
+          lastCommitAt: Date.now(),
+        };
+      }
+      market.totalCommitted += amount;
+      
+      agent.meta.activeMarkets.add(market.fiberId);
+      agent.meta.totalMarketCommitments += amount;
+      
+      const actionWord = market.marketType === 'auction' ? 'bid' : 
+                         market.marketType === 'crowdfund' ? 'pledged' :
+                         market.marketType === 'group_buy' ? 'ordered' : 'committed';
+      console.log(`  💰 ${agent.meta.displayName} ${actionWord} ${amount} to ${market.marketType} ${market.fiberId.slice(0, 8)}`);
+    } catch (err) {
+      stats.failures++;
+    }
   }
 }

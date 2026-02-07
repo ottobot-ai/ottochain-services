@@ -7,6 +7,7 @@ import { walletRoutes } from './routes/wallet.js';
 import { agentRoutes } from './routes/agent.js';
 import { contractRoutes } from './routes/contract.js';
 import { fiberRoutes } from './routes/fiber.js';
+import { smRoutes } from './routes/sm.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' })); // Larger limit for state machine definitions
@@ -21,6 +22,7 @@ app.use('/wallet', walletRoutes);
 app.use('/agent', agentRoutes);
 app.use('/contract', contractRoutes);
 app.use('/fiber', fiberRoutes);  // Generic fiber API
+app.use('/sm', smRoutes);        // Generic state machine API
 
 // Start server
 const config = getConfig();
@@ -34,4 +36,9 @@ app.listen(port, () => {
   console.log(`   Fiber:    POST http://localhost:${port}/fiber/create`);
   console.log(`             POST http://localhost:${port}/fiber/transition`);
   console.log(`             POST http://localhost:${port}/fiber/batch`);
+  console.log(`   SM:       POST http://localhost:${port}/sm/create`);
+  console.log(`             POST http://localhost:${port}/sm/transition`);
+  console.log(`             GET  http://localhost:${port}/sm/:fiberId`);
+  console.log(`             GET  http://localhost:${port}/sm?schema=X&status=Y`);
+  console.log(`             POST http://localhost:${port}/sm/:fiberId/commit`);
 });

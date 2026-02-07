@@ -34,6 +34,14 @@ const mockAgents: Agent[] = Array.from({ length: 10 }, (_, i) => ({
     completedContracts: 0,
     failedContracts: 0,
     riskTolerance: 0.5,
+    activeMarkets: new Set<string>(),
+    marketsCreated: 0,
+    marketWins: 0,
+    marketLosses: 0,
+    totalMarketCommitments: 0,
+    totalMarketWinnings: 0,
+    isOracle: false,
+    oracleResolutions: 0,
   },
 }));
 
