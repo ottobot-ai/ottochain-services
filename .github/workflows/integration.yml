@@ -70,6 +70,17 @@ jobs:
         with:
           version: 9
 
+      - name: Get pnpm store directory
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Cache pnpm
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+
       - name: Install dependencies
         run: pnpm install
 
@@ -104,6 +115,14 @@ jobs:
           cp modules/dag-l1/target/scala-2.13/tessellation-dag-l1-assembly*.jar docker/jars/gl1.jar
           cp modules/currency-l0/target/scala-2.13/tessellation-currency-l0-assembly*.jar docker/jars/ml0.jar
           cp modules/currency-l1/target/scala-2.13/tessellation-currency-l1-assembly*.jar docker/jars/cl1.jar
+
+      - name: Cache ottochain assemblies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ottochain/modules/*/target
+          key: ottochain-${{ hashFiles('ottochain/build.sbt', 'ottochain/project/*.sbt', 'ottochain/project/*.scala') }}
+          restore-keys: ottochain-
 
       - name: Build ottochain metagraph
         working-directory: ottochain
