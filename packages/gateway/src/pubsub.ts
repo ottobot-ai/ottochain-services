@@ -1,13 +1,8 @@
 import { RedisPubSub } from 'graphql-redis-subscriptions';
 import Redis from 'ioredis';
-import { getConfig } from '@ottochain/shared';
+import { getRedisOptions } from '@ottochain/shared';
 
-const config = getConfig();
-
-const options = {
-  host: new URL(config.REDIS_URL).hostname,
-  port: parseInt(new URL(config.REDIS_URL).port || '6379'),
-};
+const options = getRedisOptions();
 
 export const pubsub = new RedisPubSub({
   publisher: new Redis(options),
