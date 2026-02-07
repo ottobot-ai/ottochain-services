@@ -34,15 +34,30 @@ WORKDIR /app
 
 RUN corepack enable && corepack prepare pnpm@8 --activate
 
+# Install netcat for database health checks
+RUN apk add --no-cache netcat-openbsd
+
 # Copy built artifacts
 COPY --from=builder /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
 COPY --from=builder /app/packages ./packages
 COPY --from=builder /app/node_modules ./node_modules
 
-# Default to gateway, override with command
+# Copy entrypoint script
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Service selection via environment variable
+# Valid services: gateway, bridge, indexer, monitor, traffic-generator
+#
+# Port mapping:
+#   gateway:  4000 - Main API gateway
+#   bridge:   3030 - OttoChain bridge service
+#   indexer:  3031 - Blockchain indexer (requires DATABASE_URL)
+#   monitor:  3032 - Monitoring service
+#
 ENV SERVICE=gateway
 ENV NODE_ENV=production
 
 EXPOSE 4000 3030 3031 3032
 
-CMD ["sh", "-c", "pnpm --filter $SERVICE start"]
+ENTRYPOINT ["docker-entrypoint.sh"]
