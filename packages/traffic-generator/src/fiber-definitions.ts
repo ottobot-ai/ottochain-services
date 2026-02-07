@@ -21,7 +21,7 @@ export interface FiberDefinition {
   type: string;
   name: string;
   /** SDK workflowType - determines which UI view shows it */
-  workflowType: 'Contract' | 'AgentIdentity' | 'Custom' | 'Market' | 'DAO' | 'Governance';
+  workflowType: 'Contract' | 'AgentIdentity' | 'Custom' | 'Market' | 'DAO' | 'Governance' | 'CorporateEntity' | 'CorporateBoard' | 'CorporateShareholders' | 'CorporateSecurities';
   roles: string[];  // e.g., ['proposer', 'counterparty'] or ['playerX', 'playerO']
   isVariableParty: boolean;  // true for voting, multi-sig
   /** Contract states from SDK: PROPOSED → ACTIVE → COMPLETED/REJECTED/DISPUTED */
@@ -33,8 +33,10 @@ export interface FiberDefinition {
   marketType?: 'prediction' | 'auction' | 'crowdfund' | 'group_buy';
   /** DAO type for DAO workflows */
   daoType?: 'token' | 'multisig' | 'threshold';
+  /** Corporate type for Corporate workflows */
+  corporateType?: 'entity' | 'board' | 'shareholders' | 'securities';
   /** Generate initial stateData for this fiber type */
-  generateStateData: (participants: Map<string, string>, context: FiberContext) => ContractStateData | CustomStateData | MarketStateData | DAOStateData | GovernanceStateData;
+  generateStateData: (participants: Map<string, string>, context: FiberContext) => ContractStateData | CustomStateData | MarketStateData | DAOStateData | GovernanceStateData | CorporateEntityStateData | CorporateBoardStateData | CorporateShareholdersStateData | CorporateSecuritiesStateData;
 }
 
 export interface FiberContext {
@@ -159,6 +161,182 @@ export interface GovernanceStateData {
   createdAt: number;
 }
 
+/** Corporate Entity fiber stateData */
+export interface CorporateEntityStateData {
+  schema: 'CorporateEntity';
+  entityId: string;
+  legalName: string;
+  entityType: 'C_CORP' | 'S_CORP' | 'B_CORP' | 'LLC' | 'LP' | 'LLP';
+  jurisdiction: {
+    state: string;
+    country: string;
+  };
+  formationDate: string | null;
+  registeredAgent: {
+    name: string;
+    address: Record<string, string>;
+  };
+  incorporators: Array<{ name: string; address: string }>;
+  shareStructure: {
+    classes: Array<{
+      classId: string;
+      className: string;
+      authorized: number;
+      issued: number;
+      outstanding: number;
+      parValue: number;
+      votingRights: boolean;
+    }>;
+    totalAuthorized: number;
+    totalIssued: number;
+    totalOutstanding: number;
+  };
+  status: string;
+  createdAt: number;
+}
+
+/** Corporate Board fiber stateData */
+export interface CorporateBoardStateData {
+  schema: 'CorporateBoard';
+  boardId: string;
+  entityId: string;
+  directors: Array<{
+    directorId: string;
+    name: string;
+    email: string;
+    termStart: string;
+    termEnd: string;
+    status: 'ACTIVE' | 'RESIGNED' | 'REMOVED' | 'TERM_EXPIRED';
+    isIndependent: boolean;
+    isChair: boolean;
+  }>;
+  seats: {
+    authorized: number;
+    filled: number;
+    vacant: number;
+  };
+  quorumRules: {
+    type: 'MAJORITY' | 'SUPERMAJORITY' | 'FIXED_NUMBER';
+    threshold: number;
+  };
+  currentMeeting: {
+    meetingId: string;
+    type: 'REGULAR' | 'SPECIAL' | 'ANNUAL' | 'ORGANIZATIONAL';
+    scheduledDate: string;
+    attendees: Array<{ directorId: string; present: boolean }>;
+    quorumPresent: boolean;
+  } | null;
+  meetingHistory: Array<{
+    meetingId: string;
+    type: string;
+    date: string;
+    resolutionsPassed: string[];
+  }>;
+  status: string;
+  createdAt: number;
+}
+
+/** Corporate Shareholders fiber stateData */
+export interface CorporateShareholdersStateData {
+  schema: 'CorporateShareholders';
+  meetingId: string;
+  entityId: string;
+  meetingType: 'ANNUAL' | 'SPECIAL';
+  fiscalYear: number;
+  scheduledDate: string;
+  recordDate: {
+    date: string;
+    setByBoardOn: string;
+  } | null;
+  eligibleVoters: Array<{
+    shareholderId: string;
+    name: string;
+    shareholdings: Array<{
+      shareClass: string;
+      shares: number;
+      votes: number;
+    }>;
+    totalVotes: number;
+    proxyGrantedTo: string | null;
+    hasVoted: boolean;
+  }>;
+  quorumRequirements: {
+    threshold: number;
+    sharesRequired: number;
+    sharesRepresented: number;
+    quorumMet: boolean;
+  };
+  agenda: Array<{
+    itemId: string;
+    title: string;
+    type: string;
+    voteRequired: string;
+    status: 'PENDING' | 'VOTING' | 'CLOSED' | 'APPROVED' | 'REJECTED';
+  }>;
+  votes: Array<{
+    voteId: string;
+    agendaItemId: string;
+    shareholderId: string;
+    votesFor: number;
+    votesAgainst: number;
+    votesAbstain: number;
+    viaProxy: boolean;
+  }>;
+  voteTallies: Array<{
+    agendaItemId: string;
+    forVotes: number;
+    againstVotes: number;
+    abstainVotes: number;
+    result: 'APPROVED' | 'REJECTED' | 'PENDING';
+    certified: boolean;
+  }>;
+  status: string;
+  createdAt: number;
+}
+
+/** Corporate Securities fiber stateData */
+export interface CorporateSecuritiesStateData {
+  schema: 'CorporateSecurities';
+  securityId: string;
+  entityId: string;
+  shareClass: string;
+  shareClassName: string;
+  shareCount: number;
+  parValue: number;
+  issuancePrice: number | null;
+  issuanceDate: string | null;
+  form: 'CERTIFICATED' | 'BOOK_ENTRY' | 'DRS';
+  certificateNumber: string | null;
+  holder: {
+    holderId: string;
+    holderType: 'INDIVIDUAL' | 'ENTITY' | 'TRUST' | 'TREASURY';
+    name: string;
+    acquisitionDate: string;
+    acquisitionMethod: string;
+    costBasis: number | null;
+  } | null;
+  restrictions: {
+    isRestricted: boolean;
+    restrictionType: string[];
+    restrictionEndDate: string | null;
+  };
+  authorization: {
+    authorizedDate: string;
+    authorizedShares: number;
+  } | null;
+  transferHistory: Array<{
+    transferId: string;
+    transferDate: string;
+    fromHolderId: string;
+    toHolderId: string;
+    shares: number;
+    transferType: string;
+    pricePerShare: number | null;
+  }>;
+  status: string;
+  createdAt: number;
+}
+
 /** Sample contract terms generators */
 const SAMPLE_TERMS = {
   escrow: [
@@ -213,6 +391,28 @@ const SAMPLE_TERMS = {
     { name: 'Project Governance', passingThreshold: 0.5, disputeQuorum: 3, votingPeriodDays: 7 },
     { name: 'Guild Governance', passingThreshold: 0.6, disputeQuorum: 5, votingPeriodDays: 5 },
     { name: 'DAO Governance', passingThreshold: 0.67, disputeQuorum: 7, votingPeriodDays: 14 },
+  ],
+  corporateEntity: [
+    { legalName: 'Acme Technologies Inc.', entityType: 'C_CORP', state: 'DE', authorizedShares: 10000000, parValue: 0.0001 },
+    { legalName: 'Innovation Labs LLC', entityType: 'LLC', state: 'WY', authorizedShares: 1000000, parValue: 0.001 },
+    { legalName: 'GreenFuture B Corp', entityType: 'B_CORP', state: 'CA', authorizedShares: 5000000, parValue: 0.01 },
+    { legalName: 'Startup Ventures Inc.', entityType: 'C_CORP', state: 'NV', authorizedShares: 50000000, parValue: 0.00001 },
+  ],
+  corporateBoard: [
+    { seats: 5, termYears: 3, quorumType: 'MAJORITY', isClassified: true },
+    { seats: 7, termYears: 2, quorumType: 'MAJORITY', isClassified: false },
+    { seats: 3, termYears: 1, quorumType: 'FIXED_NUMBER', isClassified: false },
+  ],
+  corporateShareholders: [
+    { meetingType: 'ANNUAL', quorumThreshold: 0.5, noticeDays: 30 },
+    { meetingType: 'SPECIAL', quorumThreshold: 0.5, noticeDays: 10 },
+    { meetingType: 'ANNUAL', quorumThreshold: 0.33, noticeDays: 45 },
+  ],
+  corporateSecurities: [
+    { className: 'Common Stock', parValue: 0.0001, votingRights: true, votesPerShare: 1 },
+    { className: 'Series A Preferred', parValue: 1.00, votingRights: true, votesPerShare: 1, liquidationPreference: 1 },
+    { className: 'Series B Preferred', parValue: 5.00, votingRights: true, votesPerShare: 1, liquidationPreference: 1.5 },
+    { className: 'Founders Stock', parValue: 0.0001, votingRights: true, votesPerShare: 10 },
   ],
 };
 
@@ -863,6 +1063,316 @@ export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
         votes: {},
         history: [],
         status: 'ACTIVE',
+        createdAt: now,
+      };
+    },
+  },
+
+  // =========================================================================
+  // Corporate Governance Workflows
+  // =========================================================================
+
+  /**
+   * Corporate Entity - Company lifecycle from incorporation to dissolution
+   * incorporator creates → incorporate → active → amend/suspend/dissolve
+   */
+  corporateEntity: {
+    type: 'corporateEntity',
+    name: 'Corporate Entity',
+    workflowType: 'CorporateEntity',
+    corporateType: 'entity',
+    roles: ['incorporator', 'registeredAgent', 'secretary'],
+    isVariableParty: false,
+    states: ['INCORPORATING', 'ACTIVE', 'SUSPENDED', 'DISSOLVED'],
+    initialState: 'INCORPORATING',
+    finalStates: ['DISSOLVED'],
+    transitions: [
+      { from: 'INCORPORATING', to: 'ACTIVE', event: 'incorporate', actor: 'incorporator' },
+      { from: 'ACTIVE', to: 'ACTIVE', event: 'create_class', actor: 'secretary' },
+      { from: 'ACTIVE', to: 'ACTIVE', event: 'issue_shares', actor: 'secretary' },
+      { from: 'ACTIVE', to: 'ACTIVE', event: 'transfer_shares', actor: 'secretary' },
+      { from: 'ACTIVE', to: 'ACTIVE', event: 'amend_charter', actor: 'secretary' },
+      { from: 'ACTIVE', to: 'ACTIVE', event: 'update_registered_agent', actor: 'secretary' },
+      { from: 'ACTIVE', to: 'SUSPENDED', event: 'suspend', actor: 'registeredAgent' },
+      { from: 'SUSPENDED', to: 'ACTIVE', event: 'reinstate', actor: 'secretary' },
+      { from: 'ACTIVE', to: 'DISSOLVED', event: 'dissolve_voluntary', actor: 'secretary' },
+      { from: 'SUSPENDED', to: 'DISSOLVED', event: 'dissolve_administrative', actor: 'registeredAgent' },
+    ],
+    generateStateData: (participants, ctx): CorporateEntityStateData => {
+      const terms = randomTerms('corporateEntity');
+      const now = Date.now();
+      
+      return {
+        schema: 'CorporateEntity',
+        entityId: `ENTITY-${ctx.fiberId.slice(0, 8)}`,
+        legalName: `${terms.legalName} #${ctx.fiberId.slice(0, 6)}`,
+        entityType: terms.entityType as 'C_CORP' | 'S_CORP' | 'B_CORP' | 'LLC' | 'LP' | 'LLP',
+        jurisdiction: {
+          state: terms.state,
+          country: 'USA',
+        },
+        formationDate: null,
+        registeredAgent: {
+          name: `Registered Agent for ${terms.legalName}`,
+          address: { street: '123 Main St', city: 'Wilmington', state: terms.state, zip: '19801' },
+        },
+        incorporators: [
+          { name: participants.get('incorporator')!, address: participants.get('incorporator')! },
+        ],
+        shareStructure: {
+          classes: [
+            {
+              classId: 'COMMON',
+              className: 'Common Stock',
+              authorized: terms.authorizedShares,
+              issued: 0,
+              outstanding: 0,
+              parValue: terms.parValue,
+              votingRights: true,
+            },
+          ],
+          totalAuthorized: terms.authorizedShares,
+          totalIssued: 0,
+          totalOutstanding: 0,
+        },
+        status: 'INCORPORATING',
+        createdAt: now,
+      };
+    },
+  },
+
+  /**
+   * Corporate Board - Board of directors management and meetings
+   * creator creates → elect directors → call meetings → pass resolutions
+   */
+  corporateBoard: {
+    type: 'corporateBoard',
+    name: 'Corporate Board',
+    workflowType: 'CorporateBoard',
+    corporateType: 'board',
+    roles: ['chairperson', 'director', 'secretary'],
+    isVariableParty: true,
+    states: ['ACTIVE', 'IN_MEETING', 'QUORUM_LOST'],
+    initialState: 'ACTIVE',
+    finalStates: [],
+    transitions: [
+      { from: 'ACTIVE', to: 'ACTIVE', event: 'elect_director', actor: 'chairperson' },
+      { from: 'ACTIVE', to: 'ACTIVE', event: 'resign_director', actor: 'director' },
+      { from: 'ACTIVE', to: 'ACTIVE', event: 'designate_chair', actor: 'chairperson' },
+      { from: 'ACTIVE', to: 'ACTIVE', event: 'call_meeting', actor: 'chairperson' },
+      { from: 'ACTIVE', to: 'ACTIVE', event: 'record_attendance', actor: 'secretary' },
+      { from: 'ACTIVE', to: 'IN_MEETING', event: 'open_meeting', actor: 'chairperson' },
+      { from: 'IN_MEETING', to: 'IN_MEETING', event: 'pass_resolution', actor: 'director' },
+      { from: 'IN_MEETING', to: 'IN_MEETING', event: 'written_consent', actor: 'director' },
+      { from: 'IN_MEETING', to: 'IN_MEETING', event: 'director_departs', actor: 'director' },
+      { from: 'IN_MEETING', to: 'QUORUM_LOST', event: 'quorum_lost', actor: 'secretary' },
+      { from: 'QUORUM_LOST', to: 'IN_MEETING', event: 'quorum_restored', actor: 'secretary' },
+      { from: 'IN_MEETING', to: 'ACTIVE', event: 'adjourn', actor: 'chairperson' },
+      { from: 'QUORUM_LOST', to: 'ACTIVE', event: 'adjourn', actor: 'chairperson' },
+    ],
+    generateStateData: (participants, ctx): CorporateBoardStateData => {
+      const terms = randomTerms('corporateBoard');
+      const now = Date.now();
+      
+      const directors: CorporateBoardStateData['directors'] = [];
+      const chairperson = participants.get('chairperson')!;
+      
+      // Add chairperson as first director
+      directors.push({
+        directorId: `DIR-${chairperson.slice(2, 10)}`,
+        name: `Director ${chairperson.slice(0, 8)}`,
+        email: `${chairperson.slice(2, 10)}@example.com`,
+        termStart: new Date().toISOString().split('T')[0],
+        termEnd: new Date(Date.now() + terms.termYears * 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        status: 'ACTIVE',
+        isIndependent: false,
+        isChair: true,
+      });
+      
+      // Add other directors
+      for (const [role, addr] of participants.entries()) {
+        if (role.startsWith('director') && addr !== chairperson) {
+          directors.push({
+            directorId: `DIR-${addr.slice(2, 10)}`,
+            name: `Director ${addr.slice(0, 8)}`,
+            email: `${addr.slice(2, 10)}@example.com`,
+            termStart: new Date().toISOString().split('T')[0],
+            termEnd: new Date(Date.now() + terms.termYears * 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            status: 'ACTIVE',
+            isIndependent: Math.random() > 0.5,
+            isChair: false,
+          });
+        }
+      }
+      
+      return {
+        schema: 'CorporateBoard',
+        boardId: `BOARD-${ctx.fiberId.slice(0, 8)}`,
+        entityId: `ENTITY-${ctx.fiberId.slice(0, 8)}`,
+        directors,
+        seats: {
+          authorized: terms.seats,
+          filled: directors.length,
+          vacant: terms.seats - directors.length,
+        },
+        quorumRules: {
+          type: terms.quorumType as 'MAJORITY' | 'SUPERMAJORITY' | 'FIXED_NUMBER',
+          threshold: 0.5,
+        },
+        currentMeeting: null,
+        meetingHistory: [],
+        status: 'ACTIVE',
+        createdAt: now,
+      };
+    },
+  },
+
+  /**
+   * Corporate Shareholders - Shareholder meetings and voting
+   * board schedules → set record date → proxy period → voting → certify
+   */
+  corporateShareholders: {
+    type: 'corporateShareholders',
+    name: 'Shareholder Meeting',
+    workflowType: 'CorporateShareholders',
+    corporateType: 'shareholders',
+    roles: ['secretary', 'inspector', 'shareholder'],
+    isVariableParty: true,
+    states: ['SCHEDULED', 'RECORD_DATE_SET', 'PROXY_PERIOD', 'IN_SESSION', 'VOTING', 'CLOSED'],
+    initialState: 'SCHEDULED',
+    finalStates: ['CLOSED'],
+    transitions: [
+      { from: 'SCHEDULED', to: 'RECORD_DATE_SET', event: 'set_record_date', actor: 'secretary' },
+      { from: 'RECORD_DATE_SET', to: 'RECORD_DATE_SET', event: 'register_shareholders', actor: 'secretary' },
+      { from: 'RECORD_DATE_SET', to: 'PROXY_PERIOD', event: 'open_proxy_period', actor: 'secretary' },
+      { from: 'PROXY_PERIOD', to: 'PROXY_PERIOD', event: 'grant_proxy', actor: 'shareholder' },
+      { from: 'PROXY_PERIOD', to: 'IN_SESSION', event: 'schedule_meeting', actor: 'secretary' },
+      { from: 'IN_SESSION', to: 'VOTING', event: 'open_polls', actor: 'inspector' },
+      { from: 'VOTING', to: 'VOTING', event: 'cast_vote', actor: 'shareholder' },
+      { from: 'VOTING', to: 'IN_SESSION', event: 'close_voting', actor: 'inspector' },
+      { from: 'IN_SESSION', to: 'CLOSED', event: 'certify_results', actor: 'inspector' },
+      { from: 'IN_SESSION', to: 'CLOSED', event: 'adjourn_without_action', actor: 'secretary' },
+    ],
+    generateStateData: (participants, ctx): CorporateShareholdersStateData => {
+      const terms = randomTerms('corporateShareholders');
+      const now = Date.now();
+      
+      const eligibleVoters: CorporateShareholdersStateData['eligibleVoters'] = [];
+      
+      // Add shareholders
+      for (const [role, addr] of participants.entries()) {
+        if (role.startsWith('shareholder')) {
+          const shares = Math.floor(Math.random() * 10000) + 1000;
+          eligibleVoters.push({
+            shareholderId: `SH-${addr.slice(2, 10)}`,
+            name: `Shareholder ${addr.slice(0, 8)}`,
+            shareholdings: [
+              { shareClass: 'Common', shares, votes: shares },
+            ],
+            totalVotes: shares,
+            proxyGrantedTo: null,
+            hasVoted: false,
+          });
+        }
+      }
+      
+      const totalShares = eligibleVoters.reduce((sum, v) => sum + v.totalVotes, 0);
+      
+      return {
+        schema: 'CorporateShareholders',
+        meetingId: `MEETING-${ctx.fiberId.slice(0, 8)}`,
+        entityId: `ENTITY-${ctx.fiberId.slice(0, 8)}`,
+        meetingType: terms.meetingType as 'ANNUAL' | 'SPECIAL',
+        fiscalYear: new Date().getFullYear(),
+        scheduledDate: new Date(Date.now() + terms.noticeDays * 24 * 60 * 60 * 1000).toISOString(),
+        recordDate: null,
+        eligibleVoters,
+        quorumRequirements: {
+          threshold: terms.quorumThreshold,
+          sharesRequired: Math.ceil(totalShares * terms.quorumThreshold),
+          sharesRepresented: 0,
+          quorumMet: false,
+        },
+        agenda: [
+          {
+            itemId: 'ITEM-001',
+            title: 'Election of Directors',
+            type: 'DIRECTOR_ELECTION',
+            voteRequired: 'PLURALITY',
+            status: 'PENDING',
+          },
+          {
+            itemId: 'ITEM-002',
+            title: 'Ratification of Auditors',
+            type: 'AUDITOR_RATIFICATION',
+            voteRequired: 'MAJORITY_CAST',
+            status: 'PENDING',
+          },
+        ],
+        votes: [],
+        voteTallies: [],
+        status: 'SCHEDULED',
+        createdAt: now,
+      };
+    },
+  },
+
+  /**
+   * Corporate Securities - Stock issuance, transfers, and corporate actions
+   * authorize → issue → transfer → retire or split/dividend
+   */
+  corporateSecurities: {
+    type: 'corporateSecurities',
+    name: 'Securities Management',
+    workflowType: 'CorporateSecurities',
+    corporateType: 'securities',
+    roles: ['issuer', 'transferAgent', 'holder'],
+    isVariableParty: false,
+    states: ['AUTHORIZED', 'ISSUED', 'TREASURY', 'TRANSFERRED', 'RETIRED'],
+    initialState: 'AUTHORIZED',
+    finalStates: ['RETIRED'],
+    transitions: [
+      { from: 'AUTHORIZED', to: 'ISSUED', event: 'authorize_shares', actor: 'issuer' },
+      { from: 'AUTHORIZED', to: 'ISSUED', event: 'issue_shares', actor: 'issuer' },
+      { from: 'ISSUED', to: 'TRANSFERRED', event: 'transfer', actor: 'transferAgent' },
+      { from: 'TRANSFERRED', to: 'ISSUED', event: 'complete_transfer', actor: 'transferAgent' },
+      { from: 'ISSUED', to: 'TREASURY', event: 'repurchase', actor: 'issuer' },
+      { from: 'TREASURY', to: 'ISSUED', event: 'reissue_from_treasury', actor: 'issuer' },
+      { from: 'ISSUED', to: 'ISSUED', event: 'stock_split', actor: 'issuer' },
+      { from: 'ISSUED', to: 'ISSUED', event: 'declare_dividend', actor: 'issuer' },
+      { from: 'ISSUED', to: 'ISSUED', event: 'remove_restriction', actor: 'issuer' },
+      { from: 'ISSUED', to: 'RETIRED', event: 'retire', actor: 'issuer' },
+      { from: 'TREASURY', to: 'RETIRED', event: 'retire', actor: 'issuer' },
+    ],
+    generateStateData: (participants, ctx): CorporateSecuritiesStateData => {
+      const terms = randomTerms('corporateSecurities');
+      const now = Date.now();
+      const shareCount = Math.floor(Math.random() * 100000) + 10000;
+      
+      return {
+        schema: 'CorporateSecurities',
+        securityId: `SEC-${ctx.fiberId.slice(0, 8)}`,
+        entityId: `ENTITY-${ctx.fiberId.slice(0, 8)}`,
+        shareClass: terms.className.replace(/\s+/g, '_').toUpperCase(),
+        shareClassName: terms.className,
+        shareCount,
+        parValue: terms.parValue,
+        issuancePrice: null,
+        issuanceDate: null,
+        form: 'BOOK_ENTRY',
+        certificateNumber: null,
+        holder: null,
+        restrictions: {
+          isRestricted: Math.random() > 0.7,
+          restrictionType: Math.random() > 0.7 ? ['RULE_144'] : [],
+          restrictionEndDate: null,
+        },
+        authorization: {
+          authorizedDate: new Date().toISOString().split('T')[0],
+          authorizedShares: shareCount,
+        },
+        transferHistory: [],
+        status: 'AUTHORIZED',
         createdAt: now,
       };
     },

@@ -781,6 +781,635 @@ export class BridgeClient {
   }
 
   // ==========================================================================
+  // Corporate Entity Operations
+  // ==========================================================================
+
+  /**
+   * Create a new Corporate Entity fiber.
+   */
+  async createCorporateEntity(
+    privateKey: string,
+    initialData: Record<string, unknown>
+  ): Promise<{ fiberId: string; hash: string }> {
+    const definition = {
+      workflowType: 'CorporateEntity',
+      name: initialData.legalName || 'Corporate Entity',
+    };
+    return this.createFiber(privateKey, definition, initialData);
+  }
+
+  /**
+   * Incorporate the entity (state approves articles).
+   */
+  async corpEntityIncorporate(
+    privateKey: string,
+    fiberId: string,
+    approvalDate: string,
+    stateFileNumber: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'incorporate', {
+      approvalDate,
+      stateFileNumber,
+    });
+  }
+
+  /**
+   * Create a new share class.
+   */
+  async corpEntityCreateClass(
+    privateKey: string,
+    fiberId: string,
+    classData: {
+      classId: string;
+      className: string;
+      authorized: number;
+      parValue: number;
+      votingRights: boolean;
+      votesPerShare: number;
+    }
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'update_share_class', classData);
+  }
+
+  /**
+   * Issue shares from authorized pool.
+   */
+  async corpEntityIssueShares(
+    privateKey: string,
+    fiberId: string,
+    classId: string,
+    shares: number,
+    holderId: string,
+    price: number
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'issue_shares', {
+      classId,
+      shares,
+      holderId,
+      issuancePrice: price,
+    });
+  }
+
+  /**
+   * Transfer shares between holders.
+   */
+  async corpEntityTransferShares(
+    privateKey: string,
+    fiberId: string,
+    classId: string,
+    shares: number,
+    fromHolderId: string,
+    toHolderId: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'transfer_shares', {
+      classId,
+      shares,
+      fromHolderId,
+      toHolderId,
+    });
+  }
+
+  /**
+   * Amend the corporate charter.
+   */
+  async corpEntityAmendCharter(
+    privateKey: string,
+    fiberId: string,
+    amendmentId: string,
+    description: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'amend_charter', {
+      amendmentId,
+      description,
+      effectiveDate: new Date().toISOString().split('T')[0],
+    });
+  }
+
+  /**
+   * Suspend corporate powers.
+   */
+  async corpEntitySuspend(
+    privateKey: string,
+    fiberId: string,
+    reason: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'suspend', {
+      reason,
+      suspensionDate: new Date().toISOString().split('T')[0],
+    });
+  }
+
+  /**
+   * Reinstate corporate powers after suspension.
+   */
+  async corpEntityReinstate(
+    privateKey: string,
+    fiberId: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'reinstate', {
+      reinstatementDate: new Date().toISOString().split('T')[0],
+      curativeActions: ['Paid outstanding taxes', 'Filed required reports'],
+    });
+  }
+
+  /**
+   * Dissolve the corporate entity.
+   */
+  async corpEntityDissolve(
+    privateKey: string,
+    fiberId: string,
+    dissolutionType: 'VOLUNTARY' | 'ADMINISTRATIVE'
+  ): Promise<TransitionResponse> {
+    const event = dissolutionType === 'VOLUNTARY' ? 'dissolve_voluntary' : 'dissolve_administrative';
+    return this.transitionFiber(privateKey, fiberId, event, {
+      dissolutionDate: new Date().toISOString().split('T')[0],
+    });
+  }
+
+  // ==========================================================================
+  // Corporate Board Operations
+  // ==========================================================================
+
+  /**
+   * Create a new Corporate Board fiber.
+   */
+  async createCorporateBoard(
+    privateKey: string,
+    initialData: Record<string, unknown>
+  ): Promise<{ fiberId: string; hash: string }> {
+    const definition = {
+      workflowType: 'CorporateBoard',
+      name: 'Board of Directors',
+    };
+    return this.createFiber(privateKey, definition, initialData);
+  }
+
+  /**
+   * Elect a new director to the board.
+   */
+  async corpBoardElectDirector(
+    privateKey: string,
+    fiberId: string,
+    directorId: string,
+    name: string,
+    termYears: number,
+    isIndependent: boolean
+  ): Promise<TransitionResponse> {
+    const termStart = new Date().toISOString().split('T')[0];
+    const termEnd = new Date(Date.now() + termYears * 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    return this.transitionFiber(privateKey, fiberId, 'elect_director', {
+      directorId,
+      name,
+      termStart,
+      termEnd,
+      isIndependent,
+      electionResolutionRef: `RES-ELECT-${Date.now().toString(36)}`,
+    });
+  }
+
+  /**
+   * Director resigns from board.
+   */
+  async corpBoardResignDirector(
+    privateKey: string,
+    fiberId: string,
+    directorId: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'resign_director', {
+      directorId,
+      effectiveDate: new Date().toISOString().split('T')[0],
+    });
+  }
+
+  /**
+   * Call a board meeting.
+   */
+  async corpBoardCallMeeting(
+    privateKey: string,
+    fiberId: string,
+    meetingId: string,
+    type: 'REGULAR' | 'SPECIAL' | 'ANNUAL' | 'ORGANIZATIONAL',
+    scheduledDate: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'call_meeting', {
+      meetingId,
+      type,
+      scheduledDate,
+      noticeDate: new Date().toISOString().split('T')[0],
+      calledBy: 'chairperson',
+    });
+  }
+
+  /**
+   * Open a board meeting.
+   */
+  async corpBoardOpenMeeting(
+    privateKey: string,
+    fiberId: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'open_meeting', {
+      openedAt: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * Pass a board resolution.
+   */
+  async corpBoardPassResolution(
+    privateKey: string,
+    fiberId: string,
+    resolutionId: string,
+    resolutionType: string,
+    description: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'pass_resolution', {
+      resolutionId,
+      resolutionType,
+      description,
+      passedAt: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * Execute a written consent action (no meeting required).
+   */
+  async corpBoardWrittenConsent(
+    privateKey: string,
+    fiberId: string,
+    consentId: string,
+    description: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'written_consent', {
+      consentId,
+      description,
+      consentDate: new Date().toISOString().split('T')[0],
+    });
+  }
+
+  /**
+   * Adjourn a board meeting.
+   */
+  async corpBoardAdjourn(
+    privateKey: string,
+    fiberId: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'adjourn', {
+      closedAt: new Date().toISOString(),
+    });
+  }
+
+  // ==========================================================================
+  // Corporate Shareholders Operations
+  // ==========================================================================
+
+  /**
+   * Create a new Corporate Shareholders meeting fiber.
+   */
+  async createCorporateShareholders(
+    privateKey: string,
+    initialData: Record<string, unknown>
+  ): Promise<{ fiberId: string; hash: string }> {
+    const definition = {
+      workflowType: 'CorporateShareholders',
+      name: 'Shareholder Meeting',
+    };
+    return this.createFiber(privateKey, definition, initialData);
+  }
+
+  /**
+   * Set the record date for determining eligible shareholders.
+   */
+  async corpShareholdersSetRecordDate(
+    privateKey: string,
+    fiberId: string,
+    recordDate: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'set_record_date', {
+      recordDate,
+      resolutionRef: `RES-RECORD-${Date.now().toString(36)}`,
+    });
+  }
+
+  /**
+   * Register eligible shareholders.
+   */
+  async corpShareholdersRegister(
+    privateKey: string,
+    fiberId: string,
+    shareholders: Array<{
+      shareholderId: string;
+      name: string;
+      shares: number;
+      shareClass: string;
+    }>
+  ): Promise<TransitionResponse> {
+    const totalShares = shareholders.reduce((sum, s) => sum + s.shares, 0);
+    return this.transitionFiber(privateKey, fiberId, 'register_eligible_shareholders', {
+      shareholders: shareholders.map(s => ({
+        shareholderId: s.shareholderId,
+        name: s.name,
+        shareholdings: [{ shareClass: s.shareClass, shares: s.shares, votes: s.shares }],
+      })),
+      totalSharesOutstanding: totalShares,
+    });
+  }
+
+  /**
+   * Open proxy solicitation period.
+   */
+  async corpShareholdersOpenProxy(
+    privateKey: string,
+    fiberId: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'open_proxy_period', {
+      startDate: new Date().toISOString().split('T')[0],
+      proxyStatementRef: `PROXY-${Date.now().toString(36)}`,
+      formOfProxyRef: `FORM-${Date.now().toString(36)}`,
+      agenda: [],
+    });
+  }
+
+  /**
+   * Grant proxy to another holder.
+   */
+  async corpShareholdersGrantProxy(
+    privateKey: string,
+    fiberId: string,
+    grantorId: string,
+    proxyHolderId: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'grant_proxy', {
+      grantorId,
+      proxyHolderId,
+      grantedAt: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * Open polls for voting.
+   */
+  async corpShareholdersOpenPolls(
+    privateKey: string,
+    fiberId: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'open_polls', {
+      pollsOpenedAt: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * Cast a vote on an agenda item.
+   */
+  async corpShareholdersCastVote(
+    privateKey: string,
+    fiberId: string,
+    voteId: string,
+    agendaItemId: string,
+    voteType: string,
+    votes: number
+  ): Promise<TransitionResponse> {
+    const voteData: Record<string, number> = {
+      votesFor: 0,
+      votesAgainst: 0,
+      votesAbstain: 0,
+    };
+    if (voteType === 'for') voteData.votesFor = votes;
+    else if (voteType === 'against') voteData.votesAgainst = votes;
+    else voteData.votesAbstain = votes;
+
+    return this.transitionFiber(privateKey, fiberId, 'cast_vote', {
+      voteId,
+      agendaItemId,
+      ...voteData,
+    });
+  }
+
+  /**
+   * Close polls.
+   */
+  async corpShareholdersClosePolls(
+    privateKey: string,
+    fiberId: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'close_polls', {
+      pollsClosedAt: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * Certify meeting results.
+   */
+  async corpShareholdersCertify(
+    privateKey: string,
+    fiberId: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'certify_results', {
+      certifiedAt: new Date().toISOString(),
+      certifiedBy: 'Inspector of Elections',
+      certificateRef: `CERT-${Date.now().toString(36)}`,
+      results: [],
+    });
+  }
+
+  /**
+   * Adjourn meeting without completing agenda.
+   */
+  async corpShareholdersAdjourn(
+    privateKey: string,
+    fiberId: string,
+    reason: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'adjourn_without_action', {
+      adjournedAt: new Date().toISOString(),
+      reason,
+    });
+  }
+
+  // ==========================================================================
+  // Corporate Securities Operations
+  // ==========================================================================
+
+  /**
+   * Create a new Corporate Securities fiber.
+   */
+  async createCorporateSecurities(
+    privateKey: string,
+    initialData: Record<string, unknown>
+  ): Promise<{ fiberId: string; hash: string }> {
+    const definition = {
+      workflowType: 'CorporateSecurities',
+      name: 'Securities',
+    };
+    return this.createFiber(privateKey, definition, initialData);
+  }
+
+  /**
+   * Authorize shares per charter.
+   */
+  async corpSecuritiesAuthorize(
+    privateKey: string,
+    fiberId: string,
+    shares: number
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'authorize_shares', {
+      shareCount: shares,
+      authorizedDate: new Date().toISOString().split('T')[0],
+    });
+  }
+
+  /**
+   * Issue shares to a holder.
+   */
+  async corpSecuritiesIssue(
+    privateKey: string,
+    fiberId: string,
+    holderId: string,
+    holderName: string,
+    shares: number,
+    price: number
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'issue_shares', {
+      holderId,
+      holderName,
+      holderType: 'INDIVIDUAL',
+      issuanceDate: new Date().toISOString().split('T')[0],
+      issuancePrice: price,
+      form: 'BOOK_ENTRY',
+      boardResolutionRef: `RES-ISSUE-${Date.now().toString(36)}`,
+      consideration: { type: 'CASH', value: shares * price },
+    });
+  }
+
+  /**
+   * Initiate share transfer.
+   */
+  async corpSecuritiesTransfer(
+    privateKey: string,
+    fiberId: string,
+    toHolderId: string,
+    toHolderName: string,
+    pricePerShare: number
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'initiate_transfer', {
+      transferId: `XFER-${Date.now().toString(36)}`,
+      toHolderId,
+      toHolderName,
+      toHolderType: 'INDIVIDUAL',
+      transferType: 'SALE',
+      pricePerShare,
+      transferDate: new Date().toISOString().split('T')[0],
+    });
+  }
+
+  /**
+   * Complete a pending transfer.
+   */
+  async corpSecuritiesCompleteTransfer(
+    privateKey: string,
+    fiberId: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'complete_transfer', {
+      completedDate: new Date().toISOString().split('T')[0],
+      transferAgentConfirmation: `CONF-${Date.now().toString(36)}`,
+    });
+  }
+
+  /**
+   * Repurchase shares into treasury.
+   */
+  async corpSecuritiesRepurchase(
+    privateKey: string,
+    fiberId: string,
+    pricePerShare: number
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'repurchase', {
+      repurchaseDate: new Date().toISOString().split('T')[0],
+      pricePerShare,
+      boardResolutionRef: `RES-REPURCHASE-${Date.now().toString(36)}`,
+    });
+  }
+
+  /**
+   * Execute stock split.
+   */
+  async corpSecuritiesSplit(
+    privateKey: string,
+    fiberId: string,
+    splitRatio: string
+  ): Promise<TransitionResponse> {
+    const [multiplier, divisor] = splitRatio.split(':').map(Number);
+    return this.transitionFiber(privateKey, fiberId, 'stock_split', {
+      actionId: `SPLIT-${Date.now().toString(36)}`,
+      splitRatio,
+      effectiveDate: new Date().toISOString().split('T')[0],
+      resolutionRef: `RES-SPLIT-${Date.now().toString(36)}`,
+      newShareCount: Math.floor(multiplier / divisor * 1000), // Placeholder
+    });
+  }
+
+  /**
+   * Declare dividend.
+   */
+  async corpSecuritiesDividend(
+    privateKey: string,
+    fiberId: string,
+    dividendType: 'CASH' | 'STOCK',
+    amount: number
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'declare_dividend', {
+      actionId: `DIV-${Date.now().toString(36)}`,
+      dividendType,
+      recordDate: new Date().toISOString().split('T')[0],
+      paymentDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      cashAmount: dividendType === 'CASH' ? amount : undefined,
+      stockShares: dividendType === 'STOCK' ? amount : undefined,
+      resolutionRef: `RES-DIV-${Date.now().toString(36)}`,
+    });
+  }
+
+  /**
+   * Retire shares.
+   */
+  async corpSecuritiesRetire(
+    privateKey: string,
+    fiberId: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'retire', {
+      retiredDate: new Date().toISOString().split('T')[0],
+      retirementMethod: 'CANCELLATION',
+      boardResolutionRef: `RES-RETIRE-${Date.now().toString(36)}`,
+    });
+  }
+
+  /**
+   * Remove restriction from securities.
+   */
+  async corpSecuritiesRemoveRestriction(
+    privateKey: string,
+    fiberId: string,
+    restrictionType: string
+  ): Promise<TransitionResponse> {
+    return this.transitionFiber(privateKey, fiberId, 'remove_restriction', {
+      restrictionType,
+      removedDate: new Date().toISOString().split('T')[0],
+    });
+  }
+
+  /**
+   * List all corporate entities.
+   */
+  async listCorporateEntities(limit = 100): Promise<{
+    count: number;
+    fibers: Array<{
+      fiberId: string;
+      currentState?: string;
+      stateData?: Record<string, unknown>;
+    }>;
+  }> {
+    return this.listFibers('CorporateEntity', limit);
+  }
+
+  // ==========================================================================
   // Generic Fiber Operations (for all workflow types)
   // ==========================================================================
 
