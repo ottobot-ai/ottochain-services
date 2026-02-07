@@ -492,7 +492,17 @@ export class Simulator {
     if (agent.meta.activeContracts.size >= 3) return;
     
     // Select counterparty
-    const counterparty = selectCounterparty(agent, Array.from(this.agents.values()));
+    const population = Array.from(this.agents.values());
+    const activeAgents = population.filter(a => a.state === 'ACTIVE' && a.fiberId);
+    if (activeAgents.length < 2) {
+      // Debug: log why we can't propose
+      if (this.generation % 10 === 0) {
+        console.log(`  [debug] Can't propose: only ${activeAgents.length} ACTIVE agents with fiberIds (need 2+)`);
+      }
+      return;
+    }
+    
+    const counterparty = selectCounterparty(agent, population);
     if (!counterparty || !counterparty.fiberId) return;
     
     try {
