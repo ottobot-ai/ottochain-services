@@ -44,6 +44,7 @@ export class FiberOrchestrator {
    * - Starts new fibers if below target
    */
   async tick(): Promise<TickResult> {
+    this.tickCount++;
     let newFibers = 0;
     let drivenFibers = 0;
     let completedFibers = 0;
@@ -105,37 +106,73 @@ export class FiberOrchestrator {
 
     // Recruit agents for each role
     const participants = new Map<string, { address: string; privateKey: string }>();
+    const participantAddresses = new Map<string, string>(); // role -> address for stateData
     const availableAgents = this.getAvailableAgents();
+    const usedAddresses = new Set<string>();
     
     for (const role of def.roles) {
-      const agent = availableAgents.find(a => !this.isAgentInFiber(a.address));
+      const agent = availableAgents.find(a => 
+        !this.isAgentInFiber(a.address) && !usedAddresses.has(a.address)
+      );
       if (!agent) {
-        throw new Error(`Not enough agents available for role ${role} in fiber ${type}`);
+        console.log(`⚠️  Not enough agents for ${type} (need ${def.roles.length}, missing ${role})`);
+        return; // Skip this fiber, don't throw
       }
       participants.set(role, {
         address: agent.address,
         privateKey: agent.privateKey
       });
+      participantAddresses.set(role, agent.address);
+      usedAddresses.add(agent.address);
     }
 
-    // Create fiber via bridge
-    // Note: This is a simplified placeholder - actual implementation
-    // would need to construct proper fiber definition and initial data
-    const createResult = await this.bridge.createFiber(
-      participants.get(def.roles[0])!.privateKey,
-      { type },
-      { state: 'proposed' }
-    );
-
-    // Add to active fibers
-    this.activeFibers.push({
-      id: createResult.fiberId,
-      type,
-      participants,
-      currentState: 'proposed',
-      startedAt: Date.now()
+    // Generate a temporary fiber ID for stateData generation
+    const tempFiberId = `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    
+    // Generate proper stateData using the definition's generator
+    const stateData = def.generateStateData(participantAddresses, {
+      fiberId: tempFiberId,
+      generation: this.tickCount,
     });
+
+    // Create fiber via bridge with proper workflowType and stateData
+    const proposer = participants.get(def.roles[0])!;
+    
+    try {
+      const createResult = await this.bridge.createFiber(
+        proposer.privateKey,
+        {
+          workflowType: def.workflowType,
+          type: def.type,
+          name: def.name,
+          initialState: def.initialState,
+          states: def.states,
+          // Include basic transition definitions
+          transitions: def.transitions.map(t => ({
+            from: t.from,
+            to: t.to,
+            event: t.event,
+          })),
+        },
+        stateData as Record<string, unknown>
+      );
+
+      // Add to active fibers
+      this.activeFibers.push({
+        id: createResult.fiberId,
+        type,
+        participants,
+        currentState: def.initialState,
+        startedAt: Date.now(),
+      });
+
+      console.log(`  ✅ Created ${def.name}: ${createResult.fiberId.slice(0, 12)}...`);
+    } catch (err) {
+      console.log(`  ❌ Failed to create ${def.name}: ${(err as Error).message}`);
+    }
   }
+
+  private tickCount = 0;
 
   /**
    * Check if an agent is currently participating in any fiber
