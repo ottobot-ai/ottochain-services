@@ -33,9 +33,15 @@ import { HighThroughputSimulator, runHighThroughput } from './high-throughput.js
 // =============================================================================
 
 function loadConfig(): GeneratorConfig {
+  // Parse CLI args for wallet pool
+  const walletPoolIdx = process.argv.indexOf('--wallets');
+  const walletPoolPath = walletPoolIdx !== -1 && process.argv[walletPoolIdx + 1]
+    ? process.argv[walletPoolIdx + 1]
+    : process.env.WALLET_POOL_PATH;
+  
   return {
     ...DEFAULT_CONFIG,
-    targetPopulation: parseInt(process.env.TARGET_POPULATION ?? '20', 10),
+    targetPopulation: parseInt(process.env.TARGET_POPULATION ?? '100', 10),
     birthRate: parseInt(process.env.BIRTH_RATE ?? '2', 10),
     deathRate: parseFloat(process.env.DEATH_RATE ?? '0.05'),
     activityRate: parseFloat(process.env.ACTIVITY_RATE ?? '0.4'),
@@ -44,12 +50,13 @@ function loadConfig(): GeneratorConfig {
     initialTemperature: parseFloat(process.env.INITIAL_TEMPERATURE ?? '1.0'),
     temperatureDecay: parseFloat(process.env.TEMPERATURE_DECAY ?? '0.995'),
     minTemperature: parseFloat(process.env.MIN_TEMPERATURE ?? '0.1'),
-    generationIntervalMs: parseInt(process.env.GENERATION_INTERVAL_MS ?? '10000', 10),
+    generationIntervalMs: parseInt(process.env.GENERATION_INTERVAL_MS ?? '5000', 10),
     maxGenerations: parseInt(process.env.MAX_GENERATIONS ?? '0', 10),
     bridgeUrl: process.env.BRIDGE_URL ?? 'http://localhost:3030',
     ml0Url: process.env.ML0_URL ?? 'http://localhost:9200',
     platforms: (process.env.PLATFORMS ?? 'discord,telegram,twitter,github').split(','),
     seed: process.env.SEED ? parseInt(process.env.SEED, 10) : undefined,
+    walletPoolPath,
   };
 }
 
@@ -91,8 +98,17 @@ async function main(): Promise<void> {
   console.log(' OttoChain Evolutionary Traffic Generator');
   console.log('═══════════════════════════════════════════════════════════════');
   console.log(' (Use --high-throughput for 1000 agents / 10 TPS mode)');
+  console.log(' (Use --wallets <path> for persistent wallet pool)');
   
   const config = loadConfig();
+  
+  console.log(`   Target population: ${config.targetPopulation}`);
+  console.log(`   Generation interval: ${config.generationIntervalMs}ms`);
+  console.log(`   Bridge: ${config.bridgeUrl}`);
+  console.log(`   ML0: ${config.ml0Url}`);
+  if (config.walletPoolPath) {
+    console.log(`   Wallet pool: ${config.walletPoolPath}`);
+  }
   
   const simulator = new Simulator(config, {
     onGenerationStart: (gen) => {
@@ -152,3 +168,4 @@ export { BridgeClient } from './bridge-client.js';
 export * from './types.js';
 export * from './selection.js';
 export * from './workflows.js';
+export * from './wallets.js';

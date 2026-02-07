@@ -24,6 +24,14 @@ import {
   computeTransitionWeights,
   softmaxSelect,
 } from './selection.js';
+import {
+  loadWalletPool,
+  saveWalletPool,
+  markWalletRegistered,
+  getUnregisteredWallets,
+  type WalletPool,
+  type PersistedWallet,
+} from './wallets.js';
 
 export interface SimulatorEvents {
   onGenerationStart?: (gen: number) => void;
@@ -43,6 +51,10 @@ export class Simulator {
   private agents: Map<string, Agent> = new Map();
   private contracts: Map<string, Contract> = new Map();
   private context: SimulationContext;
+  
+  // Wallet pool (for persistence)
+  private walletPool: WalletPool | null = null;
+  private walletIndex: number = 0;
   
   // Runtime state
   private running = false;
@@ -133,15 +145,72 @@ export class Simulator {
   // ==========================================================================
 
   private async bootstrapPopulation(): Promise<void> {
-    const initialCount = Math.ceil(this.config.targetPopulation / 2);
-    console.log(`   Bootstrapping ${initialCount} initial agents...`);
+    // Load wallet pool if configured
+    if (this.config.walletPoolPath) {
+      this.walletPool = loadWalletPool(this.config.walletPoolPath);
+      if (this.walletPool) {
+        console.log(`   Loaded ${this.walletPool.count} wallets from pool`);
+        // Restore already-registered agents from pool
+        const registered = this.walletPool.wallets.filter(w => w.registeredAt && w.agentId);
+        for (const wallet of registered) {
+          const agent = this.createAgentFromWallet(wallet, wallet.agentId!);
+          this.agents.set(agent.address, agent);
+        }
+        if (registered.length > 0) {
+          console.log(`   ✓ Restored ${registered.length} previously registered agents`);
+        }
+      }
+    }
     
+    // Create new agents up to target
+    const needed = Math.max(0, Math.ceil(this.config.targetPopulation / 2) - this.agents.size);
+    if (needed === 0) {
+      console.log(`   ✓ Population already at target (${this.agents.size} agents)`);
+      return;
+    }
+    
+    console.log(`   Bootstrapping ${needed} new agents...`);
     const results = await Promise.allSettled(
-      Array.from({ length: initialCount }, (_, i) => this.createAgent(i))
+      Array.from({ length: needed }, (_, i) => this.createAgent(i))
     );
     
     const successes = results.filter((r) => r.status === 'fulfilled').length;
-    console.log(`   ✓ Created ${successes}/${initialCount} agents`);
+    console.log(`   ✓ Created ${successes}/${needed} agents`);
+    
+    // Save updated wallet pool
+    if (this.walletPool && this.config.walletPoolPath) {
+      saveWalletPool(this.walletPool, this.config.walletPoolPath);
+    }
+  }
+  
+  /**
+   * Create an agent object from a persisted wallet (no registration needed)
+   */
+  private createAgentFromWallet(wallet: PersistedWallet, fiberId: string): Agent {
+    return {
+      address: wallet.address,
+      privateKey: wallet.privateKey,
+      fiberId,
+      state: 'ACTIVE', // Assume active if previously registered
+      fitness: {
+        reputation: 10,
+        completionRate: 0,
+        networkEffect: 0,
+        age: 0,
+        total: 0,
+      },
+      meta: {
+        birthGeneration: 0,
+        displayName: wallet.handle,
+        platform: wallet.platform,
+        vouchedFor: new Set(),
+        receivedVouches: new Set(),
+        activeContracts: new Set(),
+        completedContracts: 0,
+        failedContracts: 0,
+        riskTolerance: Math.random(),
+      },
+    };
   }
 
   /**
@@ -191,17 +260,36 @@ export class Simulator {
   }
 
   private async createAgent(index: number): Promise<Agent> {
-    // Generate wallet
-    const wallet = await this.client.generateWallet();
+    let walletAddress: string;
+    let walletPrivateKey: string;
+    let platform: string;
+    let displayName: string;
+    let persistedWallet: PersistedWallet | undefined;
     
-    // Pick a platform
-    const platform = this.config.platforms[index % this.config.platforms.length];
-    const displayName = `Agent_${index}_${Date.now().toString(36)}`;
+    // Use wallet from pool if available, otherwise generate new
+    if (this.walletPool) {
+      const unregistered = getUnregisteredWallets(this.walletPool);
+      if (unregistered.length === 0) {
+        throw new Error('No more wallets available in pool');
+      }
+      persistedWallet = unregistered[0];
+      walletAddress = persistedWallet.address;
+      walletPrivateKey = persistedWallet.privateKey;
+      platform = persistedWallet.platform;
+      displayName = persistedWallet.handle;
+    } else {
+      // Legacy mode: generate new wallet
+      const wallet = await this.client.generateWallet();
+      walletAddress = wallet.address;
+      walletPrivateKey = wallet.privateKey;
+      platform = this.config.platforms[index % this.config.platforms.length];
+      displayName = `Agent_${index}_${Date.now().toString(36)}`;
+    }
     
     // Create agent object
     const agent: Agent = {
-      address: wallet.address,
-      privateKey: wallet.privateKey,
+      address: walletAddress,
+      privateKey: walletPrivateKey,
       fiberId: null,
       state: 'UNREGISTERED',
       fitness: {
@@ -230,20 +318,29 @@ export class Simulator {
     // Register on chain
     try {
       const result = await this.client.registerAgent(
-        wallet.privateKey,
+        walletPrivateKey,
         displayName,
         platform,
-        `${platform}_${wallet.address.slice(4, 12)}`
+        `${platform}_${walletAddress.slice(4, 12)}`
       );
       agent.fiberId = result.fiberId;
       agent.state = 'REGISTERED';
+      
+      // Mark wallet as registered in pool
+      if (this.walletPool && persistedWallet) {
+        markWalletRegistered(this.walletPool, walletAddress, result.fiberId);
+        // Save pool periodically
+        if (this.config.walletPoolPath) {
+          saveWalletPool(this.walletPool, this.config.walletPoolPath);
+        }
+      }
       
       // Wait for fiber to be visible in state before activating
       // This is necessary because the metagraph needs time to process the transaction
       await this.waitForFiber(result.fiberId, 20);
       
       // Activate after fiber is confirmed (with retry for DL1 sync)
-      await this.retryActivation(wallet.privateKey, result.fiberId, 3);
+      await this.retryActivation(walletPrivateKey, result.fiberId, 3);
       agent.state = 'ACTIVE';
       
       this.agents.set(agent.address, agent);
