@@ -56,6 +56,9 @@ module.exports = {
       env: sharedEnv,
       max_memory_restart: '512M',
       exp_backoff_restart_delay: 100,
+      max_restarts: 50,
+      min_uptime: '10s',
+      restart_delay: 5000,
     },
     {
       name: 'traffic-gen',

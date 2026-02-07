@@ -205,6 +205,68 @@
       font-size: 12px;
       color: var(--text-muted);
     }
+    
+    /* Nodes by layer layout */
+    .nodes-by-layer {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+    
+    .layer-column {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    
+    .layer-header {
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--blue);
+      text-align: center;
+      padding: 8px;
+      background: var(--bg-card);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    
+    /* Services split layout */
+    .services-split {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 24px;
+    }
+    
+    .service-group {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    
+    .group-header {
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid var(--border);
+    }
+    
+    @media (max-width: 900px) {
+      .nodes-by-layer {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .services-split {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    @media (max-width: 600px) {
+      .nodes-by-layer {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
@@ -235,13 +297,35 @@
   </div>
   
   <div class="section">
-    <h2>Metagraph Nodes</h2>
-    <div class="grid" id="nodes-grid"></div>
+    <h2>🔗 Tessellation Nodes</h2>
+    <div class="nodes-by-layer" id="nodes-grid">
+      <div class="layer-column" id="gl0-column">
+        <div class="layer-header">GL0</div>
+      </div>
+      <div class="layer-column" id="ml0-column">
+        <div class="layer-header">ML0</div>
+      </div>
+      <div class="layer-column" id="cl1-column">
+        <div class="layer-header">CL1</div>
+      </div>
+      <div class="layer-column" id="dl1-column">
+        <div class="layer-header">DL1</div>
+      </div>
+    </div>
   </div>
   
   <div class="section">
-    <h2>Services</h2>
-    <div class="grid" id="services-grid"></div>
+    <h2>⚙️ Services</h2>
+    <div class="services-split">
+      <div class="service-group">
+        <div class="group-header">Logic</div>
+        <div class="grid" id="logic-services-grid"></div>
+      </div>
+      <div class="service-group">
+        <div class="group-header">Storage</div>
+        <div class="grid" id="storage-services-grid"></div>
+      </div>
+    </div>
   </div>
   
   <div id="connection-status" class="connection-status disconnected">
@@ -250,8 +334,16 @@
   </div>
   
   <script>
-    const nodesGrid = document.getElementById('nodes-grid');
-    const servicesGrid = document.getElementById('services-grid');
+    // Layer columns for nodes
+    const gl0Column = document.getElementById('gl0-column');
+    const ml0Column = document.getElementById('ml0-column');
+    const cl1Column = document.getElementById('cl1-column');
+    const dl1Column = document.getElementById('dl1-column');
+    
+    // Service grids
+    const logicServicesGrid = document.getElementById('logic-services-grid');
+    const storageServicesGrid = document.getElementById('storage-services-grid');
+    
     const overallEl = document.getElementById('overall');
     const overallText = document.getElementById('overall-text');
     const ordinalEl = document.getElementById('ordinal');
@@ -259,6 +351,9 @@
     const healthyNodesEl = document.getElementById('healthy-nodes');
     const lastUpdateEl = document.getElementById('last-update');
     const connectionStatus = document.getElementById('connection-status');
+    
+    // Storage service names
+    const storageServices = ['Postgres', 'Redis'];
     
     function createNodeCard(node) {
       return `
@@ -309,11 +404,24 @@
       
       lastUpdateEl.textContent = new Date(data.timestamp).toLocaleTimeString();
       
-      // Nodes
-      nodesGrid.innerHTML = data.nodes.map(createNodeCard).join('');
+      // Nodes by layer
+      const gl0Nodes = data.nodes.filter(n => n.type === 'gl0');
+      const ml0Nodes = data.nodes.filter(n => n.type === 'ml0');
+      const cl1Nodes = data.nodes.filter(n => n.type === 'cl1');
+      const dl1Nodes = data.nodes.filter(n => n.type === 'dl1');
       
-      // Services
-      servicesGrid.innerHTML = data.services.map(createServiceCard).join('');
+      // Keep headers, replace node cards
+      gl0Column.innerHTML = '<div class="layer-header">GL0</div>' + gl0Nodes.map(createNodeCard).join('');
+      ml0Column.innerHTML = '<div class="layer-header">ML0</div>' + ml0Nodes.map(createNodeCard).join('');
+      cl1Column.innerHTML = '<div class="layer-header">CL1</div>' + cl1Nodes.map(createNodeCard).join('');
+      dl1Column.innerHTML = '<div class="layer-header">DL1</div>' + dl1Nodes.map(createNodeCard).join('');
+      
+      // Services split by type
+      const logicServices = data.services.filter(s => !storageServices.includes(s.name));
+      const storageServicesList = data.services.filter(s => storageServices.includes(s.name));
+      
+      logicServicesGrid.innerHTML = logicServices.map(createServiceCard).join('');
+      storageServicesGrid.innerHTML = storageServicesList.map(createServiceCard).join('');
     }
     
     function setConnected(connected) {
