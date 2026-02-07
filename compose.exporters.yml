@@ -1,0 +1,46 @@
+# Metric exporters - Deploy on servers that need metrics
+# Usage: docker compose -f compose.exporters.yml up -d
+# With db/redis exporters: docker compose -f compose.exporters.yml --profile db up -d
+
+services:
+  node-exporter:
+    image: prom/node-exporter:v1.7.0
+    container_name: node-exporter
+    restart: unless-stopped
+    ports:
+      - "${NODE_EXPORTER_PORT:-9100}:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    pid: host
+    network_mode: host
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: postgres-exporter
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_EXPORTER_PORT:-9187}:9187"
+    environment:
+      DATA_SOURCE_NAME: postgresql://${POSTGRES_USER:-ottochain}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-localhost}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-ottochain}?sslmode=disable
+    network_mode: host
+    profiles:
+      - db
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.56.0
+    container_name: redis-exporter
+    restart: unless-stopped
+    ports:
+      - "${REDIS_EXPORTER_PORT:-9121}:9121"
+    environment:
+      REDIS_ADDR: redis://${REDIS_HOST:-localhost}:${REDIS_PORT:-6379}
+    network_mode: host
+    profiles:
+      - db

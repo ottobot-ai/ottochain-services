@@ -1,0 +1,76 @@
+# Prometheus Configuration
+# For dynamic targets, set env vars or edit static_configs below
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'ottochain'
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+rule_files:
+  - /etc/prometheus/alert_rules/*.yml
+  - /etc/prometheus/recording_rules.yml
+
+scrape_configs:
+  # ===== OttoChain Services (Docker network) =====
+  - job_name: 'gateway'
+    static_configs:
+      - targets: ['gateway:4000']
+    metrics_path: /metrics
+    scrape_interval: 30s
+
+  - job_name: 'bridge'
+    static_configs:
+      - targets: ['bridge:3030']
+    metrics_path: /metrics
+    scrape_interval: 30s
+
+  - job_name: 'indexer'
+    static_configs:
+      - targets: ['indexer:3031']
+    metrics_path: /metrics
+    scrape_interval: 30s
+
+  # ===== Infrastructure Exporters =====
+  # Note: Exporters run on host network, use host.docker.internal or real IPs
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['host.docker.internal:9100']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'services'
+
+  - job_name: 'postgres-exporter'
+    static_configs:
+      - targets: ['host.docker.internal:9187']
+
+  - job_name: 'redis-exporter'
+    static_configs:
+      - targets: ['host.docker.internal:9121']
+
+  # ===== Metagraph Nodes =====
+  # Uncomment and set real IPs for production
+  # - job_name: 'gl0'
+  #   static_configs:
+  #     - targets: ['METAGRAPH_IP:9000']
+  #   metrics_path: /metrics
+  #
+  # - job_name: 'ml0'
+  #   static_configs:
+  #     - targets: ['METAGRAPH_IP:9200']
+  #   metrics_path: /metrics
+
+  # ===== Self-monitoring =====
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'alertmanager'
+    static_configs:
+      - targets: ['alertmanager:9093']

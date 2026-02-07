@@ -1,0 +1,29 @@
+# Traffic generator - For testing/load simulation
+# Usage: docker compose -f compose.base.yml -f compose.services.yml -f compose.traffic.yml up -d
+
+services:
+  traffic-generator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: traffic-generator
+    container_name: traffic-generator
+    restart: unless-stopped
+    environment:
+      BRIDGE_URL: ${BRIDGE_URL:-http://bridge:3030}
+      METAGRAPH_ML0_URL: ${METAGRAPH_ML0_URL:-http://host.docker.internal:9100}
+      METAGRAPH_DL1_URL: ${METAGRAPH_DL1_URL:-http://host.docker.internal:9400}
+      REDIS_URL: redis://redis:6379
+      # Traffic config
+      AGENT_COUNT: ${TRAFFIC_AGENT_COUNT:-50}
+      TPS_TARGET: ${TRAFFIC_TPS:-2}
+      WORKFLOW_WEIGHTS: ${TRAFFIC_WORKFLOW_WEIGHTS:-identity:30,token:25,fiber:20,marketplace:15,market:10}
+    depends_on:
+      - bridge
+      - redis
+    networks:
+      - ottochain
+
+networks:
+  ottochain:
+    external: true
