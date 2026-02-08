@@ -34,8 +34,8 @@ importers:
   packages/bridge:
     dependencies:
       '@ottochain/sdk':
-        specifier: github:ottobot-ai/ottochain-sdk#309b6ec
-        version: https://codeload.github.com/ottobot-ai/ottochain-sdk/tar.gz/309b6ec(@stardust-collective/dag4@2.8.1)
+        specifier: github:ottobot-ai/ottochain-sdk#main
+        version: https://codeload.github.com/ottobot-ai/ottochain-sdk/tar.gz/df39dc39ee2463c02d149d15e9af430ffcfb06d7(@stardust-collective/dag4@2.8.1)
       '@ottochain/shared':
         specifier: workspace:*
         version: link:../shared
@@ -539,8 +539,8 @@ packages:
     peerDependencies:
       '@stardust-collective/dag4': ^2.6.0
 
-  '@ottochain/sdk@https://codeload.github.com/ottobot-ai/ottochain-sdk/tar.gz/309b6ec':
-    resolution: {tarball: https://codeload.github.com/ottobot-ai/ottochain-sdk/tar.gz/309b6ec}
+  '@ottochain/sdk@https://codeload.github.com/ottobot-ai/ottochain-sdk/tar.gz/df39dc39ee2463c02d149d15e9af430ffcfb06d7':
+    resolution: {tarball: https://codeload.github.com/ottobot-ai/ottochain-sdk/tar.gz/df39dc39ee2463c02d149d15e9af430ffcfb06d7}
     version: 0.1.0
     engines: {node: '>=18.0.0'}
     peerDependencies:
@@ -2308,7 +2308,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@ottochain/sdk@https://codeload.github.com/ottobot-ai/ottochain-sdk/tar.gz/309b6ec(@stardust-collective/dag4@2.8.1)':
+  '@ottochain/sdk@https://codeload.github.com/ottobot-ai/ottochain-sdk/tar.gz/df39dc39ee2463c02d149d15e9af430ffcfb06d7(@stardust-collective/dag4@2.8.1)':
     dependencies:
       '@bufbuild/protobuf': 2.11.0
       '@stardust-collective/dag4': 2.8.1

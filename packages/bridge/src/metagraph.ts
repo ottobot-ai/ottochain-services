@@ -20,13 +20,18 @@ export type {
   OttochainMessage,
   FiberStatus,
   EventReceipt,
+  StateMachineFiberRecord,
+  ScriptFiberRecord,
+  // Primitive type aliases
   Address,
   FiberOrdinal,
   SnapshotOrdinal,
   StateId,
-  StateMachineFiberRecord,
-  ScriptFiberRecord,
+  HashValue,
 } from '@ottochain/sdk/core';
+
+// FiberId is just a string (UUID)
+export type FiberId = string;
 
 // Re-export wallet utilities from SDK
 export function generateKeyPair(): KeyPair {

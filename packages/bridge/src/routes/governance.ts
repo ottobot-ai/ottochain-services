@@ -17,11 +17,8 @@ import {
 import {
   getDAODefinition,
   getGovernanceDefinition,
-  createMultisigState,
-  createTokenState,
-  createSingleOwnerState,
-  type DAOType,
-  type GovernanceType,
+  type DAODefinitionType,
+  type GovernanceDefinitionType,
 } from '@ottochain/sdk/apps/governance';
 
 export const governanceRoutes: RouterType = Router();
