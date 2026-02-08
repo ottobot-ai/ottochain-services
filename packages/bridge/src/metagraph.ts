@@ -64,24 +64,26 @@ export async function submitTransaction(
   console.log(`[metagraph] Message type: ${Object.keys(message as object)[0]}`);
   console.log(`[metagraph] Payload (truncated): ${JSON.stringify(signed).substring(0, 300)}...`);
 
-  // Use SDK's HttpClient
-  const client = new HttpClient(config.METAGRAPH_DL1_URL);
+  // Use raw fetch to capture full response details
+  const response = await fetch(`${config.METAGRAPH_DL1_URL}/data`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(signed),
+  });
 
-  try {
-    const result = await client.post<{ hash?: string; feeHash?: string }>('/data', signed);
-
-    console.log(`[metagraph] Success: ${JSON.stringify(result)}`);
-
-    return {
-      hash: result.hash ?? 'pending',
-    };
-  } catch (err) {
-    const error = err as Error & { response?: string };
-    if (error.response) {
-      console.error(`[metagraph] Error response: ${error.response}`);
-    }
-    throw new Error(`Metagraph submission failed: ${error.message}`);
+  const body = await response.text();
+  
+  if (!response.ok) {
+    console.error(`[metagraph] HTTP ${response.status}: ${body}`);
+    throw new Error(`Metagraph submission failed: HTTP ${response.status}: ${body}`);
   }
+
+  const result = JSON.parse(body) as { hash?: string; feeHash?: string };
+  console.log(`[metagraph] Success: ${JSON.stringify(result)}`);
+
+  return {
+    hash: result.hash ?? 'pending',
+  };
 }
 
 /**
