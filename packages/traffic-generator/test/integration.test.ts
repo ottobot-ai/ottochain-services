@@ -45,12 +45,37 @@ async function getSnapshotOrdinal(ml0Url: string): Promise<number | null> {
   }
 }
 
+/** Check if fiber has any rejections in the indexer */
+async function checkForRejections(
+  indexerUrl: string | undefined,
+  fiberId: string
+): Promise<{ rejected: boolean; reason?: string }> {
+  if (!indexerUrl) return { rejected: false };
+  
+  try {
+    const res = await fetch(`${indexerUrl}/fibers/${fiberId}/rejections?limit=1`, {
+      signal: AbortSignal.timeout(5000)
+    });
+    if (res.ok) {
+      const data = await res.json() as { rejections: Array<{ errors: Array<{ code: string; message: string }> }>; total: number };
+      if (data.total > 0 && data.rejections[0]) {
+        const errors = data.rejections[0].errors.map(e => e.code).join(', ');
+        return { rejected: true, reason: errors };
+      }
+    }
+  } catch {
+    // Ignore errors - indexer might not be ready yet
+  }
+  return { rejected: false };
+}
+
 /** Wait for fiber to appear in ML0 state with diagnostic logging */
 async function waitForFiber(
   ml0Url: string, 
   fiberId: string, 
-  timeoutSeconds: number
-): Promise<{ found: boolean; lastOrdinal: number | null }> {
+  timeoutSeconds: number,
+  indexerUrl?: string
+): Promise<{ found: boolean; lastOrdinal: number | null; rejected?: boolean; rejectReason?: string }> {
   const startTime = Date.now();
   const deadline = startTime + timeoutSeconds * 1000;
   let lastOrdinal: number | null = null;
@@ -77,6 +102,15 @@ async function waitForFiber(
       
       if (data.state?.stateMachines?.[fiberId]) {
         return { found: true, lastOrdinal };
+      }
+      
+      // Check for rejections every 10 seconds to fail fast
+      if (checkCount > 0 && checkCount % 10 === 0) {
+        const rejCheck = await checkForRejections(indexerUrl, fiberId);
+        if (rejCheck.rejected) {
+          console.log(`  ❌ Transaction REJECTED: ${rejCheck.reason}`);
+          return { found: false, lastOrdinal, rejected: true, rejectReason: rejCheck.reason };
+        }
       }
     } catch {
       // Ignore fetch errors, keep trying
@@ -191,7 +225,19 @@ async function main(): Promise<void> {
       console.log(`  📊 Initial snapshot ordinal: ${initialOrdinal}`);
     }
     
-    const waitResult = await waitForFiber(CONFIG.ml0Url, fiberId, CONFIG.fiberWaitTimeout);
+    const indexerUrl = process.env.INDEXER_URL;
+    const waitResult = await waitForFiber(CONFIG.ml0Url, fiberId, CONFIG.fiberWaitTimeout, indexerUrl);
+    
+    // Fail fast if rejected
+    if (waitResult.rejected) {
+      console.error(`❌ Transaction was rejected: ${waitResult.rejectReason}`);
+      results.push({ 
+        name: 'Fiber in State', 
+        status: 'failed', 
+        message: `Rejected: ${waitResult.rejectReason}` 
+      });
+      break; // Exit retry loop - rejection won't be fixed by retry
+    }
     
     if (waitResult.found) {
       console.log('✓ Fiber visible in ML0 state checkpoint');
