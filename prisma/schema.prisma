@@ -259,6 +259,26 @@ enum StatsGranularity {
   DAILY     // Kept for 30 days
 }
 
+/// Rejected transactions from ML0 validation failures
+/// Transactions accepted by DL1 but rejected by ML0 contextual validation
+model RejectedTransaction {
+  id          Int       @id @default(autoincrement())
+  ordinal     BigInt                          // Snapshot ordinal when rejection occurred
+  timestamp   DateTime                        // When the rejection happened
+  updateType  String    @db.VarChar(64)       // CreateStateMachine, TransitionStateMachine, etc.
+  fiberId     String    @db.VarChar(64)       // Target fiber UUID
+  updateHash  String    @unique @db.VarChar(64) // Hash for dedup
+  errors      Json                            // Array of {code, message}
+  signers     String[]                        // Signer IDs from proofs
+  rawPayload  Json?                           // Original webhook payload (optional)
+  createdAt   DateTime  @default(now())
+
+  @@index([fiberId])
+  @@index([ordinal(sort: Desc)])
+  @@index([updateType])
+  @@index([createdAt(sort: Desc)])
+}
+
 /// Pre-computed deltas cached for fast API reads
 model StatsDelta {
   id           Int      @id @default(autoincrement())
