@@ -345,8 +345,14 @@ app.listen(port, '0.0.0.0', async () => {
   
   // Register with ML0 for push-based snapshot notifications
   const ml0Url = config.METAGRAPH_ML0_URL;
-  const callbackUrl = process.env.INDEXER_CALLBACK_URL || `http://5.78.121.248:${port}/webhook/snapshot`;
-  await registerWebhookSubscriber(ml0Url, callbackUrl);
+  const callbackUrl = process.env.INDEXER_CALLBACK_URL;
+  if (callbackUrl) {
+    await registerWebhookSubscriber(ml0Url, callbackUrl);
+  } else {
+    console.warn(`⚠️  INDEXER_CALLBACK_URL not set - ML0 webhook push disabled`);
+    console.warn(`   Set INDEXER_CALLBACK_URL to enable real-time notifications`);
+    console.warn(`   Falling back to polling only (slower indexing)`);
+  }
   
   // Start low-frequency fallback poller (catches missed webhooks + fork detection)
   const snapshotPollInterval = parseInt(process.env.ML0_POLL_INTERVAL || '60000');
