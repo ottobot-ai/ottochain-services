@@ -277,6 +277,7 @@ app.get('/fibers/:fiberId/rejections', async (req, res) => {
       ordinal: Number(r.ordinal),
       timestamp: r.timestamp,
       updateType: r.updateType,
+      fiberId: r.fiberId,
       updateHash: r.updateHash,
       errors: r.errors,
       signers: r.signers,
