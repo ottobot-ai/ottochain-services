@@ -5,6 +5,7 @@ import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey } from '../metagraph.js';
+import { getContractDefinition } from '@ottochain/sdk/apps/contracts';
 
 export const contractRoutes: RouterType = Router();
 
@@ -28,164 +29,10 @@ const ContractActionSchema = z.object({
 });
 
 // ============================================================================
-// Contract State Machine Definition
-// OttoChain-compatible format with proper state/transition structure
+// Contract State Machine Definition (from SDK)
 // ============================================================================
 
-const CONTRACT_DEFINITION = {
-  states: {
-    PROPOSED: {
-      id: { value: 'PROPOSED' },
-      isFinal: false,
-      metadata: null,
-    },
-    ACTIVE: {
-      id: { value: 'ACTIVE' },
-      isFinal: false,
-      metadata: null,
-    },
-    COMPLETED: {
-      id: { value: 'COMPLETED' },
-      isFinal: true,
-      metadata: null,
-    },
-    DISPUTED: {
-      id: { value: 'DISPUTED' },
-      isFinal: false,
-      metadata: null,
-    },
-    REJECTED: {
-      id: { value: 'REJECTED' },
-      isFinal: true,
-      metadata: null,
-    },
-    CANCELLED: {
-      id: { value: 'CANCELLED' },
-      isFinal: true,
-      metadata: null,
-    },
-  },
-  initialState: { value: 'PROPOSED' },
-  transitions: [
-    {
-      from: { value: 'PROPOSED' },
-      to: { value: 'ACTIVE' },
-      eventName: 'accept',
-      guard: { '===': [{ var: 'event.agent' }, { var: 'state.counterparty' }] },
-      effect: {
-        merge: [
-          { var: 'state' },
-          { status: 'ACTIVE', acceptedAt: { var: '$timestamp' } },
-        ],
-      },
-      dependencies: [],
-    },
-    {
-      from: { value: 'PROPOSED' },
-      to: { value: 'REJECTED' },
-      eventName: 'reject',
-      guard: { '===': [{ var: 'event.agent' }, { var: 'state.counterparty' }] },
-      effect: {
-        merge: [
-          { var: 'state' },
-          { status: 'REJECTED', rejectedAt: { var: '$timestamp' }, rejectReason: { var: 'event.reason' } },
-        ],
-      },
-      dependencies: [],
-    },
-    {
-      from: { value: 'ACTIVE' },
-      to: { value: 'ACTIVE' },
-      eventName: 'submit_completion',
-      guard: {
-        or: [
-          { '===': [{ var: 'event.agent' }, { var: 'state.proposer' }] },
-          { '===': [{ var: 'event.agent' }, { var: 'state.counterparty' }] },
-        ],
-      },
-      effect: {
-        merge: [
-          { var: 'state' },
-          {
-            completions: {
-              cat: [
-                { var: 'state.completions' },
-                [{
-                  agent: { var: 'event.agent' },
-                  proof: { var: 'event.proof' },
-                  submittedAt: { var: '$timestamp' },
-                }],
-              ],
-            },
-          },
-        ],
-      },
-      dependencies: [],
-    },
-    {
-      from: { value: 'ACTIVE' },
-      to: { value: 'COMPLETED' },
-      eventName: 'finalize',
-      guard: { '==': [1, 1] }, // Both parties must have submitted (checked via completions array in effect)
-      effect: {
-        merge: [
-          { var: 'state' },
-          { status: 'COMPLETED', completedAt: { var: '$timestamp' } },
-        ],
-      },
-      dependencies: [],
-    },
-    {
-      from: { value: 'ACTIVE' },
-      to: { value: 'DISPUTED' },
-      eventName: 'dispute',
-      guard: {
-        or: [
-          { '===': [{ var: 'event.agent' }, { var: 'state.proposer' }] },
-          { '===': [{ var: 'event.agent' }, { var: 'state.counterparty' }] },
-        ],
-      },
-      effect: {
-        merge: [
-          { var: 'state' },
-          { status: 'DISPUTED', disputedAt: { var: '$timestamp' }, disputeReason: { var: 'event.reason' }, disputedBy: { var: 'event.agent' } },
-        ],
-      },
-      dependencies: [],
-    },
-    {
-      from: { value: 'DISPUTED' },
-      to: { value: 'COMPLETED' },
-      eventName: 'resolve',
-      guard: { '==': [1, 1] }, // Governance/resolution logic TBD
-      effect: {
-        merge: [
-          { var: 'state' },
-          { status: 'COMPLETED', resolvedAt: { var: '$timestamp' }, resolution: { var: 'event.resolution' } },
-        ],
-      },
-      dependencies: [],
-    },
-    {
-      from: { value: 'PROPOSED' },
-      to: { value: 'CANCELLED' },
-      eventName: 'cancel',
-      guard: { '===': [{ var: 'event.agent' }, { var: 'state.proposer' }] },
-      effect: {
-        merge: [
-          { var: 'state' },
-          { status: 'CANCELLED', cancelledAt: { var: '$timestamp' } },
-        ],
-      },
-      dependencies: [],
-    },
-  ],
-  metadata: {
-    name: 'Contract',
-    description: 'Agreement between two agents with completion attestation',
-    version: '1.0.0',
-  },
-};
+const CONTRACT_DEFINITION = getContractDefinition();
 
 // ============================================================================
 // Routes
