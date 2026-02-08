@@ -279,6 +279,68 @@ async function main(): Promise<void> {
     }
   }
   
+  // Test 7: Verify fiber is indexed (optional, only if INDEXER_URL is set)
+  const indexerUrl = process.env.INDEXER_URL;
+  console.log(`\n🔍 Test 7: Verify Indexer State`);
+  if (!indexerUrl) {
+    console.log('⏭️  Skipped (INDEXER_URL not set)');
+    results.push({ name: 'Verify Indexer State', status: 'skipped', message: 'INDEXER_URL not set' });
+  } else if (!fiberInState) {
+    console.log('⏭️  Skipped (fiber not in ML0 state)');
+    results.push({ name: 'Verify Indexer State', status: 'skipped', message: 'Fiber not in ML0 state' });
+  } else {
+    const indexerWaitTimeout = parseInt(process.env.INDEXER_WAIT_TIMEOUT ?? '30000', 10);
+    console.log(`⏳ Waiting for fiber to appear in indexer (up to ${indexerWaitTimeout / 1000}s)...`);
+    
+    const indexerDeadline = Date.now() + indexerWaitTimeout;
+    let indexerFound = false;
+    let indexerFiber: any = null;
+    
+    while (Date.now() < indexerDeadline && !indexerFound) {
+      try {
+        const res = await fetch(`${indexerUrl}/fibers/${fiberId}`, {
+          signal: AbortSignal.timeout(5000)
+        });
+        if (res.ok) {
+          indexerFiber = await res.json();
+          indexerFound = true;
+        } else if (res.status !== 404) {
+          throw new Error(`Indexer returned ${res.status}`);
+        }
+      } catch (err) {
+        // Ignore errors, keep polling
+      }
+      if (!indexerFound) {
+        await sleep(2000);
+      }
+    }
+    
+    if (indexerFound && indexerFiber) {
+      console.log(`✓ Fiber found in indexer: state=${indexerFiber.currentState}, ordinal=${indexerFiber.updatedOrdinal}`);
+      results.push({ name: 'Verify Indexer State', status: 'passed' });
+      
+      // Check for rejections
+      try {
+        const rejRes = await fetch(`${indexerUrl}/fibers/${fiberId}/rejections?limit=5`, {
+          signal: AbortSignal.timeout(5000)
+        });
+        if (rejRes.ok) {
+          const rejData = await rejRes.json() as { rejections: any[]; total: number };
+          if (rejData.total > 0) {
+            console.log(`  ⚠️ Found ${rejData.total} rejection(s) for this fiber`);
+          } else {
+            console.log(`  ✓ No rejections for this fiber`);
+          }
+        }
+      } catch {
+        // Ignore rejection check errors
+      }
+    } else {
+      console.error(`❌ Fiber not found in indexer after ${indexerWaitTimeout / 1000}s`);
+      results.push({ name: 'Verify Indexer State', status: 'failed', message: 'Timeout waiting for indexer' });
+    }
+  }
+  
   printSummary(results);
   
   // Exit with error only if there are hard failures (not skips)

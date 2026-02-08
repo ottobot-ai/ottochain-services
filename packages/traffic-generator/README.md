@@ -71,6 +71,28 @@ pnpm install
 | `PLATFORMS` | `discord,telegram,twitter,github` | Comma-separated platforms |
 | `SEED` | (random) | Seed for reproducible runs |
 
+#### Indexer Verification (Optional)
+
+When enabled, the traffic generator waits for each transition to be indexed before proceeding,
+and checks for ML0 rejections. This ensures the test accurately reflects on-chain state.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `INDEXER_VERIFY` | `false` | Enable indexer verification (`true` to enable) |
+| `INDEXER_URL` | `http://localhost:3031` | Indexer service URL (enables verification if set) |
+| `INDEXER_WAIT_TIMEOUT` | `30000` | Max ms to wait for indexer confirmation |
+| `INDEXER_POLL_INTERVAL` | `2000` | Poll interval when waiting for indexer |
+| `INDEXER_MAX_RETRIES` | `3` | Max retries on timeout before marking fiber as failed |
+| `INDEXER_SKIP_ON_REJECTION` | `true` | Remove fiber on rejection (vs keep trying) |
+
+**Example with indexer verification:**
+```bash
+INDEXER_URL=http://localhost:3031 \
+INDEXER_WAIT_TIMEOUT=60000 \
+BRIDGE_URL=http://localhost:3030 \
+pnpm dev -- --weighted
+```
+
 ### Running
 
 ```bash

@@ -124,10 +124,22 @@ function loadTrafficConfig(): TrafficConfig {
     }
   }
   
+  // Parse indexer configuration
+  const indexerEnabled = process.env.INDEXER_VERIFY === 'true' || process.env.INDEXER_URL;
+  const indexerConfig = indexerEnabled ? {
+    enabled: true,
+    url: process.env.INDEXER_URL ?? 'http://localhost:3031',
+    waitTimeoutMs: parseInt(process.env.INDEXER_WAIT_TIMEOUT ?? '30000', 10),
+    pollIntervalMs: parseInt(process.env.INDEXER_POLL_INTERVAL ?? '2000', 10),
+    maxRetries: parseInt(process.env.INDEXER_MAX_RETRIES ?? '3', 10),
+    skipOnRejection: process.env.INDEXER_SKIP_ON_REJECTION !== 'false',
+  } : undefined;
+
   return {
     generationIntervalMs: parseInt(process.env.GENERATION_INTERVAL_MS ?? '30000', 10),
     targetActiveFibers: parseInt(process.env.TARGET_ACTIVE_FIBERS ?? '20', 10),
     fiberWeights,
+    indexer: indexerConfig,
   };
 }
 
@@ -142,6 +154,14 @@ async function runWeightedOrchestrator(): Promise<void> {
   console.log('═══════════════════════════════════════════════════════════════');
   console.log(`   Target active fibers: ${config.targetActiveFibers}`);
   console.log(`   Generation interval: ${config.generationIntervalMs}ms`);
+  if (config.indexer?.enabled) {
+    console.log(`   Indexer verification: ENABLED`);
+    console.log(`     URL: ${config.indexer.url}`);
+    console.log(`     Wait timeout: ${config.indexer.waitTimeoutMs}ms`);
+    console.log(`     Max retries: ${config.indexer.maxRetries}`);
+  } else {
+    console.log(`   Indexer verification: disabled`);
+  }
   console.log(`   Fiber weights:`);
   for (const [type, weight] of Object.entries(config.fiberWeights)) {
     console.log(`     ${type}: ${(weight * 100).toFixed(0)}%`);
@@ -241,6 +261,9 @@ async function runWeightedOrchestrator(): Promise<void> {
       const stats = orchestrator.getStats();
       console.log(`Generation ${generation}:`);
       console.log(`  Active: ${stats.activeFibers} | Created: ${result.created} | Driven: ${result.driven} | Completed: ${result.completed}`);
+      if (result.rejected > 0 || result.pending > 0 || stats.failedFibers > 0) {
+        console.log(`  Rejected: ${result.rejected} | Pending: ${result.pending} | Total Failed: ${stats.failedFibers}`);
+      }
       console.log(`  Distribution: ${JSON.stringify(stats.fiberTypeDistribution)}`);
     } catch (e) {
       console.error(`❌ Tick error: ${e}`);
