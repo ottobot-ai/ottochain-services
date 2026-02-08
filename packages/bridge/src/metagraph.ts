@@ -41,7 +41,6 @@ export type { KeyPair };
 
 interface TransactionResult {
   hash: string;
-  ordinal?: number;
 }
 
 /**
@@ -60,28 +59,21 @@ export async function submitTransaction(
   // Sign using SDK's batchSign (same as e2e tests)
   const signed = await batchSign(message, [privateKey], { isDataUpdate: true });
 
-  // Wrap in DataTransactionRequest format expected by tessellation DL1
-  // Format: { data: Signed<DataUpdate>, fee: Option<Signed<FeeTransaction>> }
-  const payload = {
-    data: signed,
-    fee: null,
-  };
-
+  // Send signed data directly (no wrapper - matches e2e test pattern)
   console.log(`[metagraph] Submitting to ${config.METAGRAPH_DL1_URL}/data`);
   console.log(`[metagraph] Message type: ${Object.keys(message as object)[0]}`);
-  console.log(`[metagraph] Payload (truncated): ${JSON.stringify(payload).substring(0, 300)}...`);
+  console.log(`[metagraph] Payload (truncated): ${JSON.stringify(signed).substring(0, 300)}...`);
 
   // Use SDK's HttpClient
   const client = new HttpClient(config.METAGRAPH_DL1_URL);
 
   try {
-    const result = await client.post<{ hash?: string; ordinal?: number }>('/data', payload);
+    const result = await client.post<{ hash?: string; feeHash?: string }>('/data', signed);
 
     console.log(`[metagraph] Success: ${JSON.stringify(result)}`);
 
     return {
       hash: result.hash ?? 'pending',
-      ordinal: result.ordinal,
     };
   } catch (err) {
     const error = err as Error & { response?: string };
