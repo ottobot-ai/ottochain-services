@@ -30,6 +30,15 @@ RUN pnpm run build
 # Production stage
 FROM node:20-alpine AS production
 
+# Version info (injected at build time)
+ARG GIT_SHA=unknown
+ARG BUILD_TIME=unknown
+ARG VERSION=0.0.0
+
+ENV GIT_SHA=$GIT_SHA
+ENV BUILD_TIME=$BUILD_TIME
+ENV npm_package_version=$VERSION
+
 WORKDIR /app
 
 RUN corepack enable && corepack prepare pnpm@8 --activate
