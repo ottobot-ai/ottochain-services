@@ -1,0 +1,1127 @@
+openapi: 3.0.3
+info:
+  title: OttoChain Bridge API
+  description: |
+    Transaction signing, wallet management, and convenience routes for OttoChain metagraph.
+    
+    ## Architecture
+    The Bridge provides a REST API layer on top of the generic metagraph. It handles:
+    - Wallet generation and key management
+    - Transaction signing and submission
+    - Convenience routes for common app patterns (Identity, Contracts, Markets, DAOs)
+    - Generic routes for arbitrary state machine definitions
+    
+    ## App Routes vs Generic Routes
+    | Type | Routes | Description |
+    |------|--------|-------------|
+    | **App** | `/agent`, `/contract`, `/governance`, `/market` | Pre-built definitions for common use cases |
+    | **Generic** | `/fiber`, `/sm`, `/script` | Accept any valid state machine definition |
+    
+  version: 1.0.0
+  contact:
+    name: OttoChain
+    url: https://github.com/ottobot-ai/ottochain-services
+  license:
+    name: Apache-2.0
+
+servers:
+  - url: http://localhost:3030
+    description: Local Bridge
+
+tags:
+  - name: Wallet
+    description: Wallet generation and management
+  - name: Agent
+    description: Agent Identity management
+  - name: Contract
+    description: Contract workflows
+  - name: Market
+    description: Markets (predictions, auctions, crowdfunding, group buys)
+  - name: Governance
+    description: DAO and governance operations
+  - name: Fiber
+    description: Generic fiber/state machine operations
+  - name: Script
+    description: Script oracle operations
+
+paths:
+  # ===== Health =====
+  /health:
+    get:
+      summary: Health check
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  service:
+                    type: string
+                    example: bridge
+
+  # ===== Wallet =====
+  /wallet/generate:
+    post:
+      tags: [Wallet]
+      summary: Generate new wallet
+      operationId: generateWallet
+      responses:
+        '200':
+          description: New wallet generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Wallet'
+
+  # ===== Agent Identity =====
+  /agent/wallet:
+    post:
+      tags: [Agent]
+      summary: Generate wallet for agent
+      operationId: generateAgentWallet
+      responses:
+        '200':
+          description: Wallet generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Wallet'
+
+  /agent/register:
+    post:
+      tags: [Agent]
+      summary: Register new agent identity
+      operationId: registerAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterAgentRequest'
+      responses:
+        '201':
+          description: Agent registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentRegistrationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /agent/activate:
+    post:
+      tags: [Agent]
+      summary: Activate an agent
+      operationId: activateAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [privateKey, fiberId]
+              properties:
+                privateKey:
+                  type: string
+                fiberId:
+                  type: string
+                  format: uuid
+                waitForSync:
+                  type: boolean
+                  default: true
+                maxWaitSeconds:
+                  type: integer
+                  default: 30
+      responses:
+        '200':
+          description: Agent activated
+        '404':
+          description: Agent not found
+        '503':
+          description: Fiber not yet synced
+
+  /agent/transition:
+    post:
+      tags: [Agent]
+      summary: Transition agent state
+      operationId: transitionAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransitionRequest'
+      responses:
+        '200':
+          description: Transition successful
+        '404':
+          description: Agent not found
+
+  /agent/vouch:
+    post:
+      tags: [Agent]
+      summary: Vouch for another agent
+      operationId: vouchForAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [privateKey, targetFiberId]
+              properties:
+                privateKey:
+                  type: string
+                targetFiberId:
+                  type: string
+                  format: uuid
+                fromAddress:
+                  type: string
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Vouch recorded
+
+  /agent/{fiberId}:
+    get:
+      tags: [Agent]
+      summary: Get agent by fiber ID
+      operationId: getAgent
+      parameters:
+        - name: fiberId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Agent state
+        '404':
+          description: Agent not found
+
+  /agent:
+    get:
+      tags: [Agent]
+      summary: List all agents
+      operationId: listAgents
+      responses:
+        '200':
+          description: Agent list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  agents:
+                    type: object
+                    additionalProperties:
+                      type: object
+
+  # ===== Markets =====
+  /market/create:
+    post:
+      tags: [Market]
+      summary: Create a new market
+      operationId: createMarket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMarketRequest'
+      responses:
+        '201':
+          description: Market created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketCreatedResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /market/open:
+    post:
+      tags: [Market]
+      summary: Open market for commitments
+      operationId: openMarket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [privateKey, marketId]
+              properties:
+                privateKey:
+                  type: string
+                marketId:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Market opened
+        '400':
+          description: Cannot open (wrong state)
+        '404':
+          description: Market not found
+
+  /market/commit:
+    post:
+      tags: [Market]
+      summary: Commit to a market (stake/bid/pledge)
+      operationId: commitToMarket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarketCommitRequest'
+      responses:
+        '200':
+          description: Commitment recorded
+        '400':
+          description: Market not open
+        '404':
+          description: Market not found
+
+  /market/close:
+    post:
+      tags: [Market]
+      summary: Close market for new commitments
+      operationId: closeMarket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [privateKey, marketId]
+              properties:
+                privateKey:
+                  type: string
+                marketId:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Market closed
+
+  /market/resolve:
+    post:
+      tags: [Market]
+      summary: Submit resolution (oracle)
+      operationId: resolveMarket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarketResolveRequest'
+      responses:
+        '200':
+          description: Resolution submitted
+
+  /market/finalize:
+    post:
+      tags: [Market]
+      summary: Finalize market after quorum
+      operationId: finalizeMarket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [privateKey, marketId, outcome]
+              properties:
+                privateKey:
+                  type: string
+                marketId:
+                  type: string
+                  format: uuid
+                outcome:
+                  type: string
+                settlement:
+                  type: object
+      responses:
+        '200':
+          description: Market finalized
+
+  /market/claim:
+    post:
+      tags: [Market]
+      summary: Claim winnings from settled market
+      operationId: claimFromMarket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [privateKey, marketId]
+              properties:
+                privateKey:
+                  type: string
+                marketId:
+                  type: string
+                  format: uuid
+                amount:
+                  type: number
+      responses:
+        '200':
+          description: Claim successful
+        '400':
+          description: Already claimed or no commitment
+
+  /market/refund:
+    post:
+      tags: [Market]
+      summary: Refund market (threshold not met)
+      operationId: refundMarket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [privateKey, marketId]
+              properties:
+                privateKey:
+                  type: string
+                marketId:
+                  type: string
+                  format: uuid
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Market refunded
+
+  /market/cancel:
+    post:
+      tags: [Market]
+      summary: Cancel market (before opening)
+      operationId: cancelMarket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [privateKey, marketId]
+              properties:
+                privateKey:
+                  type: string
+                marketId:
+                  type: string
+                  format: uuid
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Market cancelled
+
+  /market/{marketId}:
+    get:
+      tags: [Market]
+      summary: Get market by ID
+      operationId: getMarket
+      parameters:
+        - name: marketId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Market state
+        '404':
+          description: Market not found
+
+  /market:
+    get:
+      tags: [Market]
+      summary: List markets
+      operationId: listMarkets
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PROPOSED, OPEN, CLOSED, RESOLVING, SETTLED, REFUNDED, CANCELLED]
+        - name: marketType
+          in: query
+          schema:
+            type: string
+            enum: [prediction, auction, crowdfund, group_buy]
+      responses:
+        '200':
+          description: Market list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  markets:
+                    type: object
+
+  # ===== Governance =====
+  /governance/create-dao:
+    post:
+      tags: [Governance]
+      summary: Create a DAO
+      operationId: createDAO
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDAORequest'
+      responses:
+        '201':
+          description: DAO created
+
+  /governance/propose:
+    post:
+      tags: [Governance]
+      summary: Create proposal
+      operationId: propose
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProposeRequest'
+      responses:
+        '200':
+          description: Proposal created
+
+  /governance/vote:
+    post:
+      tags: [Governance]
+      summary: Vote on proposal
+      operationId: vote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VoteRequest'
+      responses:
+        '200':
+          description: Vote recorded
+
+  /governance/execute:
+    post:
+      tags: [Governance]
+      summary: Execute passed proposal
+      operationId: executeProposal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [privateKey, daoId]
+              properties:
+                privateKey:
+                  type: string
+                daoId:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Proposal executed
+
+  /governance/delegate:
+    post:
+      tags: [Governance]
+      summary: Delegate voting power
+      operationId: delegate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [privateKey, daoId, delegateTo]
+              properties:
+                privateKey:
+                  type: string
+                daoId:
+                  type: string
+                  format: uuid
+                delegateTo:
+                  type: string
+                weight:
+                  type: integer
+      responses:
+        '200':
+          description: Delegation recorded
+
+  /governance/veto:
+    post:
+      tags: [Governance]
+      summary: Veto a proposal
+      operationId: veto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [privateKey, daoId, reason]
+              properties:
+                privateKey:
+                  type: string
+                daoId:
+                  type: string
+                  format: uuid
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Veto recorded
+
+  /governance/{daoId}:
+    get:
+      tags: [Governance]
+      summary: Get DAO state
+      operationId: getDAO
+      parameters:
+        - name: daoId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: DAO state
+        '404':
+          description: DAO not found
+
+  /governance/{daoId}/proposals:
+    get:
+      tags: [Governance]
+      summary: List DAO proposals
+      operationId: listProposals
+      parameters:
+        - name: daoId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Proposal list
+
+  /governance:
+    get:
+      tags: [Governance]
+      summary: List all DAOs
+      operationId: listDAOs
+      parameters:
+        - name: daoType
+          in: query
+          schema:
+            type: string
+            enum: [Single, Multisig, Threshold, Token]
+      responses:
+        '200':
+          description: DAO list
+
+  # ===== Generic Fiber =====
+  /fiber/create:
+    post:
+      tags: [Fiber]
+      summary: Create fiber with custom definition
+      operationId: createFiber
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFiberRequest'
+      responses:
+        '201':
+          description: Fiber created
+
+  /fiber/transition:
+    post:
+      tags: [Fiber]
+      summary: Transition fiber state
+      operationId: transitionFiber
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransitionRequest'
+      responses:
+        '200':
+          description: Transition successful
+
+  /fiber/batch:
+    post:
+      tags: [Fiber]
+      summary: Batch fiber operations
+      operationId: batchFiber
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                operations:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        '200':
+          description: Batch processed
+
+  # ===== Generic SM =====
+  /sm/create:
+    post:
+      tags: [Fiber]
+      summary: Create state machine (alias for /fiber/create)
+      operationId: createSM
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFiberRequest'
+      responses:
+        '201':
+          description: State machine created
+
+  /sm/transition:
+    post:
+      tags: [Fiber]
+      summary: Transition state machine
+      operationId: transitionSM
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransitionRequest'
+      responses:
+        '200':
+          description: Transition successful
+
+  /sm/{fiberId}:
+    get:
+      tags: [Fiber]
+      summary: Get state machine by ID
+      operationId: getSM
+      parameters:
+        - name: fiberId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: State machine state
+        '404':
+          description: Not found
+
+  /sm:
+    get:
+      tags: [Fiber]
+      summary: List state machines
+      operationId: listSMs
+      parameters:
+        - name: schema
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: State machine list
+
+  # ===== Script Oracle =====
+  /script/register:
+    post:
+      tags: [Script]
+      summary: Register script oracle
+      operationId: registerScript
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [privateKey, script]
+              properties:
+                privateKey:
+                  type: string
+                script:
+                  type: object
+      responses:
+        '201':
+          description: Script registered
+
+  /script/invoke:
+    post:
+      tags: [Script]
+      summary: Invoke script oracle
+      operationId: invokeScript
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [privateKey, scriptId, input]
+              properties:
+                privateKey:
+                  type: string
+                scriptId:
+                  type: string
+                  format: uuid
+                input:
+                  type: object
+      responses:
+        '200':
+          description: Script invoked
+
+  /script/{scriptId}:
+    get:
+      tags: [Script]
+      summary: Get script state
+      operationId: getScript
+      parameters:
+        - name: scriptId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Script state
+        '404':
+          description: Not found
+
+  /script/{scriptId}/result:
+    get:
+      tags: [Script]
+      summary: Get script result
+      operationId: getScriptResult
+      parameters:
+        - name: scriptId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Script result
+
+components:
+  schemas:
+    Wallet:
+      type: object
+      properties:
+        privateKey:
+          type: string
+        publicKey:
+          type: string
+        address:
+          type: string
+
+    RegisterAgentRequest:
+      type: object
+      required: [privateKey]
+      properties:
+        privateKey:
+          type: string
+          minLength: 64
+          maxLength: 64
+        displayName:
+          type: string
+        platform:
+          type: string
+        platformUserId:
+          type: string
+
+    AgentRegistrationResponse:
+      type: object
+      properties:
+        fiberId:
+          type: string
+          format: uuid
+        address:
+          type: string
+        hash:
+          type: string
+        message:
+          type: string
+
+    TransitionRequest:
+      type: object
+      required: [privateKey, fiberId, event]
+      properties:
+        privateKey:
+          type: string
+        fiberId:
+          type: string
+          format: uuid
+        event:
+          type: string
+        payload:
+          type: object
+
+    CreateMarketRequest:
+      type: object
+      required: [privateKey, marketType, title]
+      properties:
+        privateKey:
+          type: string
+        marketType:
+          type: string
+          enum: [prediction, auction, crowdfund, group_buy]
+        title:
+          type: string
+        description:
+          type: string
+        deadline:
+          type: string
+          format: date-time
+          nullable: true
+        threshold:
+          type: number
+          nullable: true
+        oracles:
+          type: array
+          items:
+            type: string
+        quorum:
+          type: integer
+          minimum: 1
+          default: 1
+        terms:
+          type: object
+          properties:
+            question:
+              type: string
+            outcomes:
+              type: array
+              items:
+                type: string
+            feePercent:
+              type: number
+            item:
+              type: string
+            reservePrice:
+              type: number
+            buyNowPrice:
+              type: number
+              nullable: true
+            goal:
+              type: number
+            rewards:
+              type: array
+              items:
+                type: object
+            allOrNothing:
+              type: boolean
+            product:
+              type: string
+            unitPrice:
+              type: number
+            bulkPrice:
+              type: number
+            minUnits:
+              type: number
+
+    MarketCreatedResponse:
+      type: object
+      properties:
+        marketId:
+          type: string
+          format: uuid
+        marketType:
+          type: string
+        creator:
+          type: string
+        hash:
+          type: string
+        message:
+          type: string
+
+    MarketCommitRequest:
+      type: object
+      required: [privateKey, marketId, amount]
+      properties:
+        privateKey:
+          type: string
+        marketId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+        data:
+          type: object
+          description: Outcome choice, bid data, etc.
+
+    MarketResolveRequest:
+      type: object
+      required: [privateKey, marketId, outcome]
+      properties:
+        privateKey:
+          type: string
+        marketId:
+          type: string
+          format: uuid
+        outcome:
+          type: string
+        proof:
+          type: string
+
+    CreateDAORequest:
+      type: object
+      required: [privateKey, daoType, name]
+      properties:
+        privateKey:
+          type: string
+        daoType:
+          type: string
+          enum: [Single, Multisig, Threshold, Token]
+        name:
+          type: string
+        description:
+          type: string
+        signers:
+          type: array
+          items:
+            type: string
+        threshold:
+          type: integer
+        tokenId:
+          type: string
+          format: uuid
+        proposalThreshold:
+          type: integer
+        quorum:
+          type: integer
+        votingPeriodMs:
+          type: integer
+          default: 259200000
+        timelockMs:
+          type: integer
+          default: 86400000
+        passingThreshold:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 0.5
+        admins:
+          type: array
+          items:
+            type: string
+        proposers:
+          type: array
+          items:
+            type: string
+        vetoers:
+          type: array
+          items:
+            type: string
+
+    ProposeRequest:
+      type: object
+      required: [privateKey, daoId, title]
+      properties:
+        privateKey:
+          type: string
+        daoId:
+          type: string
+          format: uuid
+        proposalId:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        actionType:
+          type: string
+        payload:
+          type: object
+
+    VoteRequest:
+      type: object
+      required: [privateKey, daoId, vote]
+      properties:
+        privateKey:
+          type: string
+        daoId:
+          type: string
+          format: uuid
+        vote:
+          type: string
+          enum: [For, Against, Abstain]
+        weight:
+          type: integer
+
+    CreateFiberRequest:
+      type: object
+      required: [privateKey, definition, initialData]
+      properties:
+        privateKey:
+          type: string
+        fiberId:
+          type: string
+          format: uuid
+        definition:
+          type: object
+          description: State machine definition (states, transitions, etc.)
+        initialData:
+          type: object
+          description: Initial state data
+        parentFiberId:
+          type: string
+          format: uuid
+          nullable: true
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              details:
+                type: array
+                items:
+                  type: object
