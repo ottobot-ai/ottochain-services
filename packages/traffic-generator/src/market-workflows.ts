@@ -9,7 +9,7 @@
  */
 
 import type { Market, MarketType, MarketState, SimulationContext, Agent } from './types.js';
-import { MarketState as MS } from './types.js';
+import { MarketState as MS, SdkAgentState as AgentState } from './types.js';
 
 // ============================================================================
 // Market State Machine Definition (mirrors JSON)
@@ -634,7 +634,7 @@ export function selectOracles(
   excludeAddress: string
 ): string[] {
   const eligible = population.filter(
-    a => a.state === 'ACTIVE' && 
+    a => a.state === AgentState.AGENT_STATE_ACTIVE && 
          a.address !== excludeAddress && 
          a.meta.isOracle
   );

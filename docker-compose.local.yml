@@ -1,0 +1,92 @@
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "4000:4000"
+    environment:
+      SERVICE: gateway
+      DATABASE_URL: postgresql://ottochain:ottochain@postgres:5432/ottochain_identity
+      METAGRAPH_ML0_URL: http://host.docker.internal:9200
+      METAGRAPH_DL1_URL: http://host.docker.internal:9400
+      GATEWAY_PORT: 4000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ottochain
+
+  bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3030:3030"
+    environment:
+      SERVICE: bridge
+      DATABASE_URL: postgresql://ottochain:ottochain@postgres:5432/ottochain_identity
+      METAGRAPH_ML0_URL: http://host.docker.internal:9200
+      METAGRAPH_DL1_URL: http://host.docker.internal:9400
+      BRIDGE_PORT: 3030
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ottochain
+
+  indexer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3031:3031"
+    environment:
+      SERVICE: indexer
+      DATABASE_URL: postgresql://ottochain:ottochain@postgres:5432/ottochain_identity
+      METAGRAPH_ML0_URL: http://host.docker.internal:9200
+      METAGRAPH_DL1_URL: http://host.docker.internal:9400
+      INDEXER_PORT: 3031
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ottochain
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - ottochain
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ottochain
+      POSTGRES_PASSWORD: ottochain
+      POSTGRES_DB: ottochain_identity
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ottochain"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ottochain
+
+volumes:
+  postgres_data:
+
+networks:
+  ottochain:
+    driver: bridge
