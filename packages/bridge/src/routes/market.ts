@@ -6,11 +6,35 @@ import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey, waitForFiber } from '../metagraph.js';
+import { MarketType, MarketState } from '@ottochain/sdk';
 
 export const marketRoutes: RouterType = Router();
 
 // ============================================================================
-// Request Schemas
+// Proto-derived enums for validation
+// ============================================================================
+
+// Map proto enum to API-friendly lowercase strings
+const MARKET_TYPE_MAP: Record<string, MarketType> = {
+  prediction: MarketType.PREDICTION,
+  auction: MarketType.AUCTION,
+  crowdfund: MarketType.CROWDFUND,
+  group_buy: MarketType.GROUP_BUY,
+};
+
+const MARKET_STATE_MAP: Record<MarketState, string> = {
+  [MarketState.UNSPECIFIED]: 'UNSPECIFIED',
+  [MarketState.PROPOSED]: 'PROPOSED',
+  [MarketState.OPEN]: 'OPEN',
+  [MarketState.CLOSED]: 'CLOSED',
+  [MarketState.RESOLVING]: 'RESOLVING',
+  [MarketState.SETTLED]: 'SETTLED',
+  [MarketState.REFUNDED]: 'REFUNDED',
+  [MarketState.CANCELLED]: 'CANCELLED',
+};
+
+// ============================================================================
+// Request Schemas (using proto-aligned types)
 // ============================================================================
 
 const MarketTypeSchema = z.enum(['prediction', 'auction', 'crowdfund', 'group_buy']);
@@ -20,25 +44,17 @@ const CreateMarketRequestSchema = z.object({
   marketType: MarketTypeSchema,
   title: z.string().min(1),
   description: z.string().optional(),
-  // Deadline as ISO timestamp or null for no deadline
   deadline: z.string().nullable().optional(),
-  // Minimum threshold for market to be valid (crowdfund goal, etc.)
   threshold: z.number().nullable().optional(),
-  // Oracle addresses for resolution
   oracles: z.array(z.string()).optional().default([]),
-  // Number of oracle votes needed
   quorum: z.number().int().min(1).optional().default(1),
-  // Type-specific terms
   terms: z.object({
-    // Prediction market
     question: z.string().optional(),
     outcomes: z.array(z.string()).optional(),
     feePercent: z.number().optional(),
-    // Auction
     item: z.string().optional(),
     reservePrice: z.number().optional(),
     buyNowPrice: z.number().nullable().optional(),
-    // Crowdfund
     goal: z.number().optional(),
     rewards: z.array(z.object({
       tier: z.string(),
@@ -46,7 +62,6 @@ const CreateMarketRequestSchema = z.object({
       description: z.string(),
     })).optional(),
     allOrNothing: z.boolean().optional(),
-    // Group buy
     product: z.string().optional(),
     unitPrice: z.number().optional(),
     bulkPrice: z.number().optional(),
@@ -63,7 +78,6 @@ const CommitRequestSchema = z.object({
   privateKey: z.string().length(64),
   marketId: z.string().uuid(),
   amount: z.number().positive(),
-  // Optional commitment data (outcome choice for predictions, bid data for auctions, etc.)
   data: z.record(z.any()).optional().default({}),
 });
 
@@ -106,7 +120,8 @@ const CancelRequestSchema = z.object({
 
 // ============================================================================
 // Market State Machine Definition
-// From docs/trust-graph/coordination/market.json
+// TODO: Import from @ottochain/sdk/apps when available
+// Based on docs/trust-graph/coordination/market.json
 // ============================================================================
 
 const MARKET_DEFINITION = {
@@ -382,10 +397,13 @@ marketRoutes.post('/create', async (req, res) => {
     const creatorAddress = keyPair.address;
     const marketId = randomUUID();
 
-    // Build initial data based on market type
-    const initialData: Record<string, unknown> = {
+    // Map API type to proto enum for storage
+    const protoMarketType = MARKET_TYPE_MAP[input.marketType];
+
+    const initialData = {
       schema: 'Market',
       marketType: input.marketType,
+      marketTypeProto: protoMarketType, // Store proto enum value for SDK compatibility
       creator: creatorAddress,
       title: input.title,
       description: input.description ?? '',
@@ -399,6 +417,7 @@ marketRoutes.post('/create', async (req, res) => {
       resolutions: [],
       claims: {},
       status: 'PROPOSED',
+      statusProto: MarketState.PROPOSED,
       createdAt: new Date().toISOString(),
     };
 
@@ -417,6 +436,7 @@ marketRoutes.post('/create', async (req, res) => {
     res.status(201).json({
       marketId,
       marketType: input.marketType,
+      marketTypeProto: protoMarketType,
       creator: creatorAddress,
       hash: result.hash,
       message: 'Market created. Call /market/open to start accepting commitments.',
@@ -440,7 +460,6 @@ marketRoutes.post('/open', async (req, res) => {
     const input = OpenMarketRequestSchema.parse(req.body);
     const keyPair = keyPairFromPrivateKey(input.privateKey);
 
-    // Wait for market to be visible
     const visible = await waitForFiber(input.marketId, 30, 1000);
     if (!visible) {
       return res.status(503).json({
@@ -477,6 +496,7 @@ marketRoutes.post('/open', async (req, res) => {
       hash: result.hash,
       marketId: input.marketId,
       status: 'OPEN',
+      statusProto: MarketState.OPEN,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -578,6 +598,7 @@ marketRoutes.post('/close', async (req, res) => {
       hash: result.hash,
       marketId: input.marketId,
       status: 'CLOSED',
+      statusProto: MarketState.CLOSED,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -683,6 +704,7 @@ marketRoutes.post('/finalize', async (req, res) => {
       hash: result.hash,
       marketId: input.marketId,
       status: 'SETTLED',
+      statusProto: MarketState.SETTLED,
       outcome: input.outcome,
     });
   } catch (err) {
@@ -704,13 +726,13 @@ marketRoutes.post('/claim', async (req, res) => {
     const input = ClaimRequestSchema.parse(req.body);
     const keyPair = keyPairFromPrivateKey(input.privateKey);
 
-    const state = (await getStateMachine(input.marketId)) as { 
-      sequenceNumber?: number; 
-      stateData?: { 
+    const state = (await getStateMachine(input.marketId)) as {
+      sequenceNumber?: number;
+      stateData?: {
         status?: string;
         commitments?: Record<string, { amount: number }>;
         claims?: Record<string, unknown>;
-      } 
+      };
     } | null;
     if (!state) {
       return res.status(404).json({ error: 'Market not found' });
@@ -802,6 +824,7 @@ marketRoutes.post('/refund', async (req, res) => {
       hash: result.hash,
       marketId: input.marketId,
       status: 'REFUNDED',
+      statusProto: MarketState.REFUNDED,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -853,6 +876,7 @@ marketRoutes.post('/cancel', async (req, res) => {
       hash: result.hash,
       marketId: input.marketId,
       status: 'CANCELLED',
+      statusProto: MarketState.CANCELLED,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -904,7 +928,6 @@ marketRoutes.get('/', async (req, res) => {
         sm.stateData?.schema === 'Market' ||
         sm.definition?.metadata?.name === 'Market'
       ) {
-        // Apply filters
         if (status && sm.stateData?.status !== status) continue;
         if (marketType && sm.stateData?.marketType !== marketType) continue;
         markets[fiberId] = sm;
