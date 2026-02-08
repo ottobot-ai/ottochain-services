@@ -256,6 +256,71 @@ app.get('/rejections/:updateHash', async (req, res) => {
   });
 });
 
+// Get a specific fiber by ID
+app.get('/fibers/:fiberId', async (req, res) => {
+  const fiber = await prisma.fiber.findUnique({
+    where: { fiberId: req.params.fiberId }
+  });
+  
+  if (!fiber) {
+    res.status(404).json({ error: 'Fiber not found' });
+    return;
+  }
+  
+  res.json({
+    fiberId: fiber.fiberId,
+    workflowType: fiber.workflowType,
+    workflowDesc: fiber.workflowDesc,
+    currentState: fiber.currentState,
+    status: fiber.status,
+    owners: fiber.owners,
+    stateData: fiber.stateData,
+    sequenceNumber: fiber.sequenceNumber,
+    createdOrdinal: Number(fiber.createdOrdinal),
+    updatedOrdinal: Number(fiber.updatedOrdinal),
+    createdGl0Ordinal: fiber.createdGl0Ordinal ? Number(fiber.createdGl0Ordinal) : null,
+    updatedGl0Ordinal: fiber.updatedGl0Ordinal ? Number(fiber.updatedGl0Ordinal) : null,
+    createdAt: fiber.createdAt,
+    updatedAt: fiber.updatedAt,
+  });
+});
+
+// Get transitions for a specific fiber
+app.get('/fibers/:fiberId/transitions', async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+  const offset = parseInt(req.query.offset as string) || 0;
+  
+  const [transitions, total] = await Promise.all([
+    prisma.fiberTransition.findMany({
+      where: { fiberId: req.params.fiberId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      skip: offset,
+    }),
+    prisma.fiberTransition.count({ 
+      where: { fiberId: req.params.fiberId } 
+    }),
+  ]);
+  
+  res.json({
+    transitions: transitions.map(t => ({
+      id: t.id,
+      fiberId: t.fiberId,
+      eventName: t.eventName,
+      fromState: t.fromState,
+      toState: t.toState,
+      success: t.success,
+      gasUsed: t.gasUsed,
+      payload: t.payload,
+      snapshotOrdinal: Number(t.snapshotOrdinal),
+      gl0Ordinal: t.gl0Ordinal ? Number(t.gl0Ordinal) : null,
+      createdAt: t.createdAt,
+    })),
+    total,
+    hasMore: offset + transitions.length < total,
+  });
+});
+
 // Get rejections for a specific fiber
 app.get('/fibers/:fiberId/rejections', async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);

@@ -1,4 +1,5 @@
 import { BridgeClient } from './bridge-client.js';
+import { IndexerClient } from './indexer-client.js';
 import { FIBER_DEFINITIONS, type FiberDefinition, type MarketStateData, type DAOStateData, type GovernanceStateData, type CorporateEntityStateData, type CorporateBoardStateData, type CorporateShareholdersStateData, type CorporateSecuritiesStateData } from './fiber-definitions.js';
 import { MARKET_SM_DEFINITION } from './market-workflows.js';
 import { Agent } from './types.js';
@@ -7,6 +8,21 @@ export interface TrafficConfig {
   generationIntervalMs: number;
   targetActiveFibers: number;
   fiberWeights: Record<string, number>;
+  /** Optional: Indexer verification settings */
+  indexer?: {
+    /** Enable indexer verification before driving fibers */
+    enabled: boolean;
+    /** Indexer service URL */
+    url: string;
+    /** Wait for fiber to appear in indexer before next transition (ms) */
+    waitTimeoutMs?: number;
+    /** Poll interval when waiting for indexer (ms) */
+    pollIntervalMs?: number;
+    /** Max retries when indexer verification fails */
+    maxRetries?: number;
+    /** Skip fiber on rejection (vs marking as failed) */
+    skipOnRejection?: boolean;
+  };
 }
 
 export interface ActiveFiber {
@@ -18,6 +34,17 @@ export interface ActiveFiber {
   /** Index of next transition to execute */
   transitionIndex: number;
   startedAt: number;
+  /** Pending transition awaiting indexer confirmation */
+  pendingTransition?: {
+    event: string;
+    expectedState: string;
+    submittedAt: number;
+    retries: number;
+  };
+  /** Marked as failed due to rejection */
+  failed?: boolean;
+  /** Failure reason */
+  failureReason?: string;
 }
 
 export interface TickResult {
@@ -25,6 +52,10 @@ export interface TickResult {
   created: number;
   driven: number;
   completed: number;
+  /** Fibers that failed due to rejections */
+  rejected: number;
+  /** Fibers waiting for indexer confirmation */
+  pending: number;
 }
 
 /**
@@ -32,17 +63,31 @@ export interface TickResult {
  * 
  * Manages the creation and progression of fibers according to a configurable traffic mix.
  * Drives all parties in a fiber to completion.
+ * 
+ * With indexer verification enabled, waits for each transition to be indexed
+ * before proceeding, and checks for rejections.
  */
 export class FiberOrchestrator {
   private activeFibers: ActiveFiber[] = [];
   private completedFibers: number = 0;
+  private failedFibers: number = 0;
   private registeredAgents: Set<string> = new Set(); // Track registered agent addresses
+  private indexer: IndexerClient | null = null;
 
   constructor(
     private config: TrafficConfig,
     private bridge: BridgeClient,
     private getAvailableAgents: () => Agent[]
-  ) {}
+  ) {
+    // Initialize indexer client if configured
+    if (config.indexer?.enabled && config.indexer.url) {
+      this.indexer = new IndexerClient({
+        indexerUrl: config.indexer.url,
+        timeoutMs: config.indexer.waitTimeoutMs ?? 30000,
+      });
+      console.log(`📊 Indexer verification enabled: ${config.indexer.url}`);
+    }
+  }
 
   /**
    * Bootstrap: Register agents that don't have identity fibers yet
@@ -88,6 +133,7 @@ export class FiberOrchestrator {
 
   /**
    * Main orchestration loop tick
+   * - Verifies pending transitions against indexer (if enabled)
    * - Drives existing fibers forward
    * - Starts new fibers if below target
    */
@@ -98,20 +144,74 @@ export class FiberOrchestrator {
     try {
       const syncStatus = await this.bridge.checkSyncStatus();
       if (!syncStatus.ready) {
-        return { skipped: true, created: 0, driven: 0, completed: 0 };
+        return { skipped: true, created: 0, driven: 0, completed: 0, rejected: 0, pending: 0 };
       }
     } catch (err) {
       console.log(`  ⚠️  Sync check failed: ${(err as Error).message}`);
-      return { skipped: true, created: 0, driven: 0, completed: 0 };
+      return { skipped: true, created: 0, driven: 0, completed: 0, rejected: 0, pending: 0 };
+    }
+    
+    // Check indexer health if enabled
+    if (this.indexer) {
+      const indexerHealthy = await this.indexer.isHealthy();
+      if (!indexerHealthy) {
+        console.log(`  ⚠️  Indexer not healthy, skipping tick`);
+        return { skipped: true, created: 0, driven: 0, completed: 0, rejected: 0, pending: 0 };
+      }
     }
     
     let created = 0;
     let driven = 0;
     let completed = 0;
+    let rejected = 0;
+    let pending = 0;
 
     // Drive existing fibers forward
     const fibersToRemove: string[] = [];
     for (const fiber of this.activeFibers) {
+      // Skip failed fibers
+      if (fiber.failed) {
+        fibersToRemove.push(fiber.id);
+        continue;
+      }
+      
+      // Check pending transition status with indexer
+      if (fiber.pendingTransition && this.indexer) {
+        const verifyResult = await this.verifyPendingTransition(fiber);
+        if (verifyResult === 'confirmed') {
+          // Transition confirmed, clear pending
+          fiber.currentState = fiber.pendingTransition.expectedState;
+          fiber.pendingTransition = undefined;
+          driven++;
+        } else if (verifyResult === 'rejected') {
+          // Transaction was rejected
+          fiber.failed = true;
+          fiber.failureReason = 'Transaction rejected by ML0';
+          rejected++;
+          this.failedFibers++;
+          fibersToRemove.push(fiber.id);
+          continue;
+        } else if (verifyResult === 'timeout') {
+          // Exceeded max retries
+          fiber.pendingTransition.retries++;
+          const maxRetries = this.config.indexer?.maxRetries ?? 3;
+          if (fiber.pendingTransition.retries >= maxRetries) {
+            console.log(`  ⚠️  Fiber ${fiber.id.slice(0, 8)} exceeded max retries waiting for indexer`);
+            fiber.failed = true;
+            fiber.failureReason = 'Indexer confirmation timeout';
+            rejected++;
+            this.failedFibers++;
+            fibersToRemove.push(fiber.id);
+          } else {
+            pending++;
+          }
+          continue;
+        } else {
+          // Still pending
+          pending++;
+          continue;
+        }
+      }
       try {
         const result = await this.driveFiber(fiber);
         if (result === 'progressed') {
@@ -146,7 +246,46 @@ export class FiberOrchestrator {
       created,
       driven,
       completed,
+      rejected,
+      pending,
     };
+  }
+
+  /**
+   * Verify a pending transition against the indexer
+   * Returns: 'confirmed' | 'rejected' | 'pending' | 'timeout'
+   */
+  private async verifyPendingTransition(
+    fiber: ActiveFiber
+  ): Promise<'confirmed' | 'rejected' | 'pending' | 'timeout'> {
+    if (!this.indexer || !fiber.pendingTransition) return 'confirmed';
+
+    const timeoutMs = this.config.indexer?.waitTimeoutMs ?? 30000;
+    const elapsed = Date.now() - fiber.pendingTransition.submittedAt;
+    
+    // Check for rejections first
+    const verification = await this.indexer.verifyFiber(fiber.id);
+    
+    if (verification.hasUnprocessedRejection) {
+      const latestRejection = verification.rejections[0];
+      console.log(`  ❌ Fiber ${fiber.id.slice(0, 8)} rejected: ${latestRejection?.errors.map(e => e.code).join(', ')}`);
+      return 'rejected';
+    }
+    
+    // Check if fiber has reached expected state
+    if (verification.found && verification.fiber) {
+      if (verification.fiber.currentState === fiber.pendingTransition.expectedState) {
+        console.log(`  ✓ Fiber ${fiber.id.slice(0, 8)} confirmed at state: ${fiber.pendingTransition.expectedState}`);
+        return 'confirmed';
+      }
+    }
+    
+    // Check timeout
+    if (elapsed > timeoutMs) {
+      return 'timeout';
+    }
+    
+    return 'pending';
   }
 
   /**
@@ -389,7 +528,20 @@ export class FiberOrchestrator {
         );
       }
       
-      // Update state
+      // If indexer verification is enabled, mark as pending instead of confirmed
+      if (this.indexer && this.config.indexer?.enabled) {
+        fiber.pendingTransition = {
+          event: transition.event,
+          expectedState: transition.to,
+          submittedAt: Date.now(),
+          retries: 0,
+        };
+        fiber.transitionIndex++;
+        console.log(`  ⏳ ${fiber.type}[${fiber.id.slice(0, 8)}]: ${transition.from} --${transition.event}--> ${transition.to} (pending indexer confirmation)`);
+        return 'waiting'; // Will be confirmed on next tick
+      }
+      
+      // Update state immediately (no indexer verification)
       fiber.currentState = transition.to;
       fiber.transitionIndex++;
       
@@ -1125,6 +1277,8 @@ export class FiberOrchestrator {
   getStats(): {
     activeFibers: number;
     completedFibers: number;
+    failedFibers: number;
+    pendingFibers: number;
     fiberTypeDistribution: Record<string, number>;
   } {
     const distribution: Record<string, number> = {};
@@ -1132,13 +1286,17 @@ export class FiberOrchestrator {
       distribution[type] = 0;
     }
     
+    let pendingCount = 0;
     for (const fiber of this.activeFibers) {
       distribution[fiber.type] = (distribution[fiber.type] || 0) + 1;
+      if (fiber.pendingTransition) pendingCount++;
     }
 
     return {
       activeFibers: this.activeFibers.length,
       completedFibers: this.completedFibers,
+      failedFibers: this.failedFibers,
+      pendingFibers: pendingCount,
       fiberTypeDistribution: distribution
     };
   }
