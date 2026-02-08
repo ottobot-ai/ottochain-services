@@ -48,12 +48,12 @@ export async function submitTransaction(
     fee: null,
   };
 
-  console.log(`[metagraph] Submitting to ${config.METAGRAPH_DL1_URL}/data`);
+  console.log(`[metagraph] Submitting to ${config.METAGRAPH_ML0_URL}/data`);
   console.log(`[metagraph] Message type: ${Object.keys(message as object)[0]}`);
   console.log(`[metagraph] Payload (truncated): ${JSON.stringify(payload).substring(0, 300)}...`);
 
-  // Use SDK's HttpClient
-  const client = new HttpClient(config.METAGRAPH_DL1_URL);
+  // Use SDK's HttpClient - submit to ML0, not DL1 (DL1 is follower, doesn't accept submissions)
+  const client = new HttpClient(config.METAGRAPH_ML0_URL);
 
   try {
     const result = await client.post<{ hash?: string; ordinal?: number }>('/data', payload);
