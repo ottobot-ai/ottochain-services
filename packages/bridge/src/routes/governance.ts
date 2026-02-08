@@ -5,6 +5,15 @@ import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey } from '../metagraph.js';
+import {
+  getDAODefinition,
+  getGovernanceDefinition,
+  createMultisigState,
+  createTokenState,
+  createSingleOwnerState,
+  type DAOType,
+  type GovernanceType,
+} from '@ottochain/sdk/apps/governance';
 
 export const governanceRoutes: RouterType = Router();
 
@@ -74,447 +83,29 @@ const VetoRequestSchema = z.object({
 });
 
 // ============================================================================
-// DAO State Machine Definitions
-// Embedded versions - same as SDK governance/*.json files
+// DAO State Machine Definitions (from SDK)
 // ============================================================================
 
-const MULTISIG_DAO_DEFINITION = {
-  states: {
-    ACTIVE: { id: { value: 'ACTIVE' }, isFinal: false },
-    PENDING: { id: { value: 'PENDING' }, isFinal: false },
-    DISSOLVED: { id: { value: 'DISSOLVED' }, isFinal: true },
-  },
-  initialState: { value: 'ACTIVE' },
-  transitions: [
-    {
-      from: { value: 'ACTIVE' },
-      to: { value: 'PENDING' },
-      eventName: 'propose',
-      guard: { in: [{ var: 'event.agent' }, { var: 'state.signers' }] },
-      effect: {
-        merge: [
-          { var: 'state' },
-          {
-            proposal: {
-              id: { var: 'event.proposalId' },
-              title: { var: 'event.title' },
-              description: { var: 'event.description' },
-              actionType: { var: 'event.actionType' },
-              payload: { var: 'event.payload' },
-              proposer: { var: 'event.agent' },
-              proposedAt: { var: '$timestamp' },
-              expiresAt: { '+': [{ var: '$timestamp' }, { var: 'state.proposalTTLMs' }] },
-            },
-            signatures: {
-              setKey: [{}, { var: 'event.agent' }, { var: '$timestamp' }],
-            },
-          },
-        ],
-      },
-    },
-    {
-      from: { value: 'PENDING' },
-      to: { value: 'PENDING' },
-      eventName: 'sign',
-      guard: {
-        and: [
-          { in: [{ var: 'event.agent' }, { var: 'state.signers' }] },
-          { '!': { getKey: [{ var: 'state.signatures' }, { var: 'event.agent' }] } },
-        ],
-      },
-      effect: {
-        merge: [
-          { var: 'state' },
-          {
-            signatures: {
-              setKey: [{ var: 'state.signatures' }, { var: 'event.agent' }, { var: '$timestamp' }],
-            },
-          },
-        ],
-      },
-    },
-    {
-      from: { value: 'PENDING' },
-      to: { value: 'ACTIVE' },
-      eventName: 'execute',
-      guard: { '>=': [{ size: { var: 'state.signatures' } }, { var: 'state.threshold' }] },
-      effect: {
-        merge: [
-          { var: 'state' },
-          {
-            actions: {
-              cat: [
-                { var: 'state.actions' },
-                [{
-                  id: { var: 'state.proposal.id' },
-                  type: { var: 'state.proposal.actionType' },
-                  payload: { var: 'state.proposal.payload' },
-                  signatures: { var: 'state.signatures' },
-                  executedAt: { var: '$timestamp' },
-                }],
-              ],
-            },
-            proposal: null,
-            signatures: {},
-          },
-        ],
-      },
-    },
-    {
-      from: { value: 'PENDING' },
-      to: { value: 'ACTIVE' },
-      eventName: 'cancel',
-      guard: {
-        or: [
-          { '>': [{ var: '$timestamp' }, { var: 'state.proposal.expiresAt' }] },
-          { '===': [{ var: 'event.agent' }, { var: 'state.proposal.proposer' }] },
-        ],
-      },
-      effect: {
-        merge: [
-          { var: 'state' },
-          { proposal: null, signatures: {} },
-        ],
-      },
-    },
-  ],
-  metadata: { name: 'MultisigDAO', version: '1.0.0' },
-};
+// SDK provides: getDAODefinition(type) for Single, Multisig, Threshold, Token
+// SDK provides: getGovernanceDefinition(type) for Legislature, Executive, etc.
 
-const TOKEN_DAO_DEFINITION = {
-  states: {
-    ACTIVE: { id: { value: 'ACTIVE' }, isFinal: false },
-    VOTING: { id: { value: 'VOTING' }, isFinal: false },
-    QUEUED: { id: { value: 'QUEUED' }, isFinal: false },
-    DISSOLVED: { id: { value: 'DISSOLVED' }, isFinal: true },
-  },
-  initialState: { value: 'ACTIVE' },
-  transitions: [
-    {
-      from: { value: 'ACTIVE' },
-      to: { value: 'VOTING' },
-      eventName: 'propose',
-      guard: {
-        '>=': [
-          { getKey: [{ var: 'state.balances' }, { var: 'event.agent' }] },
-          { var: 'state.proposalThreshold' },
-        ],
-      },
-      effect: {
-        merge: [
-          { var: 'state' },
-          {
-            proposal: {
-              id: { var: 'event.proposalId' },
-              title: { var: 'event.title' },
-              description: { var: 'event.description' },
-              actionType: { var: 'event.actionType' },
-              payload: { var: 'event.payload' },
-              proposer: { var: 'event.agent' },
-              proposedAt: { var: '$timestamp' },
-              votingEndsAt: { '+': [{ var: '$timestamp' }, { var: 'state.votingPeriodMs' }] },
-            },
-            votes: { for: 0, against: 0, abstain: 0, voters: {} },
-          },
-        ],
-      },
-    },
-    {
-      from: { value: 'VOTING' },
-      to: { value: 'VOTING' },
-      eventName: 'vote',
-      guard: {
-        and: [
-          { '>': [{ getKey: [{ var: 'state.balances' }, { var: 'event.agent' }] }, 0] },
-          { '!': { getKey: [{ var: 'state.votes.voters' }, { var: 'event.agent' }] } },
-          { '<=': [{ var: '$timestamp' }, { var: 'state.proposal.votingEndsAt' }] },
-        ],
-      },
-      effect: {
-        merge: [
-          { var: 'state' },
-          {
-            votes: {
-              merge: [
-                { var: 'state.votes' },
-                {
-                  voters: {
-                    setKey: [
-                      { var: 'state.votes.voters' },
-                      { var: 'event.agent' },
-                      {
-                        vote: { var: 'event.vote' },
-                        weight: { getKey: [{ var: 'state.balances' }, { var: 'event.agent' }] },
-                        votedAt: { var: '$timestamp' },
-                      },
-                    ],
-                  },
-                },
-              ],
-            },
-          },
-        ],
-      },
-    },
-    {
-      from: { value: 'VOTING' },
-      to: { value: 'QUEUED' },
-      eventName: 'queue',
-      guard: {
-        and: [
-          { '>': [{ var: '$timestamp' }, { var: 'state.proposal.votingEndsAt' }] },
-          { '>': [{ var: 'state.votes.for' }, { var: 'state.votes.against' }] },
-          { '>=': [
-            { '+': [{ var: 'state.votes.for' }, { var: 'state.votes.against' }, { var: 'state.votes.abstain' }] },
-            { var: 'state.quorum' },
-          ]},
-        ],
-      },
-      effect: {
-        merge: [
-          { var: 'state' },
-          {
-            proposal: {
-              merge: [
-                { var: 'state.proposal' },
-                {
-                  queuedAt: { var: '$timestamp' },
-                  executableAt: { '+': [{ var: '$timestamp' }, { var: 'state.timelockMs' }] },
-                },
-              ],
-            },
-          },
-        ],
-      },
-    },
-    {
-      from: { value: 'QUEUED' },
-      to: { value: 'ACTIVE' },
-      eventName: 'execute',
-      guard: { '>=': [{ var: '$timestamp' }, { var: 'state.proposal.executableAt' }] },
-      effect: {
-        merge: [
-          { var: 'state' },
-          {
-            executedProposals: {
-              cat: [
-                { var: 'state.executedProposals' },
-                [{
-                  merge: [
-                    { var: 'state.proposal' },
-                    { votes: { var: 'state.votes' }, executedAt: { var: '$timestamp' } },
-                  ],
-                }],
-              ],
-            },
-            proposal: null,
-            votes: null,
-          },
-        ],
-      },
-    },
-    {
-      from: { value: 'ACTIVE' },
-      to: { value: 'ACTIVE' },
-      eventName: 'delegate',
-      guard: { '>': [{ getKey: [{ var: 'state.balances' }, { var: 'event.agent' }] }, 0] },
-      effect: {
-        merge: [
-          { var: 'state' },
-          {
-            delegations: {
-              setKey: [{ var: 'state.delegations' }, { var: 'event.agent' }, { var: 'event.delegateTo' }],
-            },
-          },
-        ],
-      },
-    },
-  ],
-  metadata: { name: 'TokenDAO', version: '1.0.0' },
-};
-
-const SIMPLE_GOVERNANCE_DEFINITION = {
-  states: {
-    ACTIVE: { id: { value: 'ACTIVE' }, isFinal: false },
-    VOTING: { id: { value: 'VOTING' }, isFinal: false },
-    PENDING: { id: { value: 'PENDING' }, isFinal: false },
-    DISSOLVED: { id: { value: 'DISSOLVED' }, isFinal: true },
-  },
-  initialState: { value: 'ACTIVE' },
-  transitions: [
-    {
-      from: { value: 'ACTIVE' },
-      to: { value: 'VOTING' },
-      eventName: 'propose',
-      guard: {
-        or: [
-          { in: [{ var: 'event.agent' }, { var: 'state.proposers' }] },
-          { '===': [{ size: { var: 'state.proposers' } }, 0] },
-        ],
-      },
-      effect: {
-        merge: [
-          { var: 'state' },
-          {
-            proposal: {
-              id: { var: 'event.proposalId' },
-              title: { var: 'event.title' },
-              description: { var: 'event.description' },
-              actionType: { var: 'event.actionType' },
-              payload: { var: 'event.payload' },
-              proposer: { var: 'event.agent' },
-              proposedAt: { var: '$timestamp' },
-              votingEndsAt: { '+': [{ var: '$timestamp' }, { var: 'state.votingPeriodMs' }] },
-            },
-            votes: {},
-          },
-        ],
-      },
-    },
-    {
-      from: { value: 'VOTING' },
-      to: { value: 'VOTING' },
-      eventName: 'vote',
-      guard: {
-        and: [
-          { '!': { getKey: [{ var: 'state.votes' }, { var: 'event.agent' }] } },
-          { '<=': [{ var: '$timestamp' }, { var: 'state.proposal.votingEndsAt' }] },
-        ],
-      },
-      effect: {
-        merge: [
-          { var: 'state' },
-          {
-            votes: {
-              setKey: [
-                { var: 'state.votes' },
-                { var: 'event.agent' },
-                {
-                  vote: { var: 'event.vote' },
-                  weight: { var: 'event.weight' },
-                  votedAt: { var: '$timestamp' },
-                },
-              ],
-            },
-          },
-        ],
-      },
-    },
-    {
-      from: { value: 'VOTING' },
-      to: { value: 'PENDING' },
-      eventName: 'finalize',
-      guard: {
-        and: [
-          { '>=': [{ var: '$timestamp' }, { var: 'state.proposal.votingEndsAt' }] },
-          { var: 'event.passed' },
-        ],
-      },
-      effect: {
-        merge: [
-          { var: 'state' },
-          {
-            status: 'PENDING',
-            vetoEndsAt: { '+': [{ var: '$timestamp' }, { var: 'state.vetoPeriodMs' }] },
-          },
-        ],
-      },
-    },
-    {
-      from: { value: 'PENDING' },
-      to: { value: 'ACTIVE' },
-      eventName: 'execute',
-      guard: {
-        and: [
-          { '>=': [{ var: '$timestamp' }, { var: 'state.vetoEndsAt' }] },
-          { in: [{ var: 'event.agent' }, { var: 'state.executors' }] },
-        ],
-      },
-      effect: {
-        merge: [
-          { var: 'state' },
-          {
-            executedProposals: {
-              cat: [
-                { var: 'state.executedProposals' },
-                [{ merge: [{ var: 'state.proposal' }, { executedAt: { var: '$timestamp' } }] }],
-              ],
-            },
-            proposal: null,
-            votes: {},
-            status: 'ACTIVE',
-          },
-        ],
-      },
-    },
-    {
-      from: { value: 'PENDING' },
-      to: { value: 'ACTIVE' },
-      eventName: 'veto',
-      guard: {
-        and: [
-          { '<=': [{ var: '$timestamp' }, { var: 'state.vetoEndsAt' }] },
-          { in: [{ var: 'event.agent' }, { var: 'state.vetoers' }] },
-        ],
-      },
-      effect: {
-        merge: [
-          { var: 'state' },
-          {
-            vetoedProposals: {
-              cat: [
-                { var: 'state.vetoedProposals' },
-                [{
-                  merge: [
-                    { var: 'state.proposal' },
-                    { vetoedBy: { var: 'event.agent' }, vetoReason: { var: 'event.reason' }, vetoedAt: { var: '$timestamp' } },
-                  ],
-                }],
-              ],
-            },
-            proposal: null,
-            votes: {},
-            status: 'ACTIVE',
-          },
-        ],
-      },
-    },
-    {
-      from: { value: 'VOTING' },
-      to: { value: 'VOTING' },
-      eventName: 'delegate',
-      guard: { var: 'state.allowDelegation' },
-      effect: {
-        merge: [
-          { var: 'state' },
-          {
-            delegations: {
-              setKey: [
-                { var: 'state.delegations' },
-                { var: 'event.agent' },
-                { delegateTo: { var: 'event.delegateTo' }, weight: { var: 'event.weight' }, delegatedAt: { var: '$timestamp' } },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-  metadata: { name: 'Governance', version: '1.0.0' },
-};
-
-// Map DAO types to definitions
-function getDAODefinition(daoType: string): unknown {
+/**
+ * Get the appropriate state machine definition for a DAO type.
+ * Maps bridge DAO types to SDK definitions.
+ */
+function getDefinitionForDAOType(daoType: string): unknown {
   switch (daoType) {
     case 'Multisig':
-      return MULTISIG_DAO_DEFINITION;
+      return getDAODefinition('Multisig');
     case 'Token':
-      return TOKEN_DAO_DEFINITION;
-    case 'Single':
+      return getDAODefinition('Token');
     case 'Threshold':
-    case 'Simple':
+      return getDAODefinition('Threshold');
+    case 'Single':
+      return getDAODefinition('Single');
     default:
-      return SIMPLE_GOVERNANCE_DEFINITION;
+      // Fall back to Simple governance for unknown types
+      return getGovernanceDefinition('Simple');
   }
 }
 
@@ -533,7 +124,7 @@ governanceRoutes.post('/create-dao', async (req, res) => {
     const creatorAddress = keyPair.address;
 
     const daoId = randomUUID();
-    const definition = getDAODefinition(input.daoType);
+    const definition = getDefinitionForDAOType(input.daoType);
 
     // Build initial data based on DAO type
     let initialData: Record<string, unknown>;
