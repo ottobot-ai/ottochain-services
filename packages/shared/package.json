@@ -10,7 +10,7 @@
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {
-    "@ottochain/sdk": "github:ottobot-ai/ottochain-sdk#main",
+    "@ottochain/sdk": "github:ottobot-ai/ottochain-sdk#8281058",
     "@prisma/client": "^5.9.0",
     "ioredis": "^5.9.2",
     "zod": "^3.22.0"

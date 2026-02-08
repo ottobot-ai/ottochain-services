@@ -34,8 +34,8 @@ importers:
   packages/bridge:
     dependencies:
       '@ottochain/sdk':
-        specifier: github:ottobot-ai/ottochain-sdk#main
-        version: https://codeload.github.com/ottobot-ai/ottochain-sdk/tar.gz/02bdb59fc1fa91a525c1ba2f0b180ceb396cb0c3(@stardust-collective/dag4@2.8.1)
+        specifier: github:ottobot-ai/ottochain-sdk#8281058
+        version: https://codeload.github.com/ottobot-ai/ottochain-sdk/tar.gz/8281058(@stardust-collective/dag4@2.8.1)
       '@ottochain/shared':
         specifier: workspace:*
         version: link:../shared
@@ -191,8 +191,8 @@ importers:
   packages/shared:
     dependencies:
       '@ottochain/sdk':
-        specifier: github:ottobot-ai/ottochain-sdk#main
-        version: https://codeload.github.com/ottobot-ai/ottochain-sdk/tar.gz/02bdb59fc1fa91a525c1ba2f0b180ceb396cb0c3(@stardust-collective/dag4@2.8.1)
+        specifier: github:ottobot-ai/ottochain-sdk#8281058
+        version: https://codeload.github.com/ottobot-ai/ottochain-sdk/tar.gz/8281058(@stardust-collective/dag4@2.8.1)
       '@prisma/client':
         specifier: ^5.9.0
         version: 5.22.0(prisma@5.22.0)
@@ -233,7 +233,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^4.0.18
-        version: 4.0.18(@types/node@22.19.10)(tsx@4.21.0)
+        version: 4.0.18(@types/node@22.19.10)(jiti@2.6.1)(tsx@4.21.0)
 
 packages:
 
@@ -532,8 +532,8 @@ packages:
   '@noble/secp256k1@1.7.2':
     resolution: {integrity: sha512-/qzwYl5eFLH8OWIecQWM31qld2g1NfjgylK+TNhqtaUKP37Nm+Y+z30Fjhw0Ct8p9yCQEm2N3W/AckdIb3SMcQ==}
 
-  '@ottochain/sdk@https://codeload.github.com/ottobot-ai/ottochain-sdk/tar.gz/02bdb59fc1fa91a525c1ba2f0b180ceb396cb0c3':
-    resolution: {tarball: https://codeload.github.com/ottobot-ai/ottochain-sdk/tar.gz/02bdb59fc1fa91a525c1ba2f0b180ceb396cb0c3}
+  '@ottochain/sdk@https://codeload.github.com/ottobot-ai/ottochain-sdk/tar.gz/8281058':
+    resolution: {tarball: https://codeload.github.com/ottobot-ai/ottochain-sdk/tar.gz/8281058}
     version: 0.1.0
     engines: {node: '>=18.0.0'}
     peerDependencies:
@@ -1362,6 +1362,10 @@ packages:
 
   iterall@1.3.0:
     resolution: {integrity: sha512-QZ9qOMdF+QLHxy1QIpUHUU1D5pS2CG2P69LF6L6CPjPYA/XMOmKV3PZpawHoAjHNyB0swdVTRxdYT4tbBbxqwg==}
+
+  jiti@2.6.1:
+    resolution: {integrity: sha512-ekilCSN1jwRvIbgeg/57YFh8qQDNbwDb9xT/qu2DAHbFFZUicIl4ygVaAvzveMhMVr3LnpSKTNnwt8PoOfmKhQ==}
+    hasBin: true
 
   js-sha256@0.11.1:
     resolution: {integrity: sha512-o6WSo/LUvY2uC4j7mO50a2ms7E/EAdbP0swigLV+nzHKTTaYnaLIWJ02VdXrsJX0vGedDESQnLsOekr94ryfjg==}
@@ -2287,7 +2291,7 @@ snapshots:
 
   '@noble/secp256k1@1.7.2': {}
 
-  '@ottochain/sdk@https://codeload.github.com/ottobot-ai/ottochain-sdk/tar.gz/02bdb59fc1fa91a525c1ba2f0b180ceb396cb0c3(@stardust-collective/dag4@2.8.1)':
+  '@ottochain/sdk@https://codeload.github.com/ottobot-ai/ottochain-sdk/tar.gz/8281058(@stardust-collective/dag4@2.8.1)':
     dependencies:
       '@bufbuild/protobuf': 2.11.0
       '@stardust-collective/dag4': 2.8.1
@@ -2605,13 +2609,13 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.0.3
 
-  '@vitest/mocker@4.0.18(vite@7.3.1(@types/node@22.19.10)(tsx@4.21.0))':
+  '@vitest/mocker@4.0.18(vite@7.3.1(@types/node@22.19.10)(jiti@2.6.1)(tsx@4.21.0))':
     dependencies:
       '@vitest/spy': 4.0.18
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 7.3.1(@types/node@22.19.10)(tsx@4.21.0)
+      vite: 7.3.1(@types/node@22.19.10)(jiti@2.6.1)(tsx@4.21.0)
 
   '@vitest/pretty-format@4.0.18':
     dependencies:
@@ -3284,6 +3288,9 @@ snapshots:
 
   iterall@1.3.0: {}
 
+  jiti@2.6.1:
+    optional: true
+
   js-sha256@0.11.1: {}
 
   js-sha256@0.9.0: {}
@@ -3841,7 +3848,7 @@ snapshots:
       core-util-is: 1.0.2
       extsprintf: 1.3.0
 
-  vite@7.3.1(@types/node@22.19.10)(tsx@4.21.0):
+  vite@7.3.1(@types/node@22.19.10)(jiti@2.6.1)(tsx@4.21.0):
     dependencies:
       esbuild: 0.27.3
       fdir: 6.5.0(picomatch@4.0.3)
@@ -3852,12 +3859,13 @@ snapshots:
     optionalDependencies:
       '@types/node': 22.19.10
       fsevents: 2.3.3
+      jiti: 2.6.1
       tsx: 4.21.0
 
-  vitest@4.0.18(@types/node@22.19.10)(tsx@4.21.0):
+  vitest@4.0.18(@types/node@22.19.10)(jiti@2.6.1)(tsx@4.21.0):
     dependencies:
       '@vitest/expect': 4.0.18
-      '@vitest/mocker': 4.0.18(vite@7.3.1(@types/node@22.19.10)(tsx@4.21.0))
+      '@vitest/mocker': 4.0.18(vite@7.3.1(@types/node@22.19.10)(jiti@2.6.1)(tsx@4.21.0))
       '@vitest/pretty-format': 4.0.18
       '@vitest/runner': 4.0.18
       '@vitest/snapshot': 4.0.18
@@ -3874,7 +3882,7 @@ snapshots:
       tinyexec: 1.0.2
       tinyglobby: 0.2.15
       tinyrainbow: 3.0.3
-      vite: 7.3.1(@types/node@22.19.10)(tsx@4.21.0)
+      vite: 7.3.1(@types/node@22.19.10)(jiti@2.6.1)(tsx@4.21.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 22.19.10
