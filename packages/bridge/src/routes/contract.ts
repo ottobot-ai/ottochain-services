@@ -4,8 +4,19 @@
 import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
-import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey } from '../metagraph.js';
+import { 
+  submitTransaction, 
+  getStateMachine, 
+  getCheckpoint, 
+  keyPairFromPrivateKey,
+  type StateMachineDefinition,
+  type CreateStateMachine,
+  type TransitionStateMachine,
+  type FiberOrdinal,
+} from '../metagraph.js';
 import { getContractDefinition } from '@ottochain/sdk/apps/contracts';
+
+const CONTRACT_DEFINITION = getContractDefinition() as StateMachineDefinition;
 
 export const contractRoutes: RouterType = Router();
 
@@ -27,12 +38,6 @@ const ContractActionSchema = z.object({
   proof: z.string().optional(),
   reason: z.string().optional(),
 });
-
-// ============================================================================
-// Contract State Machine Definition (from SDK)
-// ============================================================================
-
-const CONTRACT_DEFINITION = getContractDefinition();
 
 // ============================================================================
 // Routes

@@ -5,7 +5,16 @@
 import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
-import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey } from '../metagraph.js';
+import { 
+  submitTransaction, 
+  getStateMachine, 
+  getCheckpoint, 
+  keyPairFromPrivateKey,
+  type StateMachineDefinition,
+  type CreateStateMachine,
+  type TransitionStateMachine,
+  type FiberOrdinal,
+} from '../metagraph.js';
 import { getCorporateDefinition } from '@ottochain/sdk/apps/corporate';
 
 // ============================================================================

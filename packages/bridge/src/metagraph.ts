@@ -9,6 +9,25 @@ import { getConfig } from '@ottochain/shared';
 import { batchSign, generateKeyPair as sdkGenerateKeyPair, keyPairFromPrivateKey as sdkKeyPairFromPrivateKey, HttpClient } from '@ottochain/sdk';
 import type { KeyPair } from '@ottochain/sdk';
 
+// Re-export SDK core types for use by route handlers
+export type {
+  StateMachineDefinition,
+  CreateStateMachine,
+  TransitionStateMachine,
+  ArchiveStateMachine,
+  CreateScript,
+  InvokeScript,
+  OttochainMessage,
+  FiberStatus,
+  EventReceipt,
+  Address,
+  FiberOrdinal,
+  SnapshotOrdinal,
+  StateId,
+  StateMachineFiberRecord,
+  ScriptFiberRecord,
+} from '@ottochain/sdk/core';
+
 // Re-export wallet utilities from SDK
 export function generateKeyPair(): KeyPair {
   return sdkGenerateKeyPair();
