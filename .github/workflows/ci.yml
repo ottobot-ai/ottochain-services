@@ -97,3 +97,93 @@ jobs:
         run: |
           pnpm db:push --skip-generate
           pnpm db:generate
+
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ottochain
+          POSTGRES_PASSWORD: ottochain
+          POSTGRES_DB: ottochain_identity
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Cache pnpm
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+      
+      - name: Install dependencies
+        run: pnpm install
+      
+      - name: Build
+        run: pnpm build
+      
+      - name: Push DB schema
+        env:
+          DATABASE_URL: postgresql://ottochain:ottochain@localhost:5432/ottochain_identity
+        run: pnpm db:push --skip-generate
+      
+      - name: Start indexer
+        env:
+          DATABASE_URL: postgresql://ottochain:ottochain@localhost:5432/ottochain_identity
+          INDEXER_PORT: 3031
+          METAGRAPH_ML0_URL: http://localhost:9200
+          METAGRAPH_DL1_URL: http://localhost:9400
+        run: |
+          node packages/indexer/dist/index.js &
+          sleep 3
+          curl -f http://localhost:3031/health || exit 1
+      
+      - name: Run rejection webhook tests
+        env:
+          INDEXER_URL: http://localhost:3031
+          ML0_URL: http://localhost:9200
+        run: |
+          # Run webhook tests - ML0 tests (1-7) will fail, but rejection tests (8-13) should pass
+          npx tsx scripts/test-webhook.ts 2>&1 | tee test-output.txt || true
+          
+          # Verify rejection tests passed
+          echo "=== Checking rejection test results ==="
+          REJECTION_PASS=0
+          grep -q "✅ Rejection webhook endpoint" test-output.txt && ((REJECTION_PASS++)) || true
+          grep -q "✅ Query rejections list" test-output.txt && ((REJECTION_PASS++)) || true
+          grep -q "✅ Query rejection by updateHash" test-output.txt && ((REJECTION_PASS++)) || true
+          grep -q "✅ Query rejections by fiberId" test-output.txt && ((REJECTION_PASS++)) || true
+          grep -q "✅ Rejection deduplication" test-output.txt && ((REJECTION_PASS++)) || true
+          grep -q "✅ Status includes totalRejections" test-output.txt && ((REJECTION_PASS++)) || true
+          
+          echo "Rejection tests passed: $REJECTION_PASS/6"
+          if [ "$REJECTION_PASS" -lt 6 ]; then
+            echo "::error::Not all rejection tests passed"
+            cat test-output.txt
+            exit 1
+          fi
+          echo "All rejection tests passed ✅"
