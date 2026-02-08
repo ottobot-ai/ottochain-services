@@ -257,9 +257,11 @@ jobs:
         env:
           BRIDGE_URL: http://localhost:3030
           ML0_URL: http://localhost:9200
+          INDEXER_URL: http://localhost:3031
           FIBER_WAIT_TIMEOUT: '60'
           DL1_SYNC_WAIT: '15'
           ACTIVATION_WAIT: '10'
+          INDEXER_WAIT_TIMEOUT: '30000'
           MAX_RETRIES: '3'
         run: |
           # Retry logic for flaky metagraph consensus timing
