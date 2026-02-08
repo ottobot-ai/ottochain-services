@@ -5,7 +5,15 @@
 import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
-import { submitTransaction, getScriptFiber, getCheckpoint, keyPairFromPrivateKey } from '../metagraph.js';
+import { 
+  submitTransaction, 
+  getScriptFiber, 
+  getCheckpoint, 
+  keyPairFromPrivateKey,
+  type CreateScript,
+  type InvokeScript,
+  type FiberOrdinal,
+} from '../metagraph.js';
 
 export const scriptRoutes: RouterType = Router();
 

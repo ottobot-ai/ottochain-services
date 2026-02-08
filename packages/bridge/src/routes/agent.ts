@@ -4,8 +4,21 @@
 import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
-import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey, generateKeyPair, waitForFiber } from '../metagraph.js';
+import { 
+  submitTransaction, 
+  getStateMachine, 
+  getCheckpoint, 
+  keyPairFromPrivateKey, 
+  generateKeyPair, 
+  waitForFiber,
+  type StateMachineDefinition,
+  type CreateStateMachine,
+  type TransitionStateMachine,
+  type FiberOrdinal,
+} from '../metagraph.js';
 import { getIdentityDefinition, DEFAULT_REPUTATION_CONFIG } from '@ottochain/sdk/apps/identity';
+
+const AGENT_IDENTITY_DEFINITION = getIdentityDefinition() as StateMachineDefinition;
 
 export const agentRoutes: RouterType = Router();
 
@@ -26,12 +39,6 @@ const TransitionRequestSchema = z.object({
   event: z.string(),
   payload: z.record(z.any()).optional(),
 });
-
-// ============================================================================
-// Agent Identity State Machine Definition (from SDK)
-// ============================================================================
-
-const AGENT_IDENTITY_DEFINITION = getIdentityDefinition();
 
 // ============================================================================
 // Routes
