@@ -12,7 +12,7 @@ import type {
   GenerationStats,
   AgentFitness,
 } from './types.js';
-import { DEFAULT_CONFIG } from './types.js';
+import { DEFAULT_CONFIG, SdkAgentState as AgentState } from './types.js';
 import { BridgeClient } from './bridge-client.js';
 import {
   computeFitness,
@@ -242,11 +242,11 @@ export class HighThroughputSimulator {
       );
       
       agent.fiberId = result.fiberId;
-      agent.state = 'REGISTERED';
+      agent.state = AgentState.AGENT_STATE_REGISTERED;
       
       // Activate
       await this.client.activateAgent(wallet.privateKey, result.fiberId);
-      agent.state = 'ACTIVE';
+      agent.state = AgentState.AGENT_STATE_ACTIVE;
       
       this.agents.set(agent.address, agent);
       this.agentsByFiber.set(result.fiberId, agent);
@@ -474,7 +474,7 @@ export class HighThroughputSimulator {
     if (actor === 'third_party') {
       // Find an agent not in participants
       for (const agent of this.agents.values()) {
-        if (!fiber.participants.includes(agent.address) && agent.state === 'ACTIVE') {
+        if (!fiber.participants.includes(agent.address) && agent.state === AgentState.AGENT_STATE_ACTIVE) {
           return agent;
         }
       }

@@ -16,21 +16,22 @@ export const marketRoutes: RouterType = Router();
 
 // Map proto enum to API-friendly lowercase strings
 const MARKET_TYPE_MAP: Record<string, MarketType> = {
-  prediction: MarketType.PREDICTION,
-  auction: MarketType.AUCTION,
-  crowdfund: MarketType.CROWDFUND,
-  group_buy: MarketType.GROUP_BUY,
+  prediction: MarketType.MARKET_TYPE_PREDICTION,
+  auction: MarketType.MARKET_TYPE_AUCTION,
+  crowdfund: MarketType.MARKET_TYPE_CROWDFUND,
+  group_buy: MarketType.MARKET_TYPE_GROUP_BUY,
 };
 
 const MARKET_STATE_MAP: Record<MarketState, string> = {
-  [MarketState.UNSPECIFIED]: 'UNSPECIFIED',
-  [MarketState.PROPOSED]: 'PROPOSED',
-  [MarketState.OPEN]: 'OPEN',
-  [MarketState.CLOSED]: 'CLOSED',
-  [MarketState.RESOLVING]: 'RESOLVING',
-  [MarketState.SETTLED]: 'SETTLED',
-  [MarketState.REFUNDED]: 'REFUNDED',
-  [MarketState.CANCELLED]: 'CANCELLED',
+  [MarketState.MARKET_STATE_UNSPECIFIED]: 'UNSPECIFIED',
+  [MarketState.MARKET_STATE_PROPOSED]: 'PROPOSED',
+  [MarketState.MARKET_STATE_OPEN]: 'OPEN',
+  [MarketState.MARKET_STATE_CLOSED]: 'CLOSED',
+  [MarketState.MARKET_STATE_RESOLVING]: 'RESOLVING',
+  [MarketState.MARKET_STATE_SETTLED]: 'SETTLED',
+  [MarketState.MARKET_STATE_REFUNDED]: 'REFUNDED',
+  [MarketState.MARKET_STATE_CANCELLED]: 'CANCELLED',
+  [MarketState.UNRECOGNIZED]: 'UNRECOGNIZED',
 };
 
 // ============================================================================
@@ -155,7 +156,7 @@ marketRoutes.post('/create', async (req, res) => {
       resolutions: [],
       claims: {},
       status: 'PROPOSED',
-      statusProto: MarketState.PROPOSED,
+      statusProto: MarketState.MARKET_STATE_PROPOSED,
       createdAt: new Date().toISOString(),
     };
 
@@ -234,7 +235,7 @@ marketRoutes.post('/open', async (req, res) => {
       hash: result.hash,
       marketId: input.marketId,
       status: 'OPEN',
-      statusProto: MarketState.OPEN,
+      statusProto: MarketState.MARKET_STATE_OPEN,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -336,7 +337,7 @@ marketRoutes.post('/close', async (req, res) => {
       hash: result.hash,
       marketId: input.marketId,
       status: 'CLOSED',
-      statusProto: MarketState.CLOSED,
+      statusProto: MarketState.MARKET_STATE_CLOSED,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -442,7 +443,7 @@ marketRoutes.post('/finalize', async (req, res) => {
       hash: result.hash,
       marketId: input.marketId,
       status: 'SETTLED',
-      statusProto: MarketState.SETTLED,
+      statusProto: MarketState.MARKET_STATE_SETTLED,
       outcome: input.outcome,
     });
   } catch (err) {
@@ -562,7 +563,7 @@ marketRoutes.post('/refund', async (req, res) => {
       hash: result.hash,
       marketId: input.marketId,
       status: 'REFUNDED',
-      statusProto: MarketState.REFUNDED,
+      statusProto: MarketState.MARKET_STATE_REFUNDED,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -614,7 +615,7 @@ marketRoutes.post('/cancel', async (req, res) => {
       hash: result.hash,
       marketId: input.marketId,
       status: 'CANCELLED',
-      statusProto: MarketState.CANCELLED,
+      statusProto: MarketState.MARKET_STATE_CANCELLED,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {

@@ -24,7 +24,7 @@
 
 import 'dotenv/config';
 import type { GeneratorConfig, GenerationStats, Agent } from './types.js';
-import { DEFAULT_CONFIG } from './types.js';
+import { DEFAULT_CONFIG, SdkAgentState as AgentState } from './types.js';
 import { Simulator } from './simulator.js';
 import { HighThroughputSimulator, runHighThroughput } from './high-throughput.js';
 import { FiberOrchestrator, TrafficConfig } from './orchestrator.js';
@@ -168,7 +168,7 @@ async function runWeightedOrchestrator(): Promise<void> {
     address: w.address,
     privateKey: w.privateKey,
     fiberId: w.agentId ?? null,
-    state: w.agentId ? 'REGISTERED' : 'UNREGISTERED',
+    state: w.agentId ? AgentState.AGENT_STATE_REGISTERED : 'UNREGISTERED',
     fitness: { reputation: 0, completionRate: 0, networkEffect: 0, age: 0, total: 0 },
     meta: {
       birthGeneration: 0,
