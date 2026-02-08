@@ -5,7 +5,7 @@
 import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
-import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey, waitForFiber } from '../metagraph.js';
+import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey, waitForFiber, waitForFiberSequence, getDl1SequenceNumber } from '../metagraph.js';
 import { MarketType, MarketState, getMarketDefinition } from '@ottochain/sdk/apps/markets';
 
 export const marketRoutes: RouterType = Router();
@@ -207,6 +207,15 @@ marketRoutes.post('/open', async (req, res) => {
       });
     }
 
+    // Get current sequence from DL1 (the source of truth for next transition)
+    const dl1Seq = await getDl1SequenceNumber(input.marketId);
+    if (dl1Seq === null) {
+      return res.status(503).json({
+        error: 'Market not yet synced to DL1 validator cache',
+        marketId: input.marketId,
+      });
+    }
+
     const state = (await getStateMachine(input.marketId)) as { sequenceNumber?: number; stateData?: { status?: string } } | null;
     if (!state) {
       return res.status(404).json({ error: 'Market not found' });
@@ -224,18 +233,25 @@ marketRoutes.post('/open', async (req, res) => {
         fiberId: input.marketId,
         eventName: 'open',
         payload: { agent: keyPair.address },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber: dl1Seq, // Use DL1's sequence, not ML0's
       },
     };
 
-    console.log(`[market/open] Opening market ${input.marketId}`);
+    console.log(`[market/open] Opening market ${input.marketId} (DL1 seq=${dl1Seq})`);
     const result = await submitTransaction(message, input.privateKey);
+
+    // Wait for DL1 to sync the new state before returning
+    // This ensures subsequent calls (like commit) will see the updated sequence
+    const expectedSeq = dl1Seq + 1;
+    console.log(`[market/open] Waiting for DL1 sync to seq=${expectedSeq}...`);
+    await waitForFiberSequence(input.marketId, expectedSeq, 60, 1000);
 
     res.json({
       hash: result.hash,
       marketId: input.marketId,
       status: 'OPEN',
       statusProto: MarketState.MARKET_STATE_OPEN,
+      sequenceNumber: expectedSeq,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -255,6 +271,16 @@ marketRoutes.post('/commit', async (req, res) => {
   try {
     const input = CommitRequestSchema.parse(req.body);
     const keyPair = keyPairFromPrivateKey(input.privateKey);
+
+    // Get current sequence from DL1 (the source of truth for validation)
+    const dl1Seq = await getDl1SequenceNumber(input.marketId);
+    if (dl1Seq === null) {
+      return res.status(503).json({
+        error: 'Market not yet synced to DL1 validator cache',
+        marketId: input.marketId,
+        hint: 'Wait a few seconds and retry - DL1 cache updates every ~10s',
+      });
+    }
 
     const state = (await getStateMachine(input.marketId)) as { sequenceNumber?: number; stateData?: { status?: string } } | null;
     if (!state) {
@@ -277,18 +303,24 @@ marketRoutes.post('/commit', async (req, res) => {
           amount: input.amount,
           data: input.data,
         },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber: dl1Seq, // Use DL1's sequence, not ML0's
       },
     };
 
-    console.log(`[market/commit] ${keyPair.address} committing ${input.amount} to ${input.marketId}`);
+    console.log(`[market/commit] ${keyPair.address} committing ${input.amount} to ${input.marketId} (DL1 seq=${dl1Seq})`);
     const result = await submitTransaction(message, input.privateKey);
+
+    // Wait for DL1 to sync before returning
+    const expectedSeq = dl1Seq + 1;
+    console.log(`[market/commit] Waiting for DL1 sync to seq=${expectedSeq}...`);
+    await waitForFiberSequence(input.marketId, expectedSeq, 60, 1000);
 
     res.json({
       hash: result.hash,
       marketId: input.marketId,
       amount: input.amount,
       participant: keyPair.address,
+      sequenceNumber: expectedSeq,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -309,6 +341,15 @@ marketRoutes.post('/close', async (req, res) => {
     const input = CloseMarketRequestSchema.parse(req.body);
     const keyPair = keyPairFromPrivateKey(input.privateKey);
 
+    // Get current sequence from DL1
+    const dl1Seq = await getDl1SequenceNumber(input.marketId);
+    if (dl1Seq === null) {
+      return res.status(503).json({
+        error: 'Market not yet synced to DL1 validator cache',
+        marketId: input.marketId,
+      });
+    }
+
     const state = (await getStateMachine(input.marketId)) as { sequenceNumber?: number; stateData?: { status?: string } } | null;
     if (!state) {
       return res.status(404).json({ error: 'Market not found' });
@@ -326,18 +367,23 @@ marketRoutes.post('/close', async (req, res) => {
         fiberId: input.marketId,
         eventName: 'close',
         payload: { agent: keyPair.address },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber: dl1Seq,
       },
     };
 
-    console.log(`[market/close] Closing market ${input.marketId}`);
+    console.log(`[market/close] Closing market ${input.marketId} (DL1 seq=${dl1Seq})`);
     const result = await submitTransaction(message, input.privateKey);
+
+    // Wait for DL1 sync
+    const expectedSeq = dl1Seq + 1;
+    await waitForFiberSequence(input.marketId, expectedSeq, 60, 1000);
 
     res.json({
       hash: result.hash,
       marketId: input.marketId,
       status: 'CLOSED',
       statusProto: MarketState.MARKET_STATE_CLOSED,
+      sequenceNumber: expectedSeq,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -357,6 +403,14 @@ marketRoutes.post('/resolve', async (req, res) => {
   try {
     const input = ResolveRequestSchema.parse(req.body);
     const keyPair = keyPairFromPrivateKey(input.privateKey);
+
+    const dl1Seq = await getDl1SequenceNumber(input.marketId);
+    if (dl1Seq === null) {
+      return res.status(503).json({
+        error: 'Market not yet synced to DL1 validator cache',
+        marketId: input.marketId,
+      });
+    }
 
     const state = (await getStateMachine(input.marketId)) as { sequenceNumber?: number; stateData?: { status?: string } } | null;
     if (!state) {
@@ -379,18 +433,22 @@ marketRoutes.post('/resolve', async (req, res) => {
           outcome: input.outcome,
           proof: input.proof ?? null,
         },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber: dl1Seq,
       },
     };
 
-    console.log(`[market/resolve] ${keyPair.address} resolving ${input.marketId} with outcome: ${input.outcome}`);
+    console.log(`[market/resolve] ${keyPair.address} resolving ${input.marketId} (DL1 seq=${dl1Seq})`);
     const result = await submitTransaction(message, input.privateKey);
+
+    const expectedSeq = dl1Seq + 1;
+    await waitForFiberSequence(input.marketId, expectedSeq, 60, 1000);
 
     res.json({
       hash: result.hash,
       marketId: input.marketId,
       outcome: input.outcome,
       oracle: keyPair.address,
+      sequenceNumber: expectedSeq,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -410,6 +468,14 @@ marketRoutes.post('/finalize', async (req, res) => {
   try {
     const input = FinalizeRequestSchema.parse(req.body);
     const keyPair = keyPairFromPrivateKey(input.privateKey);
+
+    const dl1Seq = await getDl1SequenceNumber(input.marketId);
+    if (dl1Seq === null) {
+      return res.status(503).json({
+        error: 'Market not yet synced to DL1 validator cache',
+        marketId: input.marketId,
+      });
+    }
 
     const state = (await getStateMachine(input.marketId)) as { sequenceNumber?: number; stateData?: { status?: string } } | null;
     if (!state) {
@@ -432,12 +498,15 @@ marketRoutes.post('/finalize', async (req, res) => {
           outcome: input.outcome,
           settlement: input.settlement ?? {},
         },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber: dl1Seq,
       },
     };
 
-    console.log(`[market/finalize] Finalizing market ${input.marketId}`);
+    console.log(`[market/finalize] Finalizing market ${input.marketId} (DL1 seq=${dl1Seq})`);
     const result = await submitTransaction(message, input.privateKey);
+
+    const expectedSeq = dl1Seq + 1;
+    await waitForFiberSequence(input.marketId, expectedSeq, 60, 1000);
 
     res.json({
       hash: result.hash,
@@ -445,6 +514,7 @@ marketRoutes.post('/finalize', async (req, res) => {
       status: 'SETTLED',
       statusProto: MarketState.MARKET_STATE_SETTLED,
       outcome: input.outcome,
+      sequenceNumber: expectedSeq,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -464,6 +534,14 @@ marketRoutes.post('/claim', async (req, res) => {
   try {
     const input = ClaimRequestSchema.parse(req.body);
     const keyPair = keyPairFromPrivateKey(input.privateKey);
+
+    const dl1Seq = await getDl1SequenceNumber(input.marketId);
+    if (dl1Seq === null) {
+      return res.status(503).json({
+        error: 'Market not yet synced to DL1 validator cache',
+        marketId: input.marketId,
+      });
+    }
 
     const state = (await getStateMachine(input.marketId)) as {
       sequenceNumber?: number;
@@ -501,17 +579,21 @@ marketRoutes.post('/claim', async (req, res) => {
           agent: keyPair.address,
           amount: input.amount ?? commitment.amount,
         },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber: dl1Seq,
       },
     };
 
-    console.log(`[market/claim] ${keyPair.address} claiming from ${input.marketId}`);
+    console.log(`[market/claim] ${keyPair.address} claiming from ${input.marketId} (DL1 seq=${dl1Seq})`);
     const result = await submitTransaction(message, input.privateKey);
+
+    const expectedSeq = dl1Seq + 1;
+    await waitForFiberSequence(input.marketId, expectedSeq, 60, 1000);
 
     res.json({
       hash: result.hash,
       marketId: input.marketId,
       claimant: keyPair.address,
+      sequenceNumber: expectedSeq,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -531,6 +613,14 @@ marketRoutes.post('/refund', async (req, res) => {
   try {
     const input = RefundRequestSchema.parse(req.body);
     const keyPair = keyPairFromPrivateKey(input.privateKey);
+
+    const dl1Seq = await getDl1SequenceNumber(input.marketId);
+    if (dl1Seq === null) {
+      return res.status(503).json({
+        error: 'Market not yet synced to DL1 validator cache',
+        marketId: input.marketId,
+      });
+    }
 
     const state = (await getStateMachine(input.marketId)) as { sequenceNumber?: number; stateData?: { status?: string } } | null;
     if (!state) {
@@ -552,18 +642,22 @@ marketRoutes.post('/refund', async (req, res) => {
           agent: keyPair.address,
           reason: input.reason ?? 'manual_refund',
         },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber: dl1Seq,
       },
     };
 
-    console.log(`[market/refund] Refunding market ${input.marketId}`);
+    console.log(`[market/refund] Refunding market ${input.marketId} (DL1 seq=${dl1Seq})`);
     const result = await submitTransaction(message, input.privateKey);
+
+    const expectedSeq = dl1Seq + 1;
+    await waitForFiberSequence(input.marketId, expectedSeq, 60, 1000);
 
     res.json({
       hash: result.hash,
       marketId: input.marketId,
       status: 'REFUNDED',
       statusProto: MarketState.MARKET_STATE_REFUNDED,
+      sequenceNumber: expectedSeq,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -583,6 +677,14 @@ marketRoutes.post('/cancel', async (req, res) => {
   try {
     const input = CancelRequestSchema.parse(req.body);
     const keyPair = keyPairFromPrivateKey(input.privateKey);
+
+    const dl1Seq = await getDl1SequenceNumber(input.marketId);
+    if (dl1Seq === null) {
+      return res.status(503).json({
+        error: 'Market not yet synced to DL1 validator cache',
+        marketId: input.marketId,
+      });
+    }
 
     const state = (await getStateMachine(input.marketId)) as { sequenceNumber?: number; stateData?: { status?: string } } | null;
     if (!state) {
@@ -604,18 +706,22 @@ marketRoutes.post('/cancel', async (req, res) => {
           agent: keyPair.address,
           reason: input.reason ?? 'cancelled_by_creator',
         },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber: dl1Seq,
       },
     };
 
-    console.log(`[market/cancel] Cancelling market ${input.marketId}`);
+    console.log(`[market/cancel] Cancelling market ${input.marketId} (DL1 seq=${dl1Seq})`);
     const result = await submitTransaction(message, input.privateKey);
+
+    const expectedSeq = dl1Seq + 1;
+    await waitForFiberSequence(input.marketId, expectedSeq, 60, 1000);
 
     res.json({
       hash: result.hash,
       marketId: input.marketId,
       status: 'CANCELLED',
       statusProto: MarketState.MARKET_STATE_CANCELLED,
+      sequenceNumber: expectedSeq,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {

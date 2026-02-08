@@ -206,3 +206,92 @@ export async function waitForFiber(
   console.log(`[metagraph] Fiber ${fiberId} not synced to DL1 after ${maxAttempts} attempts`);
   return false;
 }
+
+/**
+ * Wait for a fiber to reach a specific sequence number in DL1's onchain state
+ * 
+ * This is essential for multi-step workflows where each transition must wait
+ * for DL1's cache to sync before the next transition can be submitted.
+ * 
+ * The timing issue: ML0 processes transactions immediately, but DL1's validation
+ * cache uses snapshot state which lags by ~10s. Without waiting, the next
+ * transition fails with "Sequence number mismatch".
+ * 
+ * Based on ottochain e2e tests pattern (waitForDl1Sync).
+ * 
+ * @param fiberId - The fiber ID to wait for
+ * @param expectedSeq - Expected sequence number (or null for existence check only)
+ * @param maxAttempts - Maximum polling attempts (default 60)
+ * @param intervalMs - Polling interval in ms (default 1000)
+ * @returns The current sequence number when synced
+ * @throws Error if timeout or fiber not found
+ */
+export async function waitForFiberSequence(
+  fiberId: string,
+  expectedSeq: number | null,
+  maxAttempts: number = 60,
+  intervalMs: number = 1000
+): Promise<number> {
+  const config = getConfig();
+  const dl1Url = `${config.METAGRAPH_DL1_URL}/data-application/v1/onchain`;
+  const client = new HttpClient(dl1Url);
+  
+  const seqLabel = expectedSeq === null ? 'exists' : `seq≥${expectedSeq}`;
+  console.log(`[metagraph] Waiting for fiber ${fiberId.slice(0, 8)}... to reach ${seqLabel} in DL1...`);
+  
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const onChain = await client.get<{
+        fiberCommits?: Record<string, { sequenceNumber?: number }>;
+      }>('');
+      
+      const commit = onChain?.fiberCommits?.[fiberId];
+      if (commit) {
+        const currentSeq = commit.sequenceNumber ?? 0;
+        
+        if (expectedSeq === null) {
+          console.log(`[metagraph] Fiber ${fiberId.slice(0, 8)}... exists in DL1 (seq=${currentSeq})`);
+          return currentSeq;
+        }
+        
+        if (currentSeq >= expectedSeq) {
+          console.log(`[metagraph] Fiber ${fiberId.slice(0, 8)}... synced to DL1 (seq=${currentSeq})`);
+          return currentSeq;
+        }
+        
+        console.log(`[metagraph] Fiber ${fiberId.slice(0, 8)}... seq=${currentSeq}, waiting for ${expectedSeq}...`);
+      }
+    } catch {
+      // DL1 may not be ready yet — continue polling
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, intervalMs));
+  }
+  
+  throw new Error(
+    `DL1 sync timeout: fiber ${fiberId} did not reach seq=${expectedSeq} after ${maxAttempts} attempts`
+  );
+}
+
+/**
+ * Get the current sequence number of a fiber from DL1's onchain cache
+ * 
+ * @param fiberId - The fiber ID to check
+ * @returns The sequence number, or null if fiber not found
+ */
+export async function getDl1SequenceNumber(fiberId: string): Promise<number | null> {
+  const config = getConfig();
+  const dl1Url = `${config.METAGRAPH_DL1_URL}/data-application/v1/onchain`;
+  const client = new HttpClient(dl1Url);
+  
+  try {
+    const onChain = await client.get<{
+      fiberCommits?: Record<string, { sequenceNumber?: number }>;
+    }>('');
+    
+    const commit = onChain?.fiberCommits?.[fiberId];
+    return commit?.sequenceNumber ?? null;
+  } catch {
+    return null;
+  }
+}
