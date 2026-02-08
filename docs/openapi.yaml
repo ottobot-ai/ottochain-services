@@ -227,6 +227,203 @@ paths:
                     additionalProperties:
                       type: object
 
+  # ===== Contracts =====
+  /contract/propose:
+    post:
+      tags: [Contract]
+      summary: Propose a new contract
+      operationId: proposeContract
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProposeContractRequest'
+      responses:
+        '201':
+          description: Contract proposed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractProposedResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /contract/accept:
+    post:
+      tags: [Contract]
+      summary: Accept a proposed contract (counterparty only)
+      operationId: acceptContract
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContractActionRequest'
+      responses:
+        '200':
+          description: Contract accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractActionResponse'
+        '400':
+          description: Contract not in Proposed state
+        '403':
+          description: Only counterparty can accept
+        '404':
+          description: Contract not found
+
+  /contract/reject:
+    post:
+      tags: [Contract]
+      summary: Reject a proposed contract (counterparty only)
+      operationId: rejectContract
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContractActionRequest'
+      responses:
+        '200':
+          description: Contract rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractActionResponse'
+        '400':
+          description: Contract not in Proposed state
+        '404':
+          description: Contract not found
+
+  /contract/complete:
+    post:
+      tags: [Contract]
+      summary: Submit completion proof (either party)
+      operationId: completeContract
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContractActionRequest'
+      responses:
+        '200':
+          description: Completion recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hash:
+                    type: string
+                  contractId:
+                    type: string
+                    format: uuid
+                  message:
+                    type: string
+                    example: Completion recorded. Both parties must complete to finalize.
+        '400':
+          description: Contract not Active
+        '404':
+          description: Contract not found
+
+  /contract/finalize:
+    post:
+      tags: [Contract]
+      summary: Finalize contract after both parties complete
+      operationId: finalizeContract
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContractActionRequest'
+      responses:
+        '200':
+          description: Contract finalized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractActionResponse'
+        '400':
+          description: Both parties must submit completion first
+        '404':
+          description: Contract not found
+
+  /contract/dispute:
+    post:
+      tags: [Contract]
+      summary: Dispute an active contract
+      operationId: disputeContract
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/ContractActionRequest'
+                - type: object
+                  required: [reason]
+                  properties:
+                    reason:
+                      type: string
+                      description: Reason for dispute (required)
+      responses:
+        '200':
+          description: Dispute filed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractActionResponse'
+        '400':
+          description: Can only dispute Active contracts or missing reason
+        '404':
+          description: Contract not found
+
+  /contract/{contractId}:
+    get:
+      tags: [Contract]
+      summary: Get contract by ID
+      operationId: getContract
+      parameters:
+        - name: contractId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Contract state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractState'
+        '404':
+          description: Contract not found
+
+  /contract:
+    get:
+      tags: [Contract]
+      summary: List all contracts
+      operationId: listContracts
+      responses:
+        '200':
+          description: Contract list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  contracts:
+                    type: object
+                    additionalProperties:
+                      $ref: '#/components/schemas/ContractState'
+
   # ===== Markets =====
   /market/create:
     post:
@@ -1110,6 +1307,141 @@ components:
           type: string
           format: uuid
           nullable: true
+
+    # Contract Schemas
+    ProposeContractRequest:
+      type: object
+      required: [privateKey, counterpartyAddress, terms]
+      properties:
+        privateKey:
+          type: string
+          minLength: 64
+          maxLength: 64
+          description: 64-char hex private key
+        counterpartyAddress:
+          type: string
+          description: DAG address of the counterparty
+        terms:
+          type: object
+          additionalProperties: true
+          description: Contract terms (arbitrary JSON)
+        title:
+          type: string
+          description: Optional contract title
+        description:
+          type: string
+          description: Optional contract description
+
+    ContractActionRequest:
+      type: object
+      required: [privateKey, contractId]
+      properties:
+        privateKey:
+          type: string
+          minLength: 64
+          maxLength: 64
+        contractId:
+          type: string
+          format: uuid
+        proof:
+          type: string
+          description: Completion proof (for complete action)
+        reason:
+          type: string
+          description: Reason for rejection/dispute
+
+    ContractProposedResponse:
+      type: object
+      properties:
+        contractId:
+          type: string
+          format: uuid
+        proposer:
+          type: string
+          description: DAG address of proposer
+        counterparty:
+          type: string
+          description: DAG address of counterparty
+        hash:
+          type: string
+          description: Transaction hash
+        message:
+          type: string
+          example: Contract proposed. Awaiting counterparty acceptance.
+
+    ContractActionResponse:
+      type: object
+      properties:
+        hash:
+          type: string
+          description: Transaction hash
+        contractId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [Active, Rejected, Completed, Disputed]
+
+    ContractState:
+      type: object
+      properties:
+        fiberId:
+          type: string
+          format: uuid
+        currentState:
+          type: object
+          properties:
+            value:
+              type: string
+              enum: [PROPOSED, ACTIVE, COMPLETED, DISPUTED, REJECTED, CANCELLED]
+        sequenceNumber:
+          type: integer
+        stateData:
+          type: object
+          properties:
+            schema:
+              type: string
+              example: Contract
+            title:
+              type: string
+            description:
+              type: string
+            proposer:
+              type: string
+            counterparty:
+              type: string
+            terms:
+              type: object
+            completions:
+              type: array
+              items:
+                type: object
+                properties:
+                  agent:
+                    type: string
+                  proof:
+                    type: string
+                  submittedAt:
+                    type: string
+                    format: date-time
+            status:
+              type: string
+            proposedAt:
+              type: string
+              format: date-time
+            acceptedAt:
+              type: string
+              format: date-time
+            completedAt:
+              type: string
+              format: date-time
+            rejectedAt:
+              type: string
+              format: date-time
+            disputedAt:
+              type: string
+              format: date-time
+
 
   responses:
     BadRequest:
