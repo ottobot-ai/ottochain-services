@@ -90,8 +90,8 @@ export const resolvers = {
     },
 
     leaderboard: async (_: unknown, { limit = 10 }: { limit?: number }) => {
+      // Show top agents by reputation regardless of state (useful for testnet)
       return prisma.agent.findMany({
-        where: { state: 'ACTIVE' },
         orderBy: { reputation: 'desc' },
         take: limit,
       });
