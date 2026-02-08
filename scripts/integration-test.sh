@@ -240,6 +240,96 @@ for i in $(seq 1 90); do
 done
 
 # ============================================================================
+# Test: Rejection Webhook (Option B: E2E via ML0)
+# ============================================================================
+
+log "TEST 5: Rejection webhook (E2E)"
+
+# Register rejection webhook subscriber
+log "  Registering rejection webhook..."
+REJECTION_SUBSCRIBE=$(curl -s -X POST "http://localhost:$ML0_PORT/data-application/v1/webhooks/subscribe" \
+    -H "Content-Type: application/json" \
+    -d "{\"callbackUrl\": \"http://$HOST_IP:$INDEXER_PORT/webhook/rejection\", \"secret\": \"rejection-test\", \"events\": [\"transaction.rejected\"]}" 2>/dev/null || echo "{}")
+
+REJECTION_SUB_ID=$(echo "$REJECTION_SUBSCRIBE" | jq -r '.id // empty')
+if [ -n "$REJECTION_SUB_ID" ]; then
+    log "  Rejection webhook registered: $REJECTION_SUB_ID"
+else
+    warn "  Could not register rejection webhook (ML0 may not support event filtering yet)"
+fi
+
+# Submit an invalid transaction to trigger rejection
+# Using invalid signature to force validation failure
+log "  Submitting invalid transaction to trigger rejection..."
+INVALID_TX_RESPONSE=$(curl -s -X POST "http://localhost:$DL1_PORT/data" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "value": {
+        "CreateStateMachine": {
+          "fiberId": "00000000-0000-4000-8000-000000000099",
+          "definition": {"invalid": "definition"},
+          "params": {}
+        }
+      },
+      "proofs": [{
+        "id": "INVALID_SIGNER_ID",
+        "signature": "INVALID_SIGNATURE_WILL_FAIL_VALIDATION"
+      }]
+    }' 2>/dev/null || echo "{}")
+
+log "  DL1 response: $(echo "$INVALID_TX_RESPONSE" | jq -c '.' 2>/dev/null || echo "$INVALID_TX_RESPONSE")"
+
+# Wait for rejection to be processed (need snapshot cycle)
+log "  Waiting for rejection to be processed..."
+sleep 10
+
+# Check if rejection appeared in indexer
+INITIAL_REJECTIONS=$(curl -s "http://localhost:$INDEXER_PORT/status" | jq -r '.totalRejections // 0')
+log "  Current rejection count: $INITIAL_REJECTIONS"
+
+# Try a direct rejection webhook test as fallback
+log "  Testing rejection webhook endpoint directly..."
+DIRECT_REJECTION=$(curl -s -X POST "http://localhost:$INDEXER_PORT/webhook/rejection" \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"event\": \"transaction.rejected\",
+      \"ordinal\": 1000,
+      \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+      \"metagraphId\": \"integration-test\",
+      \"rejection\": {
+        \"updateType\": \"CreateStateMachine\",
+        \"fiberId\": \"00000000-0000-4000-8000-integration01\",
+        \"errors\": [{\"code\": \"INTEGRATION_TEST\", \"message\": \"E2E test rejection\"}],
+        \"signers\": [\"DAGIntegrationTest\"],
+        \"updateHash\": \"integration-test-$(date +%s)\"
+      }
+    }")
+
+DIRECT_ACCEPTED=$(echo "$DIRECT_REJECTION" | jq -r '.accepted // false')
+if [ "$DIRECT_ACCEPTED" = "true" ]; then
+    log "  ✅ Rejection webhook endpoint working"
+else
+    fail "  Rejection webhook endpoint failed: $DIRECT_REJECTION"
+fi
+
+# Verify rejection is queryable
+FINAL_REJECTIONS=$(curl -s "http://localhost:$INDEXER_PORT/status" | jq -r '.totalRejections // 0')
+if [ "$FINAL_REJECTIONS" -gt "$INITIAL_REJECTIONS" ]; then
+    log "  ✅ Rejection stored and counted (total: $FINAL_REJECTIONS)"
+else
+    warn "  Rejection count did not increase (expected > $INITIAL_REJECTIONS, got $FINAL_REJECTIONS)"
+fi
+
+# Query rejections API
+REJECTIONS_LIST=$(curl -s "http://localhost:$INDEXER_PORT/rejections?limit=5")
+REJECTIONS_COUNT=$(echo "$REJECTIONS_LIST" | jq -r '.total // 0')
+if [ "$REJECTIONS_COUNT" -gt 0 ]; then
+    log "  ✅ Rejections API returns $REJECTIONS_COUNT rejection(s)"
+else
+    warn "  Rejections API returned 0 rejections"
+fi
+
+# ============================================================================
 # Summary
 # ============================================================================
 

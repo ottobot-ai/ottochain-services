@@ -26,6 +26,38 @@ export const SnapshotNotificationSchema = z.object({
 
 export type SnapshotNotification = z.infer<typeof SnapshotNotificationSchema>;
 
+// ============================================================================
+// Rejection Webhook Types (from ML0 validation failures)
+// ============================================================================
+
+export const ValidationErrorSchema = z.object({
+  code: z.string(),
+  message: z.string(),
+});
+
+export type ValidationError = z.infer<typeof ValidationErrorSchema>;
+
+export const RejectedUpdateSchema = z.object({
+  updateType: z.string(),
+  fiberId: z.string().uuid(),
+  targetSequenceNumber: z.number().optional(),
+  errors: z.array(ValidationErrorSchema),
+  signers: z.array(z.string()),
+  updateHash: z.string(),
+});
+
+export type RejectedUpdate = z.infer<typeof RejectedUpdateSchema>;
+
+export const RejectionNotificationSchema = z.object({
+  event: z.literal('transaction.rejected'),
+  ordinal: z.number(),
+  timestamp: z.string().datetime(),
+  metagraphId: z.string(),
+  rejection: RejectedUpdateSchema,
+});
+
+export type RejectionNotification = z.infer<typeof RejectionNotificationSchema>;
+
 export const WebhookSubscriptionSchema = z.object({
   callbackUrl: z.string().url(),
   secret: z.string().optional(), // For HMAC verification

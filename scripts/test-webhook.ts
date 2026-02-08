@@ -140,6 +140,120 @@ async function main() {
     });
   }
 
+  // =========================================================================
+  // Rejection Webhook Tests (Option A: Direct indexer testing)
+  // =========================================================================
+  
+  const testFiberId = '00000000-0000-4000-8000-000000000001';
+  const testUpdateHash = `test-rejection-${Date.now()}`;
+  
+  // Test 8: POST rejection to indexer
+  await test('Rejection webhook endpoint', async () => {
+    const rejection = {
+      event: 'transaction.rejected',
+      ordinal: 999,
+      timestamp: new Date().toISOString(),
+      metagraphId: 'test-metagraph',
+      rejection: {
+        updateType: 'CreateStateMachine',
+        fiberId: testFiberId,
+        targetSequenceNumber: 0,
+        errors: [
+          { code: 'INVALID_SIGNATURE', message: 'Signature verification failed' },
+          { code: 'INSUFFICIENT_BALANCE', message: 'Not enough tokens' }
+        ],
+        signers: ['DAG123abc', 'DAG456def'],
+        updateHash: testUpdateHash,
+      }
+    };
+    
+    const result = await fetchJson<{ accepted: boolean; updateHash?: string }>(`${INDEXER_URL}/webhook/rejection`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(rejection)
+    });
+    
+    if (!result.accepted) {
+      throw new Error('Rejection not accepted');
+    }
+  });
+
+  // Test 9: Query rejections list
+  await test('Query rejections list', async () => {
+    const result = await fetchJson<{ rejections: Array<{ updateHash: string }>; total: number }>(`${INDEXER_URL}/rejections`);
+    
+    if (!result.rejections.some(r => r.updateHash === testUpdateHash)) {
+      throw new Error('Test rejection not found in list');
+    }
+  });
+
+  // Test 10: Query rejection by hash
+  await test('Query rejection by updateHash', async () => {
+    const result = await fetchJson<{ updateHash: string; errors: Array<{ code: string }> }>(
+      `${INDEXER_URL}/rejections/${testUpdateHash}`
+    );
+    
+    if (result.updateHash !== testUpdateHash) {
+      throw new Error(`Expected updateHash ${testUpdateHash}, got ${result.updateHash}`);
+    }
+    if (result.errors.length !== 2) {
+      throw new Error(`Expected 2 errors, got ${result.errors.length}`);
+    }
+  });
+
+  // Test 11: Query rejections by fiberId
+  await test('Query rejections by fiberId', async () => {
+    const result = await fetchJson<{ rejections: Array<{ fiberId: string }>; total: number }>(
+      `${INDEXER_URL}/fibers/${testFiberId}/rejections`
+    );
+    
+    if (result.total < 1) {
+      throw new Error('No rejections found for test fiber');
+    }
+    if (!result.rejections.every(r => r.fiberId === testFiberId)) {
+      throw new Error('Returned rejections have wrong fiberId');
+    }
+  });
+
+  // Test 12: Rejection deduplication
+  await test('Rejection deduplication', async () => {
+    const rejection = {
+      event: 'transaction.rejected',
+      ordinal: 999,
+      timestamp: new Date().toISOString(),
+      metagraphId: 'test-metagraph',
+      rejection: {
+        updateType: 'CreateStateMachine',
+        fiberId: testFiberId,
+        errors: [{ code: 'TEST', message: 'Duplicate test' }],
+        signers: ['DAG123abc'],
+        updateHash: testUpdateHash, // Same hash as before
+      }
+    };
+    
+    const result = await fetchJson<{ accepted: boolean; alreadyIndexed?: boolean }>(`${INDEXER_URL}/webhook/rejection`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(rejection)
+    });
+    
+    if (!result.alreadyIndexed) {
+      throw new Error('Expected alreadyIndexed=true for duplicate');
+    }
+  });
+
+  // Test 13: Status includes totalRejections
+  await test('Status includes totalRejections', async () => {
+    const status = await fetchJson<{ totalRejections?: number }>(`${INDEXER_URL}/status`);
+    
+    if (typeof status.totalRejections !== 'number') {
+      throw new Error('totalRejections not in status');
+    }
+    if (status.totalRejections < 1) {
+      throw new Error('totalRejections should be >= 1');
+    }
+  });
+
   // Summary
   console.log('\n========================================');
   const passed = results.filter((r) => r.passed).length;
