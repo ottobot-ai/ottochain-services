@@ -2,6 +2,7 @@
  * Health data collector - polls metagraph nodes and services
  */
 
+import { Redis } from 'ioredis';
 import type { NodeHealth, ServiceHealth, MetagraphMetrics, ServiceStatus, MonitorConfig } from './types.js';
 
 async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
@@ -219,15 +220,58 @@ export async function checkGateway(url: string, timeoutMs: number): Promise<Serv
 }
 
 export async function checkRedis(url: string, timeoutMs: number): Promise<ServiceHealth> {
-  // For Redis, we'd need a Redis client. For now, mark as unknown if URL provided
-  return {
-    name: 'Redis',
-    type: 'redis',
-    url,
-    status: 'unknown',
-    lastCheck: Date.now(),
-    metadata: { note: 'Redis health check requires client connection' },
-  };
+  const startTime = Date.now();
+  
+  const redis = new Redis(url, {
+    connectTimeout: timeoutMs,
+    lazyConnect: true,
+    maxRetriesPerRequest: 1,
+    retryStrategy: () => null, // Don't retry on health check
+  });
+  
+  try {
+    await redis.connect();
+    const pong = await redis.ping();
+    const latencyMs = Date.now() - startTime;
+    
+    // Get some basic info
+    let metadata: Record<string, unknown> | undefined;
+    try {
+      const info = await redis.info('server');
+      const versionMatch = info.match(/redis_version:([^\r\n]+)/);
+      if (versionMatch) {
+        metadata = { version: versionMatch[1] };
+      }
+    } catch {
+      // Info is optional
+    }
+    
+    return {
+      name: 'Redis',
+      type: 'redis',
+      url: url.replace(/\/\/:[^@]+@/, '//***@'), // Mask password if present
+      status: pong === 'PONG' ? 'healthy' : 'degraded',
+      lastCheck: Date.now(),
+      latencyMs,
+      metadata,
+    };
+  } catch (err) {
+    return {
+      name: 'Redis',
+      type: 'redis',
+      url: url.replace(/\/\/:[^@]+@/, '//***@'),
+      status: 'unhealthy',
+      lastCheck: Date.now(),
+      latencyMs: Date.now() - startTime,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  } finally {
+    try {
+      redis.disconnect();
+    } catch {
+      // Ignore disconnect errors
+    }
+  }
 }
 
 export async function checkPostgres(url: string, timeoutMs: number): Promise<ServiceHealth> {

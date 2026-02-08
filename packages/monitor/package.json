@@ -12,6 +12,7 @@
   "dependencies": {
     "@ottochain/shared": "workspace:*",
     "express": "^4.21.2",
+    "ioredis": "^5.9.2",
     "ws": "^8.18.0"
   },
   "devDependencies": {
