@@ -4,7 +4,21 @@
 import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
-import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey, generateKeyPair, waitForFiber } from '../metagraph.js';
+import { 
+  submitTransaction, 
+  getStateMachine, 
+  getCheckpoint, 
+  keyPairFromPrivateKey, 
+  generateKeyPair, 
+  waitForFiber,
+  type StateMachineDefinition,
+  type CreateStateMachine,
+  type TransitionStateMachine,
+  type FiberOrdinal,
+} from '../metagraph.js';
+import { getIdentityDefinition, DEFAULT_REPUTATION_CONFIG } from '@ottochain/sdk/apps/identity';
+
+const AGENT_IDENTITY_DEFINITION = getIdentityDefinition() as StateMachineDefinition;
 
 export const agentRoutes: RouterType = Router();
 
@@ -25,139 +39,6 @@ const TransitionRequestSchema = z.object({
   event: z.string(),
   payload: z.record(z.any()).optional(),
 });
-
-// ============================================================================
-// Agent Identity State Machine Definition
-// OttoChain-compatible format with proper state/transition structure
-// ============================================================================
-
-const AGENT_IDENTITY_DEFINITION = {
-  states: {
-    REGISTERED: {
-      id: { value: 'REGISTERED' },
-      isFinal: false,
-      metadata: null,
-    },
-    ACTIVE: {
-      id: { value: 'ACTIVE' },
-      isFinal: false,
-      metadata: null,
-    },
-    CHALLENGED: {
-      id: { value: 'CHALLENGED' },
-      isFinal: false,
-      metadata: null,
-    },
-    SUSPENDED: {
-      id: { value: 'SUSPENDED' },
-      isFinal: false,
-      metadata: null,
-    },
-    PROBATION: {
-      id: { value: 'PROBATION' },
-      isFinal: false,
-      metadata: null,
-    },
-    WITHDRAWN: {
-      id: { value: 'WITHDRAWN' },
-      isFinal: true,
-      metadata: null,
-    },
-  },
-  initialState: { value: 'REGISTERED' },
-  transitions: [
-    {
-      from: { value: 'REGISTERED' },
-      to: { value: 'ACTIVE' },
-      eventName: 'activate',
-      guard: { '==': [1, 1] },
-      effect: { merge: [{ var: 'state' }, { status: 'ACTIVE' }] },
-      dependencies: [],
-    },
-    {
-      from: { value: 'ACTIVE' },
-      to: { value: 'ACTIVE' },
-      eventName: 'receive_vouch',
-      guard: { '!!': [{ var: 'event.from' }] },
-      effect: {
-        merge: [
-          { var: 'state' },
-          {
-            reputation: { '+': [{ var: 'state.reputation' }, 2] },
-          },
-        ],
-      },
-      dependencies: [],
-    },
-    {
-      from: { value: 'ACTIVE' },
-      to: { value: 'ACTIVE' },
-      eventName: 'receive_completion',
-      guard: { '==': [1, 1] },
-      effect: {
-        merge: [
-          { var: 'state' },
-          {
-            reputation: { '+': [{ var: 'state.reputation' }, 5] },
-          },
-        ],
-      },
-      dependencies: [],
-    },
-    {
-      from: { value: 'ACTIVE' },
-      to: { value: 'CHALLENGED' },
-      eventName: 'challenge',
-      guard: { '!!': [{ var: 'event.challenger' }] },
-      effect: { merge: [{ var: 'state' }, { status: 'CHALLENGED', challengedBy: { var: 'event.challenger' } }] },
-      dependencies: [],
-    },
-    {
-      from: { value: 'CHALLENGED' },
-      to: { value: 'ACTIVE' },
-      eventName: 'dismiss_challenge',
-      guard: { '==': [1, 1] },
-      effect: { merge: [{ var: 'state' }, { status: 'ACTIVE', challengedBy: null }] },
-      dependencies: [],
-    },
-    {
-      from: { value: 'CHALLENGED' },
-      to: { value: 'SUSPENDED' },
-      eventName: 'uphold_challenge',
-      guard: { '==': [1, 1] },
-      effect: { merge: [{ var: 'state' }, { status: 'SUSPENDED', suspendedAt: { var: '$timestamp' } }] },
-      dependencies: [],
-    },
-    {
-      from: { value: 'SUSPENDED' },
-      to: { value: 'PROBATION' },
-      eventName: 'begin_probation',
-      guard: { '==': [1, 1] },
-      effect: { merge: [{ var: 'state' }, { status: 'PROBATION', probationStartedAt: { var: '$timestamp' } }] },
-      dependencies: [],
-    },
-    {
-      from: { value: 'PROBATION' },
-      to: { value: 'ACTIVE' },
-      eventName: 'complete_probation',
-      guard: { '==': [1, 1] },
-      effect: { merge: [{ var: 'state' }, { status: 'ACTIVE', probationStartedAt: null }] },
-      dependencies: [],
-    },
-    {
-      from: { value: 'ACTIVE' },
-      to: { value: 'WITHDRAWN' },
-      eventName: 'withdraw',
-      guard: { '==': [1, 1] },
-      effect: { merge: [{ var: 'state' }, { status: 'WITHDRAWN' }] },
-      dependencies: [],
-    },
-  ],
-  metadata: {
-    name: 'AgentIdentity',
-    description: 'Decentralized agent identity with reputation tracking',
-  },
-};
 
 // ============================================================================
 // Routes
@@ -209,8 +90,8 @@ agentRoutes.post('/register', async (req, res) => {
           platform: input.platform ?? null,
           platformUserId: input.platformUserId ?? null,
           owner: ownerAddress,
-          // Reputation tracking
-          reputation: 10,
+          // Reputation tracking (uses SDK config)
+          reputation: DEFAULT_REPUTATION_CONFIG.baseReputation,
           vouches: [],
           completedContracts: 0,
           violations: 0,
