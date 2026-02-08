@@ -10,6 +10,7 @@ import { fiberRoutes } from './routes/fiber.js';
 import { smRoutes } from './routes/sm.js';
 import { scriptRoutes } from './routes/script.js';
 import { governanceRoutes } from './routes/governance.js';
+import { marketRoutes } from './routes/market.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' })); // Larger limit for state machine definitions
@@ -27,6 +28,7 @@ app.use('/fiber', fiberRoutes);    // Generic fiber API
 app.use('/sm', smRoutes);          // Generic state machine API
 app.use('/script', scriptRoutes);  // Generic script oracle API
 app.use('/governance', governanceRoutes); // DAO/Governance API
+app.use('/market', marketRoutes);         // Market API (predictions, auctions, crowdfunding)
 
 // Start server
 const config = getConfig();
@@ -56,4 +58,13 @@ app.listen(port, () => {
   console.log(`             POST http://localhost:${port}/governance/veto`);
   console.log(`             GET  http://localhost:${port}/governance/:daoId`);
   console.log(`             GET  http://localhost:${port}/governance/:daoId/proposals`);
+  console.log(`   Market:   POST http://localhost:${port}/market/create`);
+  console.log(`             POST http://localhost:${port}/market/open`);
+  console.log(`             POST http://localhost:${port}/market/commit`);
+  console.log(`             POST http://localhost:${port}/market/close`);
+  console.log(`             POST http://localhost:${port}/market/resolve`);
+  console.log(`             POST http://localhost:${port}/market/finalize`);
+  console.log(`             POST http://localhost:${port}/market/claim`);
+  console.log(`             GET  http://localhost:${port}/market/:marketId`);
+  console.log(`             GET  http://localhost:${port}/market?status=X&marketType=Y`);
 });

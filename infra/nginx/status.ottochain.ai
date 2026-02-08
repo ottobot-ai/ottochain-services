@@ -1,0 +1,15 @@
+server {
+    server_name status.ottochain.ai;
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:3032/api/;
+        proxy_set_header Host $host;
+    }
+
+    location / {
+        root /var/www/status;
+        try_files $uri $uri/ /index.html;
+    }
+
+    listen 80;
+}
