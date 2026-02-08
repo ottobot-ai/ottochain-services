@@ -282,6 +282,17 @@ async function main(): Promise<void> {
     const httpStatus = overallStatus === 'ok' ? 200 : 503;
     res.status(httpStatus).json(healthResponse);
   });
+
+  // Version info
+  app.get('/version', (_, res) => {
+    res.json({
+      service: 'monitor',
+      version: process.env.npm_package_version ?? '0.1.0',
+      commit: process.env.GIT_SHA ?? 'unknown',
+      built: process.env.BUILD_TIME ?? 'unknown',
+      node: process.version,
+    });
+  });
   
   app.get('/api/status', async (_, res) => {
     if (!cache) {

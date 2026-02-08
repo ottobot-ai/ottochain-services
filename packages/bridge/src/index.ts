@@ -21,6 +21,17 @@ app.get('/health', (_, res) => {
   res.json({ status: 'ok', service: 'bridge' });
 });
 
+// Version info
+app.get('/version', (_, res) => {
+  res.json({
+    service: 'bridge',
+    version: process.env.npm_package_version ?? '0.1.0',
+    commit: process.env.GIT_SHA ?? 'unknown',
+    built: process.env.BUILD_TIME ?? 'unknown',
+    node: process.version,
+  });
+});
+
 // Mount routes
 app.use('/wallet', walletRoutes);
 app.use('/agent', agentRoutes);

@@ -20,6 +20,17 @@ app.get('/health', (_, res) => {
   res.json({ status: 'ok', service: 'indexer' });
 });
 
+// Version info
+app.get('/version', (_, res) => {
+  res.json({
+    service: 'indexer',
+    version: process.env.npm_package_version ?? '0.1.0',
+    commit: process.env.GIT_SHA ?? 'unknown',
+    built: process.env.BUILD_TIME ?? 'unknown',
+    node: process.version,
+  });
+});
+
 // Webhook endpoint for ML0 snapshot notifications
 app.post('/webhook/snapshot', async (req, res) => {
   try {

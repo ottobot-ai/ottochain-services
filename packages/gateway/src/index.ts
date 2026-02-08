@@ -66,6 +66,17 @@ async function main() {
     res.json({ status: 'ok', service: 'gateway' });
   });
 
+  // Version info
+  app.get('/version', (_, res) => {
+    res.json({
+      service: 'gateway',
+      version: process.env.npm_package_version ?? '0.1.0',
+      commit: process.env.GIT_SHA ?? 'unknown',
+      built: process.env.BUILD_TIME ?? 'unknown',
+      node: process.version,
+    });
+  });
+
   // Start server
   await new Promise<void>((resolve) => {
     httpServer.listen({ port: config.GATEWAY_PORT, host: '0.0.0.0' }, resolve);
