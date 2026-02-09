@@ -104,6 +104,16 @@ jobs:
           body_path: changelog.md
           generate_release_notes: true
 
+      - name: Notify deploy repo
+        if: secrets.DEPLOY_REPO_TOKEN != ''
+        env:
+          GH_TOKEN: ${{ secrets.DEPLOY_REPO_TOKEN }}
+        run: |
+          gh api repos/ottobot-ai/ottochain-deploy/dispatches \
+            -f event_type=version-bump \
+            -f 'client_payload={"component":"services","version":"${{ steps.version.outputs.version }}"}'
+          echo "✅ Notified deploy repo to bump services to v${{ steps.version.outputs.version }}"
+
       - name: Summary
         run: |
           echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
@@ -111,3 +121,4 @@ jobs:
           echo "- **Version**: ${{ steps.version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Image**: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deploy PR**: Auto-created in ottochain-deploy" >> $GITHUB_STEP_SUMMARY
