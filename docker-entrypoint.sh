@@ -57,4 +57,4 @@ if [ "$SERVICE" = "indexer" ] && [ -n "$DATABASE_URL" ]; then
 fi
 
 echo "Starting service: $SERVICE"
-exec pnpm --filter "$SERVICE" start
+exec node "/app/packages/$SERVICE/dist/index.js"
