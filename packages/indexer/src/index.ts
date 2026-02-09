@@ -3,7 +3,7 @@
 // Confirms snapshots against GL0 global snapshots
 // Low-frequency fallback poller catches missed webhooks + detects forks across peers
 
-import express from 'express';
+import express, { Request, Response } from 'express';
 import { prisma, getConfig, SnapshotNotificationSchema, RejectionNotificationSchema, getStatsCollector } from '@ottochain/shared';
 import { processSnapshot } from './processor.js';
 import { startConfirmationPoller, stopConfirmationPoller, getConfirmationStats } from './confirmations.js';
@@ -31,10 +31,19 @@ app.get('/version', (_, res) => {
   });
 });
 
-// Webhook endpoint for ML0 snapshot notifications
+// Webhook endpoint for ML0 notifications (snapshots and rejections)
+// ML0 WebhookDispatcher sends both event types to the registered callback URL,
+// so we route based on the 'event' field in the payload.
 app.post('/webhook/snapshot', async (req, res) => {
   try {
-    // Validate incoming payload
+    const event = req.body?.event;
+    
+    // Route rejection events to the rejection handler
+    if (event === 'transaction.rejected') {
+      return handleRejectionWebhook(req, res);
+    }
+    
+    // Validate incoming payload as snapshot notification
     const notification = SnapshotNotificationSchema.parse(req.body);
     
     console.log(`📥 Received snapshot notification: ordinal=${notification.ordinal}, hash=${notification.hash}`);
@@ -87,8 +96,8 @@ app.post('/webhook/snapshot', async (req, res) => {
   }
 });
 
-// Webhook endpoint for ML0 rejection notifications
-app.post('/webhook/rejection', async (req, res) => {
+// Shared rejection handler - used by both /webhook/snapshot (routed) and /webhook/rejection (direct)
+async function handleRejectionWebhook(req: Request, res: Response): Promise<void> {
   try {
     // Validate incoming payload
     const notification = RejectionNotificationSchema.parse(req.body);
@@ -141,7 +150,12 @@ app.post('/webhook/rejection', async (req, res) => {
     console.error('Invalid rejection webhook payload:', err);
     res.status(400).json({ error: 'Invalid payload' });
   }
-});
+}
+
+// Webhook endpoint for ML0 rejection notifications (direct access)
+// Note: ML0 typically sends rejections to the same URL as snapshots,
+// but this endpoint is kept for direct access and testing.
+app.post('/webhook/rejection', handleRejectionWebhook);
 
 // Get indexer status with confirmation stats
 app.get('/status', async (_, res) => {
