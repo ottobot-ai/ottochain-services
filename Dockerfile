@@ -15,6 +15,9 @@ COPY packages/monitor/package.json ./packages/monitor/
 COPY packages/traffic-generator/package.json ./packages/traffic-generator/
 COPY packages/shared/package.json ./packages/shared/
 
+# Copy Prisma schema (needed for postinstall hook)
+COPY prisma ./prisma/
+
 # Install dependencies
 RUN pnpm install --frozen-lockfile
 
