@@ -1,0 +1,168 @@
+# OttoChain Services - Docker Compose
+# 
+# Usage:
+#   docker compose up -d
+#   docker compose logs -f bridge
+#   docker compose pull && docker compose up -d  # upgrade
+#
+# Required env vars (set in .env or environment):
+#   DATABASE_URL, METAGRAPH_ML0_URL, METAGRAPH_DL1_URL
+
+version: '3.8'
+
+services:
+  gateway:
+    image: ghcr.io/ottobot-ai/ottochain-services:${SERVICES_VERSION:-latest}
+    container_name: gateway
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      - SERVICE=gateway
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+      - METAGRAPH_ML0_URL=${METAGRAPH_ML0_URL}
+      - METAGRAPH_DL1_URL=${METAGRAPH_DL1_URL}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+    depends_on:
+      - redis
+    networks:
+      - ottochain
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  bridge:
+    image: ghcr.io/ottobot-ai/ottochain-services:${SERVICES_VERSION:-latest}
+    container_name: bridge
+    restart: unless-stopped
+    ports:
+      - "3030:3030"
+    environment:
+      - SERVICE=bridge
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+      - METAGRAPH_ML0_URL=${METAGRAPH_ML0_URL}
+      - METAGRAPH_DL1_URL=${METAGRAPH_DL1_URL}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+    depends_on:
+      - redis
+    networks:
+      - ottochain
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3030/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  indexer:
+    image: ghcr.io/ottobot-ai/ottochain-services:${SERVICES_VERSION:-latest}
+    container_name: indexer
+    restart: unless-stopped
+    ports:
+      - "3031:3031"
+    environment:
+      - SERVICE=indexer
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+      - METAGRAPH_ML0_URL=${METAGRAPH_ML0_URL}
+      - METAGRAPH_DL1_URL=${METAGRAPH_DL1_URL}
+      - INDEXER_PORT=3031
+      - INDEXER_CALLBACK_URL=${INDEXER_CALLBACK_URL:-http://indexer:3031/webhook/snapshot}
+    depends_on:
+      - postgres
+    networks:
+      - ottochain
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3031/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  monitor:
+    image: ghcr.io/ottobot-ai/ottochain-services:${SERVICES_VERSION:-latest}
+    container_name: monitor
+    restart: unless-stopped
+    ports:
+      - "3032:3032"
+    environment:
+      - SERVICE=monitor
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+      - METAGRAPH_ML0_URL=${METAGRAPH_ML0_URL}
+      - METAGRAPH_DL1_URL=${METAGRAPH_DL1_URL}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+    depends_on:
+      - redis
+    networks:
+      - ottochain
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3032/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  traffic-gen:
+    image: ghcr.io/ottobot-ai/ottochain-services:${SERVICES_VERSION:-latest}
+    container_name: traffic-gen
+    restart: unless-stopped
+    environment:
+      - SERVICE=traffic-generator
+      - NODE_ENV=production
+      - BRIDGE_URL=http://bridge:3030
+      - ML0_URL=${METAGRAPH_ML0_URL}
+      - INDEXER_URL=http://indexer:3031
+      - TRAFFIC_INTERVAL=${TRAFFIC_INTERVAL:-5000}
+      - TRAFFIC_BATCH_SIZE=${TRAFFIC_BATCH_SIZE:-3}
+    depends_on:
+      - bridge
+      - indexer
+    networks:
+      - ottochain
+
+  # Infrastructure (can be external if needed)
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-ottochain}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-ottochain}
+      - POSTGRES_DB=${POSTGRES_DB:-ottochain}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ottochain
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ottochain}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - ottochain
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  ottochain:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
