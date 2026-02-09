@@ -15,6 +15,7 @@ interface ProcessResult {
   fibersUpdated: number;
   agentsUpdated: number;
   contractsUpdated: number;
+  corporateUpdated: number;
 }
 
 interface MetagraphState {
@@ -84,6 +85,7 @@ export async function processSnapshot(notification: SnapshotNotification): Promi
   let fibersUpdated = 0;
   let agentsUpdated = 0;
   let contractsUpdated = 0;
+  let corporateUpdated = 0;
   
   // Index ALL state machines as generic Fibers
   for (const [fiberId, fiber] of Object.entries(stateMachines || {})) {
@@ -166,6 +168,14 @@ export async function processSnapshot(notification: SnapshotNotification): Promi
       const updated = await deriveContract(fiber, notification.ordinal);
       if (updated) contractsUpdated++;
     }
+    
+    // Track Corporate Entity workflows (uses generic Fiber table + activity feed)
+    if (workflowType === 'Entity' || workflowType === 'Board' || workflowType === 'Shareholders' ||
+        workflowType === 'Officers' || workflowType === 'Securities' || workflowType === 'Compliance' ||
+        workflowType === 'Proxy' || fiber.stateData?.schema?.toString().startsWith('Corporate')) {
+      await trackCorporateActivity(fiber, notification.ordinal, existingFiber);
+      corporateUpdated++;
+    }
   }
   
   // Update indexed snapshot stats (preserve status - set by confirmation poller)
@@ -188,8 +198,8 @@ export async function processSnapshot(notification: SnapshotNotification): Promi
     },
   });
   
-  const result = { ordinal: notification.ordinal, fibersUpdated, agentsUpdated, contractsUpdated };
-  console.log(`✅ Indexed snapshot ${notification.ordinal}: ${fibersUpdated} fibers, ${agentsUpdated} agents, ${contractsUpdated} contracts`);
+  const result = { ordinal: notification.ordinal, fibersUpdated, agentsUpdated, contractsUpdated, corporateUpdated };
+  console.log(`✅ Indexed snapshot ${notification.ordinal}: ${fibersUpdated} fibers, ${agentsUpdated} agents, ${contractsUpdated} contracts, ${corporateUpdated} corporate`);
   
   await publishEvent(CHANNELS.STATS_UPDATED, result);
   return result;
@@ -358,6 +368,46 @@ async function deriveContract(fiber: StateMachineFiber, ordinal: number): Promis
   });
   
   return true;
+}
+
+/**
+ * Track corporate governance activity.
+ * Corporate entities use multiple linked fibers (Entity, Board, Shareholders, Officers, etc.).
+ * Data is stored in the generic Fiber table; this function publishes activity events
+ * for real-time monitoring and links related fibers via stateData.entityId.
+ */
+async function trackCorporateActivity(
+  fiber: StateMachineFiber, 
+  ordinal: number,
+  existingFiber: { currentState: string } | null,
+): Promise<void> {
+  const stateData = fiber.stateData || {};
+  const workflowType = fiber.definition?.metadata?.name || 'Unknown';
+  const currentState = fiber.currentState?.value || 'unknown';
+  const entityId = (stateData.entityId as string) || fiber.fiberId;
+  const legalName = (stateData.legalName as string) || (stateData.name as string) || entityId;
+  
+  // Only publish if state changed
+  if (existingFiber && existingFiber.currentState === currentState) return;
+  
+  const isNew = !existingFiber;
+  const eventType = isNew ? 'CORPORATE_CREATED' : 'CORPORATE_UPDATED';
+  
+  if (isNew) {
+    console.log(`  🏢 New corporate ${workflowType}: ${legalName} (${fiber.fiberId.slice(0, 12)}...)`);
+  }
+  
+  await publishEvent(CHANNELS.ACTIVITY_FEED, {
+    eventType,
+    timestamp: new Date().toISOString(),
+    fiberId: fiber.fiberId,
+    workflowType: `Corporate/${workflowType}`,
+    entityId,
+    legalName,
+    action: isNew 
+      ? `${workflowType} created: ${currentState}`
+      : `${workflowType}: ${existingFiber?.currentState} → ${currentState}`,
+  });
 }
 
 function mapFiberStatus(status: string): 'ACTIVE' | 'ARCHIVED' | 'FAILED' {
