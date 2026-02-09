@@ -206,3 +206,64 @@ export async function waitForFiber(
   console.log(`[metagraph] Fiber ${fiberId} not synced to DL1 after ${maxAttempts} attempts`);
   return false;
 }
+
+/**
+ * Get the current sequence number for a fiber from DL1's onchain state.
+ * 
+ * This is more reliable than ML0's state for determining the next targetSequenceNumber
+ * because DL1's fiberCommits is what DL1 uses for validation.
+ * 
+ * @param fiberId - The fiber ID to query
+ * @returns The current sequence number, or 0 if not found
+ */
+export async function getFiberSequenceNumber(fiberId: string): Promise<number> {
+  const config = getConfig();
+  const dl1Url = `${config.METAGRAPH_DL1_URL}/data-application/v1/onchain`;
+  const client = new HttpClient(dl1Url);
+  
+  try {
+    const onChain = await client.get<{
+      fiberCommits?: Record<string, { sequenceNumber?: number }>;
+    }>('');
+    
+    const seq = onChain?.fiberCommits?.[fiberId]?.sequenceNumber ?? 0;
+    console.log(`[metagraph] Fiber ${fiberId} sequence from DL1: ${seq}`);
+    return seq;
+  } catch (err) {
+    console.log(`[metagraph] Could not get sequence for ${fiberId}, defaulting to 0`);
+    return 0;
+  }
+}
+
+/**
+ * Wait for a fiber's sequence number to reach a target value.
+ * 
+ * Use this after submitting a transaction to ensure it's been processed
+ * before submitting the next one.
+ * 
+ * @param fiberId - The fiber ID to watch
+ * @param targetSeq - The sequence number to wait for
+ * @param maxAttempts - Maximum polling attempts (default 30 = 30s)
+ * @param intervalMs - Polling interval (default 1000 = 1s)
+ * @returns true if target reached, false if timeout
+ */
+export async function waitForSequence(
+  fiberId: string,
+  targetSeq: number,
+  maxAttempts: number = 30,
+  intervalMs: number = 1000
+): Promise<boolean> {
+  console.log(`[metagraph] Waiting for fiber ${fiberId} to reach sequence ${targetSeq}...`);
+  
+  for (let i = 0; i < maxAttempts; i++) {
+    const currentSeq = await getFiberSequenceNumber(fiberId);
+    if (currentSeq >= targetSeq) {
+      console.log(`[metagraph] Fiber ${fiberId} reached sequence ${currentSeq} (target: ${targetSeq})`);
+      return true;
+    }
+    await new Promise(resolve => setTimeout(resolve, intervalMs));
+  }
+  
+  console.log(`[metagraph] Timeout waiting for fiber ${fiberId} to reach sequence ${targetSeq}`);
+  return false;
+}
