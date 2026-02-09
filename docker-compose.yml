@@ -122,6 +122,20 @@ services:
     networks:
       - ottochain
 
+  explorer:
+    image: ghcr.io/ottobot-ai/ottochain-explorer:${EXPLORER_VERSION:-latest}
+    container_name: explorer
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    networks:
+      - ottochain
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   # Infrastructure (can be external if needed)
   postgres:
     image: postgres:16-alpine
