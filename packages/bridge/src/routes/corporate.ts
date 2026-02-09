@@ -10,6 +10,7 @@ import {
   getStateMachine, 
   getCheckpoint, 
   keyPairFromPrivateKey,
+  getFiberSequenceNumber,
   type StateMachineDefinition,
   type CreateStateMachine,
   type TransitionStateMachine,
@@ -509,6 +510,9 @@ corporateRoutes.post('/amend-charter', async (req, res) => {
 
     const amendmentId = randomUUID();
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.entityId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.entityId,
@@ -523,7 +527,7 @@ corporateRoutes.post('/amend-charter', async (req, res) => {
           newLegalName: input.newLegalName,
           newShareAuthorization: input.newShareAuthorization,
         },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
@@ -603,6 +607,9 @@ corporateRoutes.post('/:entityId/board/elect', async (req, res) => {
 
     const directorId = input.directorId ?? randomUUID();
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(boardId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: boardId,
@@ -619,7 +626,7 @@ corporateRoutes.post('/:entityId/board/elect', async (req, res) => {
           electionResolutionRef: input.electionResolutionRef,
           isFillingVacancy: input.isFillingVacancy,
         },
-        targetSequenceNumber: boardState.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
@@ -727,12 +734,15 @@ corporateRoutes.post('/:entityId/board/meeting', async (req, res) => {
         return res.status(400).json({ error: `Unknown action: ${input.action}` });
     }
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(boardId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: boardId,
         eventName,
         payload,
-        targetSequenceNumber: boardState.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
@@ -846,6 +856,9 @@ corporateRoutes.post('/:entityId/board/consent', async (req, res) => {
       return res.status(404).json({ error: 'Resolution not found' });
     }
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.resolutionId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.resolutionId,
@@ -856,7 +869,7 @@ corporateRoutes.post('/:entityId/board/consent', async (req, res) => {
           voterType: 'DIRECTOR',
           vote: input.consent,
         },
-        targetSequenceNumber: resolutionState.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
@@ -985,6 +998,9 @@ corporateRoutes.post('/:entityId/shareholders/vote', async (req, res) => {
 
     const voteId = randomUUID();
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.meetingId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.meetingId,
@@ -1001,7 +1017,7 @@ corporateRoutes.post('/:entityId/shareholders/vote', async (req, res) => {
           votesWithhold: input.votesWithhold,
           viaProxy: input.viaProxy,
         },
-        targetSequenceNumber: meetingState.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
@@ -1101,12 +1117,15 @@ corporateRoutes.post('/:entityId/shareholders/proxy', async (req, res) => {
 
     const eventName = input.action === 'revoke' ? 'revoke' : 'use';
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.proxyId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.proxyId,
         eventName,
         payload: { agent: callerAddress },
-        targetSequenceNumber: proxyState.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
@@ -1166,6 +1185,9 @@ corporateRoutes.post('/:entityId/officers/appoint', async (req, res) => {
     const officerId = randomUUID();
     const personId = randomUUID();
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(officersId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: officersId,
@@ -1184,7 +1206,7 @@ corporateRoutes.post('/:entityId/officers/appoint', async (req, res) => {
           spendingLimit: input.spendingLimit,
           isInterim: input.isInterim,
         },
-        targetSequenceNumber: officersState.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
@@ -1240,6 +1262,9 @@ corporateRoutes.post('/:entityId/officers/remove', async (req, res) => {
       return res.status(404).json({ error: 'Officers state machine not found' });
     }
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(officersId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: officersId,
@@ -1251,7 +1276,7 @@ corporateRoutes.post('/:entityId/officers/remove', async (req, res) => {
           reason: input.reason,
           removalResolutionRef: input.removalResolutionRef,
         },
-        targetSequenceNumber: officersState.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
@@ -1348,6 +1373,9 @@ corporateRoutes.post('/:entityId/securities/issue', async (req, res) => {
     // Then transition to ISSUED
     const securityState = await getStateMachine(securityId) as { sequenceNumber?: number } | null;
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const issueSeqNum = await getFiberSequenceNumber(securityId);
+
     const issueMessage = {
       TransitionStateMachine: {
         fiberId: securityId,
@@ -1366,7 +1394,7 @@ corporateRoutes.post('/:entityId/securities/issue', async (req, res) => {
           restrictionType: input.restrictionType,
           exemptionUsed: input.exemptionUsed,
         },
-        targetSequenceNumber: securityState?.sequenceNumber ?? 0,
+        targetSequenceNumber: issueSeqNum,
       },
     };
 
@@ -1421,6 +1449,9 @@ corporateRoutes.post('/:entityId/securities/transfer', async (req, res) => {
     const transferId = randomUUID();
 
     // Initiate transfer
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const initiateSeqNum = await getFiberSequenceNumber(input.securityId);
+
     const initiateMessage = {
       TransitionStateMachine: {
         fiberId: input.securityId,
@@ -1435,7 +1466,7 @@ corporateRoutes.post('/:entityId/securities/transfer', async (req, res) => {
           transferDate: input.transferDate,
           pricePerShare: input.pricePerShare,
         },
-        targetSequenceNumber: securityState.sequenceNumber ?? 0,
+        targetSequenceNumber: initiateSeqNum,
       },
     };
 
@@ -1443,8 +1474,8 @@ corporateRoutes.post('/:entityId/securities/transfer', async (req, res) => {
 
     const initiateResult = await submitTransaction(initiateMessage, input.privateKey);
 
-    // Complete transfer
-    const updatedState = await getStateMachine(input.securityId) as { sequenceNumber?: number } | null;
+    // Complete transfer - get fresh sequence after initiate
+    const completeSeqNum = await getFiberSequenceNumber(input.securityId);
 
     const completeMessage = {
       TransitionStateMachine: {
@@ -1457,7 +1488,7 @@ corporateRoutes.post('/:entityId/securities/transfer', async (req, res) => {
           toHolderType: input.toHolderType,
           completedDate: input.transferDate,
         },
-        targetSequenceNumber: updatedState?.sequenceNumber ?? 0,
+        targetSequenceNumber: completeSeqNum,
       },
     };
 
@@ -1517,6 +1548,9 @@ corporateRoutes.post('/:entityId/compliance/file', async (req, res) => {
 
     const filingId = randomUUID();
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(complianceId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: complianceId,
@@ -1534,7 +1568,7 @@ corporateRoutes.post('/:entityId/compliance/file', async (req, res) => {
           documentRef: input.documentRef,
           nextDueDate: input.nextDueDate,
         },
-        targetSequenceNumber: complianceState.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 

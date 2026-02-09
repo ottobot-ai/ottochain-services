@@ -5,7 +5,7 @@
 import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
-import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey, waitForFiber } from '../metagraph.js';
+import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey, waitForFiber, getFiberSequenceNumber } from '../metagraph.js';
 import { MarketType, MarketState, getMarketDefinition } from '@ottochain/sdk/apps/markets';
 
 export const marketRoutes: RouterType = Router();
@@ -219,12 +219,15 @@ marketRoutes.post('/open', async (req, res) => {
       });
     }
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.marketId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.marketId,
         eventName: 'open',
         payload: { agent: keyPair.address },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
@@ -268,6 +271,9 @@ marketRoutes.post('/commit', async (req, res) => {
       });
     }
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.marketId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.marketId,
@@ -277,7 +283,7 @@ marketRoutes.post('/commit', async (req, res) => {
           amount: input.amount,
           data: input.data,
         },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
@@ -321,12 +327,15 @@ marketRoutes.post('/close', async (req, res) => {
       });
     }
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.marketId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.marketId,
         eventName: 'close',
         payload: { agent: keyPair.address },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
@@ -370,6 +379,9 @@ marketRoutes.post('/resolve', async (req, res) => {
       });
     }
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.marketId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.marketId,
@@ -379,7 +391,7 @@ marketRoutes.post('/resolve', async (req, res) => {
           outcome: input.outcome,
           proof: input.proof ?? null,
         },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
@@ -423,6 +435,9 @@ marketRoutes.post('/finalize', async (req, res) => {
       });
     }
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.marketId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.marketId,
@@ -432,7 +447,7 @@ marketRoutes.post('/finalize', async (req, res) => {
           outcome: input.outcome,
           settlement: input.settlement ?? {},
         },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
@@ -493,6 +508,9 @@ marketRoutes.post('/claim', async (req, res) => {
       return res.status(400).json({ error: 'Already claimed' });
     }
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.marketId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.marketId,
@@ -501,7 +519,7 @@ marketRoutes.post('/claim', async (req, res) => {
           agent: keyPair.address,
           amount: input.amount ?? commitment.amount,
         },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
@@ -544,6 +562,9 @@ marketRoutes.post('/refund', async (req, res) => {
       });
     }
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.marketId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.marketId,
@@ -552,7 +573,7 @@ marketRoutes.post('/refund', async (req, res) => {
           agent: keyPair.address,
           reason: input.reason ?? 'manual_refund',
         },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
@@ -596,6 +617,9 @@ marketRoutes.post('/cancel', async (req, res) => {
       });
     }
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.marketId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.marketId,
@@ -604,7 +628,7 @@ marketRoutes.post('/cancel', async (req, res) => {
           agent: keyPair.address,
           reason: input.reason ?? 'cancelled_by_creator',
         },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 

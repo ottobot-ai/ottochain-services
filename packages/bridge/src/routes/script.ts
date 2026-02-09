@@ -10,6 +10,7 @@ import {
   getScriptFiber, 
   getCheckpoint, 
   keyPairFromPrivateKey,
+  getFiberSequenceNumber,
   type CreateScript,
   type InvokeScript,
   type FiberOrdinal,
@@ -153,6 +154,9 @@ scriptRoutes.post('/invoke', async (req, res) => {
     const callerAddress = keyPairFromPrivateKey(input.privateKey).address;
     const invocationId = randomUUID();
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.scriptId);
+
     const message = {
       InvokeScript: {
         invocationId,
@@ -163,7 +167,7 @@ scriptRoutes.post('/invoke', async (req, res) => {
           caller: callerAddress,
           ...input.context,
         },
-        targetSequenceNumber: script.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
@@ -385,11 +389,14 @@ scriptRoutes.post('/:scriptId/update', async (req, res) => {
       return res.status(400).json({ error: 'No updates provided' });
     }
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(scriptId);
+
     const message = {
       UpdateScript: {
         scriptId,
         updates,
-        targetSequenceNumber: script.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
