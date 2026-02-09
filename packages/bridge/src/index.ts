@@ -12,6 +12,7 @@ import { scriptRoutes } from './routes/script.js';
 import { governanceRoutes } from './routes/governance.js';
 import { marketRoutes } from './routes/market.js';
 import { oracleRoutes } from './routes/oracle.js';
+import { corporateRoutes } from './routes/corporate.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' })); // Larger limit for state machine definitions
@@ -42,6 +43,7 @@ app.use('/script', scriptRoutes);  // Generic script oracle API
 app.use('/governance', governanceRoutes); // DAO/Governance API
 app.use('/market', marketRoutes);         // Market API (predictions, auctions, crowdfunding)
 app.use('/oracle', oracleRoutes);         // Oracle API (registration, attestation, staking)
+app.use('/corporate', corporateRoutes);   // Corporate governance API (entities, board, shareholders)
 
 // Start server
 const config = getConfig();
@@ -88,4 +90,21 @@ app.listen(port, () => {
   console.log(`             POST http://localhost:${port}/oracle/transition`);
   console.log(`             GET  http://localhost:${port}/oracle/:oracleId`);
   console.log(`             GET  http://localhost:${port}/oracle?status=X&domain=Y`);
+  console.log(`   Corp:     POST http://localhost:${port}/corporate/incorporate`);
+  console.log(`             POST http://localhost:${port}/corporate/amend-charter`);
+  console.log(`             GET  http://localhost:${port}/corporate/:entityId`);
+  console.log(`             POST http://localhost:${port}/corporate/:entityId/board/elect`);
+  console.log(`             POST http://localhost:${port}/corporate/:entityId/board/meeting`);
+  console.log(`             POST http://localhost:${port}/corporate/:entityId/board/resolution`);
+  console.log(`             POST http://localhost:${port}/corporate/:entityId/board/consent`);
+  console.log(`             POST http://localhost:${port}/corporate/:entityId/shareholders/meeting`);
+  console.log(`             POST http://localhost:${port}/corporate/:entityId/shareholders/vote`);
+  console.log(`             POST http://localhost:${port}/corporate/:entityId/shareholders/proxy`);
+  console.log(`             POST http://localhost:${port}/corporate/:entityId/officers/appoint`);
+  console.log(`             POST http://localhost:${port}/corporate/:entityId/officers/remove`);
+  console.log(`             POST http://localhost:${port}/corporate/:entityId/securities/issue`);
+  console.log(`             POST http://localhost:${port}/corporate/:entityId/securities/transfer`);
+  console.log(`             POST http://localhost:${port}/corporate/:entityId/compliance/file`);
+  console.log(`             GET  http://localhost:${port}/corporate/:entityId/compliance`);
+  console.log(`             GET  http://localhost:${port}/corporate`);
 });

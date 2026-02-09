@@ -14,7 +14,7 @@ info:
     ## App Routes vs Generic Routes
     | Type | Routes | Description |
     |------|--------|-------------|
-    | **App** | `/agent`, `/contract`, `/governance`, `/market` | Pre-built definitions for common use cases |
+    | **App** | `/agent`, `/contract`, `/corporate`, `/governance`, `/market` | Pre-built definitions for common use cases |
     | **Generic** | `/fiber`, `/sm`, `/script` | Accept any valid state machine definition |
     
   version: 1.0.0
@@ -37,6 +37,8 @@ tags:
     description: Contract workflows
   - name: Market
     description: Markets (predictions, auctions, crowdfunding, group buys)
+  - name: Corporate
+    description: Corporate governance (entities, board, shareholders, officers, securities, compliance)
   - name: Governance
     description: DAO and governance operations
   - name: Fiber
@@ -842,6 +844,380 @@ paths:
         '200':
           description: DAO list
 
+  # ===== Corporate Governance =====
+  /corporate/incorporate:
+    post:
+      tags: [Corporate]
+      summary: Form a new corporate entity
+      operationId: incorporate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IncorporateRequest'
+      responses:
+        '201':
+          description: Entity incorporated
+
+  /corporate/amend-charter:
+    post:
+      tags: [Corporate]
+      summary: Amend corporate charter
+      operationId: amendCharter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AmendCharterRequest'
+      responses:
+        '200':
+          description: Charter amended
+
+  /corporate/{entityId}:
+    get:
+      tags: [Corporate]
+      summary: Get corporate entity details
+      operationId: getCorporateEntity
+      parameters:
+        - name: entityId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Entity details
+
+  /corporate/{entityId}/board/elect:
+    post:
+      tags: [Corporate]
+      summary: Elect director to board
+      operationId: electDirector
+      parameters:
+        - name: entityId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ElectDirectorRequest'
+      responses:
+        '200':
+          description: Director elected
+
+  /corporate/{entityId}/board/meeting:
+    post:
+      tags: [Corporate]
+      summary: Manage board meeting (call, open, adjourn, record attendance)
+      operationId: boardMeeting
+      parameters:
+        - name: entityId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BoardMeetingRequest'
+      responses:
+        '200':
+          description: Meeting action completed
+
+  /corporate/{entityId}/board/resolution:
+    post:
+      tags: [Corporate]
+      summary: Submit board resolution
+      operationId: boardResolution
+      parameters:
+        - name: entityId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BoardResolutionRequest'
+      responses:
+        '200':
+          description: Resolution submitted
+
+  /corporate/{entityId}/board/consent:
+    post:
+      tags: [Corporate]
+      summary: Vote on board resolution (approve/reject/abstain)
+      operationId: boardConsent
+      parameters:
+        - name: entityId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [privateKey, resolutionId, vote]
+              properties:
+                privateKey:
+                  type: string
+                resolutionId:
+                  type: string
+                  format: uuid
+                vote:
+                  type: string
+                  enum: [approve, reject, abstain]
+                comment:
+                  type: string
+      responses:
+        '200':
+          description: Vote recorded
+
+  /corporate/{entityId}/shareholders/meeting:
+    post:
+      tags: [Corporate]
+      summary: Manage shareholder meeting
+      operationId: shareholderMeeting
+      parameters:
+        - name: entityId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShareholderMeetingRequest'
+      responses:
+        '200':
+          description: Meeting action completed
+
+  /corporate/{entityId}/shareholders/vote:
+    post:
+      tags: [Corporate]
+      summary: Shareholder vote
+      operationId: shareholderVote
+      parameters:
+        - name: entityId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [privateKey, proposalId, vote, shares]
+              properties:
+                privateKey:
+                  type: string
+                proposalId:
+                  type: string
+                  format: uuid
+                vote:
+                  type: string
+                  enum: [for, against, abstain]
+                shares:
+                  type: integer
+      responses:
+        '200':
+          description: Vote recorded
+
+  /corporate/{entityId}/shareholders/proxy:
+    post:
+      tags: [Corporate]
+      summary: Grant or revoke proxy voting rights
+      operationId: shareholderProxy
+      parameters:
+        - name: entityId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProxyRequest'
+      responses:
+        '200':
+          description: Proxy action completed
+
+  /corporate/{entityId}/officers/appoint:
+    post:
+      tags: [Corporate]
+      summary: Appoint corporate officer
+      operationId: appointOfficer
+      parameters:
+        - name: entityId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppointOfficerRequest'
+      responses:
+        '200':
+          description: Officer appointed
+
+  /corporate/{entityId}/officers/remove:
+    post:
+      tags: [Corporate]
+      summary: Remove corporate officer
+      operationId: removeOfficer
+      parameters:
+        - name: entityId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [privateKey, officerId, reason, resolutionRef]
+              properties:
+                privateKey:
+                  type: string
+                officerId:
+                  type: string
+                  format: uuid
+                reason:
+                  type: string
+                resolutionRef:
+                  type: string
+                  format: uuid
+                effectiveDate:
+                  type: string
+      responses:
+        '200':
+          description: Officer removed
+
+  /corporate/{entityId}/securities/issue:
+    post:
+      tags: [Corporate]
+      summary: Issue securities (shares)
+      operationId: issueSecurities
+      parameters:
+        - name: entityId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssueSecuritiesRequest'
+      responses:
+        '200':
+          description: Securities issued
+
+  /corporate/{entityId}/securities/transfer:
+    post:
+      tags: [Corporate]
+      summary: Transfer securities between holders
+      operationId: transferSecurities
+      parameters:
+        - name: entityId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferSecuritiesRequest'
+      responses:
+        '200':
+          description: Securities transferred
+
+  /corporate/{entityId}/compliance/file:
+    post:
+      tags: [Corporate]
+      summary: File compliance document
+      operationId: fileCompliance
+      parameters:
+        - name: entityId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FileComplianceRequest'
+      responses:
+        '200':
+          description: Filing recorded
+
+  /corporate/{entityId}/compliance:
+    get:
+      tags: [Corporate]
+      summary: Get compliance history
+      operationId: getCompliance
+      parameters:
+        - name: entityId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Compliance records
+
+  /corporate:
+    get:
+      tags: [Corporate]
+      summary: List all corporate entities
+      operationId: listCorporateEntities
+      responses:
+        '200':
+          description: Entity list
+
   # ===== Generic Fiber =====
   /fiber/create:
     post:
@@ -1442,6 +1818,322 @@ components:
               type: string
               format: date-time
 
+
+    # ===== Corporate Schemas =====
+    IncorporateRequest:
+      type: object
+      required: [privateKey, legalName, entityType, jurisdiction, registeredAgent]
+      properties:
+        privateKey:
+          type: string
+        legalName:
+          type: string
+        entityType:
+          type: string
+          enum: [C_CORP, S_CORP, B_CORP, LLC, LP, LLP]
+        jurisdiction:
+          type: object
+          required: [state]
+          properties:
+            state:
+              type: string
+              minLength: 2
+              maxLength: 2
+            country:
+              type: string
+              default: USA
+        registeredAgent:
+          type: object
+          required: [name, address]
+          properties:
+            name:
+              type: string
+            address:
+              type: object
+              properties:
+                street:
+                  type: string
+                city:
+                  type: string
+                state:
+                  type: string
+                zip:
+                  type: string
+        authorizedShares:
+          type: array
+          items:
+            type: object
+            properties:
+              className:
+                type: string
+              authorized:
+                type: integer
+              parValue:
+                type: number
+        initialDirectors:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              address:
+                type: string
+        purpose:
+          type: string
+        fiscalYearEnd:
+          type: string
+
+    AmendCharterRequest:
+      type: object
+      required: [privateKey, entityId, amendmentType, description, resolutionRef, effectiveDate]
+      properties:
+        privateKey:
+          type: string
+        entityId:
+          type: string
+          format: uuid
+        amendmentType:
+          type: string
+          enum: [NAME_CHANGE, SHARE_AUTHORIZATION, PURPOSE_CHANGE, OTHER]
+        description:
+          type: string
+        resolutionRef:
+          type: string
+          format: uuid
+        effectiveDate:
+          type: string
+        newLegalName:
+          type: string
+        newShareAuthorization:
+          type: object
+          properties:
+            className:
+              type: string
+            newAuthorized:
+              type: integer
+
+    ElectDirectorRequest:
+      type: object
+      required: [privateKey, entityId, name, termStart, termEnd, electionResolutionRef]
+      properties:
+        privateKey:
+          type: string
+        entityId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        termStart:
+          type: string
+        termEnd:
+          type: string
+        class:
+          type: string
+          enum: [CLASS_I, CLASS_II, CLASS_III, UNCLASSIFIED]
+        isIndependent:
+          type: boolean
+        electionResolutionRef:
+          type: string
+          format: uuid
+
+    BoardMeetingRequest:
+      type: object
+      required: [privateKey, entityId, action]
+      properties:
+        privateKey:
+          type: string
+        entityId:
+          type: string
+          format: uuid
+        action:
+          type: string
+          enum: [call, open, adjourn, record_attendance]
+        meetingType:
+          type: string
+          enum: [REGULAR, SPECIAL, ANNUAL, ORGANIZATIONAL]
+        scheduledDate:
+          type: string
+        location:
+          type: string
+        isVirtual:
+          type: boolean
+        agenda:
+          type: array
+          items:
+            type: string
+
+    BoardResolutionRequest:
+      type: object
+      required: [privateKey, entityId, title, category, resolvedText]
+      properties:
+        privateKey:
+          type: string
+        entityId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        category:
+          type: string
+          enum: [OFFICER_APPOINTMENT, OFFICER_REMOVAL, STOCK_ISSUANCE, DIVIDEND_DECLARATION, CONTRACT_APPROVAL, BANKING, CHARTER_AMENDMENT, BYLAW_AMENDMENT, MERGER_ACQUISITION, DISSOLUTION, COMMITTEE_ACTION, COMPENSATION, AUDIT, GENERAL, OTHER]
+        resolvedText:
+          type: string
+
+    ShareholderMeetingRequest:
+      type: object
+      required: [privateKey, entityId, action]
+      properties:
+        privateKey:
+          type: string
+        entityId:
+          type: string
+          format: uuid
+        action:
+          type: string
+          enum: [call, open, close, record_attendance]
+        meetingType:
+          type: string
+          enum: [ANNUAL, SPECIAL, CONSENT]
+        scheduledDate:
+          type: string
+        recordDate:
+          type: string
+        agenda:
+          type: array
+          items:
+            type: string
+
+    ProxyRequest:
+      type: object
+      required: [privateKey, entityId, action]
+      properties:
+        privateKey:
+          type: string
+        entityId:
+          type: string
+          format: uuid
+        action:
+          type: string
+          enum: [grant, revoke]
+        proxyHolderId:
+          type: string
+          format: uuid
+        shares:
+          type: integer
+        scope:
+          type: string
+          enum: [GENERAL, MEETING_SPECIFIC, LIMITED]
+
+    AppointOfficerRequest:
+      type: object
+      required: [privateKey, entityId, title, name, resolutionRef]
+      properties:
+        privateKey:
+          type: string
+        entityId:
+          type: string
+          format: uuid
+        title:
+          type: string
+          enum: [CEO, CFO, COO, CTO, Secretary, Treasurer, President, Vice_President, General_Counsel]
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        resolutionRef:
+          type: string
+          format: uuid
+        startDate:
+          type: string
+
+    IssueSecuritiesRequest:
+      type: object
+      required: [privateKey, entityId, className, shares, recipient, resolutionRef]
+      properties:
+        privateKey:
+          type: string
+        entityId:
+          type: string
+          format: uuid
+        className:
+          type: string
+        shares:
+          type: integer
+        pricePerShare:
+          type: number
+        recipient:
+          type: object
+          required: [name, type]
+          properties:
+            name:
+              type: string
+            type:
+              type: string
+              enum: [individual, entity]
+            address:
+              type: string
+        resolutionRef:
+          type: string
+          format: uuid
+        restrictionType:
+          type: string
+          enum: [NONE, RULE_144, LOCK_UP, TRANSFER_RESTRICTION]
+
+    TransferSecuritiesRequest:
+      type: object
+      required: [privateKey, entityId, fromHolderId, toRecipient, className, shares]
+      properties:
+        privateKey:
+          type: string
+        entityId:
+          type: string
+          format: uuid
+        fromHolderId:
+          type: string
+          format: uuid
+        toRecipient:
+          type: object
+          required: [name, type]
+          properties:
+            name:
+              type: string
+            type:
+              type: string
+        className:
+          type: string
+        shares:
+          type: integer
+        pricePerShare:
+          type: number
+        transferType:
+          type: string
+          enum: [SALE, GIFT, INHERITANCE, CONVERSION]
+
+    FileComplianceRequest:
+      type: object
+      required: [privateKey, entityId, filingType, jurisdiction, dueDate]
+      properties:
+        privateKey:
+          type: string
+        entityId:
+          type: string
+          format: uuid
+        filingType:
+          type: string
+          enum: [ANNUAL_REPORT, TAX_RETURN, BENEFICIAL_OWNERSHIP, SECURITIES_FILING, FOREIGN_QUALIFICATION, REGISTERED_AGENT_UPDATE, OTHER]
+        jurisdiction:
+          type: string
+        dueDate:
+          type: string
+        filedDate:
+          type: string
+        documentRef:
+          type: string
 
   responses:
     BadRequest:
