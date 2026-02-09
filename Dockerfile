@@ -1,9 +1,10 @@
 # Build stage
-FROM node:20-alpine AS builder
+FROM node:20-slim AS builder
 
 WORKDIR /app
 
-# Install pnpm
+# Install pnpm and OpenSSL for Prisma
+RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@8 --activate
 
 # Copy package files
@@ -31,7 +32,7 @@ RUN pnpm --filter indexer prisma generate
 RUN pnpm run build
 
 # Production stage
-FROM node:20-alpine AS production
+FROM node:20-slim AS production
 
 # Version info (injected at build time)
 ARG GIT_SHA=unknown
@@ -44,10 +45,9 @@ ENV npm_package_version=$VERSION
 
 WORKDIR /app
 
+# Install pnpm, netcat for health checks, and OpenSSL for Prisma
+RUN apt-get update && apt-get install -y openssl netcat-openbsd && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@8 --activate
-
-# Install netcat for database health checks
-RUN apk add --no-cache netcat-openbsd
 
 # Copy built artifacts
 COPY --from=builder /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
