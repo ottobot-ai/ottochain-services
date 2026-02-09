@@ -16,6 +16,7 @@ import {
   getStateMachine, 
   getCheckpoint, 
   keyPairFromPrivateKey,
+  getFiberSequenceNumber,
   type StateMachineDefinition,
   type CreateStateMachine,
   type TransitionStateMachine,
@@ -191,12 +192,15 @@ fiberRoutes.post('/batch', async (req, res) => {
           throw new Error(`Fiber ${t.fiberId} not found`);
         }
 
+        // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+        const targetSequenceNumber = await getFiberSequenceNumber(t.fiberId);
+
         const message = {
           TransitionStateMachine: {
             fiberId: t.fiberId,
             eventName: t.event,
             payload: t.payload ?? {},
-            targetSequenceNumber: state.sequenceNumber ?? 0,
+            targetSequenceNumber,
           },
         };
 

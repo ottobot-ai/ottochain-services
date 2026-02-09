@@ -9,6 +9,7 @@ import {
   getStateMachine, 
   getCheckpoint, 
   keyPairFromPrivateKey,
+  getFiberSequenceNumber,
   type StateMachineDefinition,
   type CreateStateMachine,
   type TransitionStateMachine,
@@ -139,12 +140,15 @@ contractRoutes.post('/accept', async (req, res) => {
       });
     }
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.contractId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.contractId,
         eventName: 'accept',
         payload: { agent: callerAddress },
-        targetSequenceNumber: (state.sequenceNumber ?? 0),
+        targetSequenceNumber,
       },
     };
 
@@ -193,12 +197,15 @@ contractRoutes.post('/reject', async (req, res) => {
 
     const callerAddress = keyPairFromPrivateKey(input.privateKey).address;
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.contractId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.contractId,
         eventName: 'reject',
         payload: { agent: callerAddress, reason: input.reason ?? '' },
-        targetSequenceNumber: (state.sequenceNumber ?? 0),
+        targetSequenceNumber,
       },
     };
 
@@ -243,12 +250,15 @@ contractRoutes.post('/complete', async (req, res) => {
 
     const callerAddress = keyPairFromPrivateKey(input.privateKey).address;
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.contractId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.contractId,
         eventName: 'submit_completion',
         payload: { agent: callerAddress, proof: input.proof ?? '' },
-        targetSequenceNumber: (state.sequenceNumber ?? 0),
+        targetSequenceNumber,
       },
     };
 
@@ -300,12 +310,15 @@ contractRoutes.post('/finalize', async (req, res) => {
       });
     }
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.contractId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.contractId,
         eventName: 'finalize',
         payload: {},
-        targetSequenceNumber: (state.sequenceNumber ?? 0),
+        targetSequenceNumber,
       },
     };
 
@@ -354,12 +367,15 @@ contractRoutes.post('/dispute', async (req, res) => {
 
     const callerAddress = keyPairFromPrivateKey(input.privateKey).address;
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.contractId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.contractId,
         eventName: 'dispute',
         payload: { agent: callerAddress, reason: input.reason },
-        targetSequenceNumber: (state.sequenceNumber ?? 0),
+        targetSequenceNumber,
       },
     };
 

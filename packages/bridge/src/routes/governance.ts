@@ -9,6 +9,7 @@ import {
   getStateMachine, 
   getCheckpoint, 
   keyPairFromPrivateKey,
+  getFiberSequenceNumber,
   type StateMachineDefinition,
   type CreateStateMachine,
   type TransitionStateMachine,
@@ -267,6 +268,9 @@ governanceRoutes.post('/propose', async (req, res) => {
 
     const proposalId = input.proposalId ?? randomUUID();
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.daoId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.daoId,
@@ -279,7 +283,7 @@ governanceRoutes.post('/propose', async (req, res) => {
           actionType: input.actionType ?? 'general',
           payload: input.payload ?? {},
         },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
@@ -349,12 +353,15 @@ governanceRoutes.post('/vote', async (req, res) => {
       ? { agent: callerAddress }
       : { agent: callerAddress, vote: input.vote.toLowerCase(), weight: input.weight ?? 1 };
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.daoId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.daoId,
         eventName,
         payload,
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
@@ -413,12 +420,15 @@ governanceRoutes.post('/execute', async (req, res) => {
       });
     }
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.daoId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.daoId,
         eventName: 'execute',
         payload: { agent: callerAddress },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
@@ -466,6 +476,9 @@ governanceRoutes.post('/delegate', async (req, res) => {
       return res.status(404).json({ error: 'DAO not found' });
     }
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.daoId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.daoId,
@@ -475,7 +488,7 @@ governanceRoutes.post('/delegate', async (req, res) => {
           delegateTo: input.delegateTo,
           weight: input.weight ?? 1,
         },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
@@ -535,6 +548,9 @@ governanceRoutes.post('/veto', async (req, res) => {
       });
     }
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.daoId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.daoId,
@@ -543,7 +559,7 @@ governanceRoutes.post('/veto', async (req, res) => {
           agent: callerAddress,
           reason: input.reason,
         },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 

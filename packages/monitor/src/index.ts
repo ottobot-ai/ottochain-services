@@ -420,6 +420,40 @@ async function main(): Promise<void> {
     }
   });
   
+  // Aggregate version info from all services and nodes
+  app.get('/api/versions', async (_, res) => {
+    const health = collector.getHealth();
+    
+    const versions: Record<string, unknown> = {
+      timestamp: new Date().toISOString(),
+      monitor: {
+        version: process.env.npm_package_version ?? '0.1.0',
+        commit: process.env.GIT_SHA ?? 'unknown',
+        built: process.env.BUILD_TIME ?? 'unknown',
+      },
+      nodes: {} as Record<string, { version?: string; state?: string }>,
+      services: {} as Record<string, { status: string; metadata?: unknown }>,
+    };
+    
+    // Collect node versions
+    for (const node of health.nodes) {
+      (versions.nodes as Record<string, unknown>)[node.name] = {
+        version: node.version,
+        state: node.state,
+      };
+    }
+    
+    // Collect service info
+    for (const svc of health.services) {
+      (versions.services as Record<string, unknown>)[svc.name] = {
+        status: svc.status,
+        metadata: svc.metadata,
+      };
+    }
+    
+    res.json(versions);
+  });
+  
   // Cache status and control endpoint
   app.get('/api/cache', async (_, res) => {
     if (!cache || !refresher) {

@@ -11,6 +11,7 @@ import {
   keyPairFromPrivateKey, 
   generateKeyPair, 
   waitForFiber,
+  getFiberSequenceNumber,
   type StateMachineDefinition,
   type CreateStateMachine,
   type TransitionStateMachine,
@@ -132,12 +133,14 @@ agentRoutes.post('/transition', async (req, res) => {
   try {
     const input = TransitionRequestSchema.parse(req.body);
 
-    // Get current state to determine sequence number
+    // Verify agent exists
     const state = await getStateMachine(input.fiberId) as { sequenceNumber?: number } | null;
     if (!state) {
       return res.status(404).json({ error: 'Agent not found' });
     }
-    const targetSequenceNumber = (state.sequenceNumber ?? 0);
+
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.fiberId);
 
     const message = {
       TransitionStateMachine: {
@@ -206,12 +209,15 @@ agentRoutes.post('/activate', async (req, res) => {
       });
     }
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(fiberId);
+
     const message = {
       TransitionStateMachine: {
         fiberId,
         eventName: 'activate',
         payload: {},
-        targetSequenceNumber: (state.sequenceNumber ?? 0),
+        targetSequenceNumber,
       },
     };
 
@@ -259,12 +265,15 @@ agentRoutes.post('/vouch', async (req, res) => {
     // Derive voucher address if not provided
     const voucherAddress = fromAddress ?? keyPairFromPrivateKey(privateKey).address;
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(targetFiberId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: targetFiberId,
         eventName: 'receive_vouch',
         payload: { from: voucherAddress, reason: reason ?? '' },
-        targetSequenceNumber: (state.sequenceNumber ?? 0),
+        targetSequenceNumber,
       },
     };
 

@@ -10,6 +10,7 @@ import {
   getStateMachine, 
   getCheckpoint, 
   keyPairFromPrivateKey,
+  getFiberSequenceNumber,
   type StateMachineDefinition,
   type CreateStateMachine,
   type TransitionStateMachine,
@@ -130,6 +131,9 @@ smRoutes.post('/transition', async (req, res) => {
 
     const callerAddress = keyPairFromPrivateKey(input.privateKey).address;
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.fiberId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.fiberId,
@@ -138,7 +142,7 @@ smRoutes.post('/transition', async (req, res) => {
           agent: callerAddress,
           ...input.payload,
         },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
@@ -285,12 +289,15 @@ smRoutes.post('/:fiberId/commit', async (req, res) => {
 
     const callerAddress = keyPairFromPrivateKey(privateKey).address;
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(req.params.fiberId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: req.params.fiberId,
         eventName: 'commit',
         payload: { agent: callerAddress, amount, data: data ?? {} },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 

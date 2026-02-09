@@ -4,7 +4,7 @@
 import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
-import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey, waitForFiber } from '../metagraph.js';
+import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey, waitForFiber, getFiberSequenceNumber } from '../metagraph.js';
 import { getOracleDefinition, OracleState, DEFAULT_ORACLE_CONFIG } from '@ottochain/sdk/apps/oracles';
 
 export const oracleRoutes: RouterType = Router();
@@ -173,12 +173,15 @@ oracleRoutes.post('/activate', async (req, res) => {
       });
     }
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(oracleId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: oracleId,
         eventName: 'activate',
         payload: { agent: callerAddress },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
@@ -228,6 +231,9 @@ oracleRoutes.post('/stake', async (req, res) => {
       return res.status(403).json({ error: 'Only oracle owner can add stake' });
     }
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.oracleId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.oracleId,
@@ -236,7 +242,7 @@ oracleRoutes.post('/stake', async (req, res) => {
           agent: callerAddress,
           amount: input.amount,
         },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
@@ -283,6 +289,9 @@ oracleRoutes.post('/record-resolution', async (req, res) => {
       });
     }
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.oracleId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.oracleId,
@@ -291,7 +300,7 @@ oracleRoutes.post('/record-resolution', async (req, res) => {
           marketId: input.marketId,
           correct: input.correct,
         },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
@@ -347,6 +356,9 @@ oracleRoutes.post('/slash', async (req, res) => {
       });
     }
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.oracleId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.oracleId,
@@ -356,7 +368,7 @@ oracleRoutes.post('/slash', async (req, res) => {
           reason: input.reason,
           marketId: input.marketId,
         },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
@@ -415,12 +427,15 @@ oracleRoutes.post('/transition', async (req, res) => {
       });
     }
 
+    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+    const targetSequenceNumber = await getFiberSequenceNumber(input.oracleId);
+
     const message = {
       TransitionStateMachine: {
         fiberId: input.oracleId,
         eventName: input.event,
         payload: { agent: callerAddress },
-        targetSequenceNumber: state.sequenceNumber ?? 0,
+        targetSequenceNumber,
       },
     };
 
