@@ -129,6 +129,38 @@ jobs:
         run: |
           sbt "currencyL0/assembly; dataL1/assembly"
 
+      - name: Verify test keys exist and are different
+        working-directory: tessellation/docker
+        run: |
+          echo "=== Verifying test keys in tessellation repo ==="
+          
+          # Check that local-test-keys exist
+          if [ ! -d "config/local-test-keys/0" ]; then
+            echo "ERROR: local-test-keys not found!"
+            exit 1
+          fi
+          
+          # Verify all 3 keys exist and are different
+          PEER_IDS=()
+          for i in 0 1 2; do
+            if [ ! -f "config/local-test-keys/$i/key.p12" ]; then
+              echo "ERROR: Key $i not found!"
+              exit 1
+            fi
+            peer_id=$(cat config/local-test-keys/$i/peer_id)
+            echo "Key $i peer_id: $peer_id"
+            PEER_IDS+=("$peer_id")
+          done
+          
+          # Check all peer IDs are unique
+          unique_count=$(printf '%s\n' "${PEER_IDS[@]}" | sort -u | wc -l)
+          if [ "$unique_count" != "3" ]; then
+            echo "ERROR: Not all peer IDs are unique! Found $unique_count unique IDs"
+            exit 1
+          fi
+          
+          echo "✓ All 3 test keys verified as unique"
+
       - name: Start metagraph cluster
         working-directory: tessellation/docker
         run: |
@@ -145,6 +177,54 @@ jobs:
           # Use compose-runner which handles key generation, env setup, and container orchestration
           # --skip-assembly since we already built everything in prior steps
           ./bin/compose-runner.sh --up --metagraph=$(pwd)/../../ottochain --dl1 --skip-assembly
+
+      - name: Verify key distribution
+        working-directory: tessellation
+        run: |
+          echo "=== Verifying keys were distributed to node directories ==="
+          
+          for i in 0 1 2; do
+            echo "--- Node $i ---"
+            
+            # Check key.p12 exists
+            if [ ! -f "nodes/$i/key.p12" ]; then
+              echo "ERROR: nodes/$i/key.p12 not found!"
+              ls -la nodes/$i/ || true
+              exit 1
+            fi
+            
+            # Show key hash to verify they're different
+            key_hash=$(md5sum nodes/$i/key.p12 | cut -d' ' -f1)
+            echo "Key hash: $key_hash"
+            
+            # Show peer_id if available
+            if [ -f "nodes/$i/peer_id" ]; then
+              echo "Peer ID: $(cat nodes/$i/peer_id)"
+            fi
+            
+            # Check .env has correct settings
+            if [ -f "nodes/$i/.env" ]; then
+              echo "Container suffix: $(grep CONTAINER_NAME_SUFFIX nodes/$i/.env || echo 'not set')"
+              echo "DL1 join: $(grep CL_DOCKER_DL1_JOIN nodes/$i/.env || echo 'not set')"
+              echo "DL1 genesis: $(grep CL_DOCKER_DL1_GENESIS nodes/$i/.env || echo 'not set')"
+            fi
+            echo ""
+          done
+          
+          # Verify all key hashes are unique
+          hash0=$(md5sum nodes/0/key.p12 | cut -d' ' -f1)
+          hash1=$(md5sum nodes/1/key.p12 | cut -d' ' -f1)
+          hash2=$(md5sum nodes/2/key.p12 | cut -d' ' -f1)
+          
+          if [ "$hash0" = "$hash1" ] || [ "$hash0" = "$hash2" ] || [ "$hash1" = "$hash2" ]; then
+            echo "ERROR: Key hashes are not all unique!"
+            echo "Node 0: $hash0"
+            echo "Node 1: $hash1"
+            echo "Node 2: $hash2"
+            exit 1
+          fi
+          
+          echo "✓ All node keys verified as unique"
 
       - name: Wait for metagraph healthy
         run: |
@@ -194,6 +274,56 @@ jobs:
           echo "=== ML0 logs ==="
           docker logs ml0-0 2>&1 | tail -50 || true
           exit 1
+
+      - name: Verify DL1 cluster formation
+        run: |
+          echo "=== Verifying DL1 cluster has multiple unique peers ==="
+          
+          # Get peer IDs from each DL1 node
+          PEER_0=$(curl -s http://localhost:9400/node/info | jq -r '.id // "error"' 2>/dev/null || echo "unreachable")
+          PEER_1=$(curl -s http://localhost:9410/node/info | jq -r '.id // "error"' 2>/dev/null || echo "unreachable")
+          PEER_2=$(curl -s http://localhost:9420/node/info | jq -r '.id // "error"' 2>/dev/null || echo "unreachable")
+          
+          echo "DL1-0 (port 9400): ${PEER_0:0:32}..."
+          echo "DL1-1 (port 9410): ${PEER_1:0:32}..."
+          echo "DL1-2 (port 9420): ${PEER_2:0:32}..."
+          
+          # Check if all peer IDs are unique (the core issue we're fixing)
+          if [ "$PEER_0" = "$PEER_1" ] || [ "$PEER_0" = "$PEER_2" ] || [ "$PEER_1" = "$PEER_2" ]; then
+            echo ""
+            echo "❌ ERROR: DL1 nodes have DUPLICATE peer IDs!"
+            echo "This means all nodes are using the same key.p12 file."
+            echo ""
+            echo "=== Container volume mounts ==="
+            for c in dl1-0 dl1-1 dl1-2; do
+              echo "--- $c ---"
+              docker inspect $c --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{"\n"}}{{end}}' 2>/dev/null | grep key || echo "no key mount found"
+            done
+            echo ""
+            echo "=== Key files on disk ==="
+            for i in 0 1 2; do
+              if [ -f "tessellation/nodes/$i/key.p12" ]; then
+                echo "nodes/$i/key.p12: $(md5sum tessellation/nodes/$i/key.p12 | cut -d' ' -f1)"
+              else
+                echo "nodes/$i/key.p12: NOT FOUND"
+              fi
+            done
+            exit 1
+          fi
+          
+          echo "✓ All DL1 nodes have unique peer IDs"
+          
+          # Get cluster info from DL1
+          cluster_size=$(curl -s http://localhost:9400/cluster/info | jq 'length' 2>/dev/null || echo "0")
+          echo "DL1 cluster size: $cluster_size"
+          
+          if [ "$cluster_size" -lt 2 ]; then
+            echo "WARNING: DL1 cluster has fewer than 2 peers - nodes may not have joined"
+            echo "=== DL1-0 cluster info ==="
+            curl -s http://localhost:9400/cluster/info | jq . || true
+          else
+            echo "✓ DL1 cluster has $cluster_size peers"
+          fi
 
       - name: Start Redis
         run: |
@@ -284,12 +414,29 @@ jobs:
         run: |
           echo "=== Container list ==="
           docker ps -a || true
+          
+          echo "=== Container volume mounts ==="
+          for container in gl0-0 ml0-0 dl1-0 dl1-1 dl1-2 cl1-0 cl1-1 cl1-2; do
+            echo "--- $container ---"
+            docker inspect $container --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{"\n"}}{{end}}' 2>/dev/null || echo "not found"
+          done
+          
+          echo "=== DL1 Peer IDs (from logs) ==="
+          for container in dl1-0 dl1-1 dl1-2; do
+            echo "--- $container ---"
+            docker logs $container 2>&1 | grep -i "Self peerId\|Majority Peer\|Join" | head -5 || true
+          done
+          
           echo "=== GL0 Logs ==="
           docker logs gl0-0 2>&1 | tail -100 || true
           echo "=== ML0 Logs ==="
           docker logs ml0-0 2>&1 | tail -100 || true
-          echo "=== DL1 Logs ==="
+          echo "=== DL1-0 Logs ==="
           docker logs dl1-0 2>&1 | tail -100 || true
+          echo "=== DL1-1 Logs ==="
+          docker logs dl1-1 2>&1 | tail -50 || true
+          echo "=== DL1-2 Logs ==="
+          docker logs dl1-2 2>&1 | tail -50 || true
           echo "=== Webhook Proxy Logs ==="
           docker logs webhook-proxy 2>&1 | tail -50 || true
           echo "=== Webhook Subscribers ==="
