@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/ottobot-ai/ottochain-services/compare/v0.3.1...v0.3.2) (2026-02-11)
+
+
+### Bug Fixes
+
+* use GH_TOKEN env var for gh api command ([#78](https://github.com/ottobot-ai/ottochain-services/issues/78)) ([21edff6](https://github.com/ottobot-ai/ottochain-services/commit/21edff61275a8a631bc49a2522807307ddb9d88d))
+
 ## [0.3.1](https://github.com/ottobot-ai/ottochain-services/compare/v0.3.0...v0.3.1) (2026-02-11)
 
 
