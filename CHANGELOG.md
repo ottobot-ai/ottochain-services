@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/ottobot-ai/ottochain-services/compare/v0.3.0...v0.3.1) (2026-02-11)
+
+
+### Bug Fixes
+
+* add Prisma binaryTarget for Debian Bookworm (OpenSSL 3.0) ([#74](https://github.com/ottobot-ai/ottochain-services/issues/74)) ([a54d5e9](https://github.com/ottobot-ai/ottochain-services/commit/a54d5e955e4e196e6144e37d71a379800f20cfce))
+
 ## [0.3.0](https://github.com/ottobot-ai/ottochain-services/compare/v0.2.0...v0.3.0) (2026-02-10)
 
 
