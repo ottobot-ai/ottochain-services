@@ -342,6 +342,8 @@ export interface GeneratorConfig {
   bridgeUrl: string;
   /** ML0 URL for state queries */
   ml0Url: string;
+  /** Indexer URL for state verification (preferred over ML0) */
+  indexerUrl: string;
   /** Platform names for agent distribution */
   platforms: string[];
   /** Seed for reproducible runs (optional) */
@@ -373,6 +375,7 @@ export const DEFAULT_CONFIG: GeneratorConfig = {
   maxGenerations: 0, // Infinite
   bridgeUrl: 'http://localhost:3030',
   ml0Url: 'http://localhost:9200',
+  indexerUrl: 'http://localhost:3031',
   platforms: ['discord', 'telegram', 'twitter', 'github'],
   seed: undefined,
   // Market defaults
