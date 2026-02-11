@@ -18,6 +18,7 @@ import type {
 } from './types.js';
 import { DEFAULT_CONFIG, MarketState as MS, SdkAgentState as AgentState, SdkContractState as ContractState } from './types.js';
 import { BridgeClient } from './bridge-client.js';
+import { IndexerClient } from './indexer-client.js';
 import {
   computeFitness,
   selectActiveAgents,
@@ -57,6 +58,7 @@ export interface SimulatorEvents {
 export class Simulator {
   private config: GeneratorConfig;
   private client: BridgeClient;
+  private indexer: IndexerClient;
   private events: SimulatorEvents;
   
   // Population state
@@ -84,6 +86,9 @@ export class Simulator {
       bridgeUrl: this.config.bridgeUrl,
       ml0Url: this.config.ml0Url,
     });
+    this.indexer = new IndexerClient({
+      indexerUrl: this.config.indexerUrl,
+    });
     
     this.context = {
       generation: 0,
@@ -106,6 +111,7 @@ export class Simulator {
     console.log(`   Target population: ${this.config.targetPopulation}`);
     console.log(`   Generation interval: ${this.config.generationIntervalMs}ms`);
     console.log(`   Bridge: ${this.config.bridgeUrl}`);
+    console.log(`   Indexer: ${this.config.indexerUrl}`);
     console.log(`   ML0: ${this.config.ml0Url}`);
     
     // Bootstrap initial population
@@ -270,24 +276,26 @@ export class Simulator {
   }
 
   /**
-   * Wait for a fiber to appear in the ML0 state checkpoint.
-   * Reduced delays for faster throughput (bridge handles sync internally).
+   * Wait for a fiber to appear in the indexer (source of truth).
+   * The indexer receives webhook pushes from ML0, so it's the most reliable
+   * way to verify transaction processing.
    */
   private async waitForFiber(fiberId: string, maxAttempts: number = 5): Promise<boolean> {
-    for (let i = 0; i < maxAttempts; i++) {
-      try {
-        const checkpoint = await this.client.getCheckpoint();
-        if (checkpoint.state?.stateMachines?.[fiberId]) {
-          // Reduced delay - bridge waitForSync handles the rest
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          return true;
-        }
-      } catch {
-        // Ignore fetch errors
+    const timeoutMs = maxAttempts * 2000; // ~2s per attempt equivalent
+    const result = await this.indexer.waitForFiber(fiberId, { 
+      timeoutMs,
+      pollIntervalMs: 1000, 
+    });
+    
+    // Check for rejections if fiber didn't appear
+    if (!result.found) {
+      const hasRejection = await this.indexer.hasRecentRejection(fiberId);
+      if (hasRejection) {
+        console.log(`  ⚠️ Fiber ${fiberId.slice(0, 8)} was rejected`);
       }
-      await new Promise(resolve => setTimeout(resolve, 500));
     }
-    return false;
+    
+    return result.found;
   }
 
   private async createAgent(index: number): Promise<Agent> {

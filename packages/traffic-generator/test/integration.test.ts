@@ -3,23 +3,27 @@
  * Traffic Generator Integration Test
  * 
  * Tests the full agent lifecycle: registration → state sync → activation.
+ * Uses the Indexer as the source of truth for state verification.
  * 
  * Environment variables:
  *   BRIDGE_URL          - Bridge service URL (default: http://localhost:3030)
- *   ML0_URL             - Metagraph L0 URL (default: http://localhost:9200)
+ *   INDEXER_URL         - Indexer service URL (default: http://localhost:3031)
+ *   ML0_URL             - Metagraph L0 URL for fallback (default: http://localhost:9200)
  *   FIBER_WAIT_TIMEOUT  - Max seconds to wait for fiber in state (default: 30)
  *   DL1_SYNC_WAIT       - Seconds to wait for DL1 sync (default: 10)
  *   ACTIVATION_WAIT     - Seconds to wait after activation (default: 5)
  * 
  * Run with:
- *   BRIDGE_URL=http://localhost:3030 ML0_URL=http://localhost:9200 npx tsx test/integration.test.ts
+ *   BRIDGE_URL=http://localhost:3030 INDEXER_URL=http://localhost:3031 npx tsx test/integration.test.ts
  */
 
 import { BridgeClient } from '../dist/bridge-client.js';
+import { IndexerClient } from '../dist/indexer-client.js';
 
 // Configuration with ENV overrides
 const CONFIG = {
   bridgeUrl: process.env.BRIDGE_URL ?? 'http://localhost:3030',
+  indexerUrl: process.env.INDEXER_URL ?? 'http://localhost:3031',
   ml0Url: process.env.ML0_URL ?? 'http://localhost:9200',
   fiberWaitTimeout: parseInt(process.env.FIBER_WAIT_TIMEOUT ?? '30', 10),
   dl1SyncWait: parseInt(process.env.DL1_SYNC_WAIT ?? '10', 10),
@@ -32,95 +36,60 @@ async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-/** Get current ML0 snapshot ordinal for diagnostic logging */
-async function getSnapshotOrdinal(ml0Url: string): Promise<number | null> {
-  try {
-    const res = await fetch(`${ml0Url}/data-application/v1/checkpoint`, { 
-      signal: AbortSignal.timeout(5000) 
-    });
-    const data = await res.json() as { ordinal?: number };
-    return data.ordinal ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/** Check if fiber has any rejections in the indexer */
-async function checkForRejections(
-  indexerUrl: string | undefined,
-  fiberId: string
-): Promise<{ rejected: boolean; reason?: string }> {
-  if (!indexerUrl) return { rejected: false };
-  
-  try {
-    const res = await fetch(`${indexerUrl}/fibers/${fiberId}/rejections?limit=1`, {
-      signal: AbortSignal.timeout(5000)
-    });
-    if (res.ok) {
-      const data = await res.json() as { rejections: Array<{ errors: Array<{ code: string; message: string }> }>; total: number };
-      if (data.total > 0 && data.rejections[0]) {
-        const errors = data.rejections[0].errors.map(e => e.code).join(', ');
-        return { rejected: true, reason: errors };
-      }
-    }
-  } catch {
-    // Ignore errors - indexer might not be ready yet
-  }
-  return { rejected: false };
-}
-
-/** Wait for fiber to appear in ML0 state with diagnostic logging */
+/**
+ * Wait for fiber to appear in the indexer (source of truth).
+ * The indexer receives webhook pushes from ML0 and tracks rejections.
+ */
 async function waitForFiber(
-  ml0Url: string, 
+  indexer: IndexerClient,
   fiberId: string, 
-  timeoutSeconds: number,
-  indexerUrl?: string
-): Promise<{ found: boolean; lastOrdinal: number | null; rejected?: boolean; rejectReason?: string }> {
+  timeoutSeconds: number
+): Promise<{ found: boolean; rejected?: boolean; rejectReason?: string }> {
   const startTime = Date.now();
-  const deadline = startTime + timeoutSeconds * 1000;
-  let lastOrdinal: number | null = null;
+  const timeoutMs = timeoutSeconds * 1000;
+  const pollIntervalMs = 2000;
+  
+  console.log(`  ⏳ Waiting for fiber in indexer (up to ${timeoutSeconds}s)...`);
+  
+  // Use indexer's waitForFiber with progress logging
   let checkCount = 0;
+  const deadline = startTime + timeoutMs;
   
   while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`${ml0Url}/data-application/v1/checkpoint`, {
-        signal: AbortSignal.timeout(5000)
-      });
-      const data = await res.json() as { 
-        ordinal?: number;
-        state?: { stateMachines?: Record<string, unknown> } 
-      };
-      
-      const currentOrdinal = data.ordinal ?? null;
-      
-      // Log ordinal progression every 5 checks
-      if (checkCount % 5 === 0 && currentOrdinal !== null) {
-        const elapsed = Math.round((Date.now() - startTime) / 1000);
-        console.log(`  📊 [${elapsed}s] Snapshot ordinal: ${currentOrdinal}`);
-      }
-      lastOrdinal = currentOrdinal;
-      
-      if (data.state?.stateMachines?.[fiberId]) {
-        return { found: true, lastOrdinal };
-      }
-      
-      // Check for rejections every 10 seconds to fail fast
-      if (checkCount > 0 && checkCount % 10 === 0) {
-        const rejCheck = await checkForRejections(indexerUrl, fiberId);
-        if (rejCheck.rejected) {
-          console.log(`  ❌ Transaction REJECTED: ${rejCheck.reason}`);
-          return { found: false, lastOrdinal, rejected: true, rejectReason: rejCheck.reason };
-        }
-      }
-    } catch {
-      // Ignore fetch errors, keep trying
+    checkCount++;
+    
+    // Check if fiber exists
+    const verification = await indexer.verifyFiber(fiberId);
+    
+    // Log progress every few checks
+    if (checkCount % 3 === 0) {
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
+      const status = verification.found ? 'FOUND' : 'waiting...';
+      console.log(`  📊 [${elapsed}s] Indexer status: ${status}`);
     }
     
-    checkCount++;
-    await sleep(1000);
+    if (verification.found) {
+      return { found: true };
+    }
+    
+    // Check for rejections to fail fast
+    if (verification.hasUnprocessedRejection && verification.rejections.length > 0) {
+      const errors = verification.rejections[0].errors.map(e => e.code).join(', ');
+      console.log(`  ❌ Transaction REJECTED: ${errors}`);
+      return { found: false, rejected: true, rejectReason: errors };
+    }
+    
+    await sleep(pollIntervalMs);
   }
   
-  return { found: false, lastOrdinal };
+  // Final check for rejections
+  const finalCheck = await indexer.verifyFiber(fiberId);
+  if (finalCheck.rejections.length > 0) {
+    const errors = finalCheck.rejections[0].errors.map(e => e.code).join(', ');
+    return { found: false, rejected: true, rejectReason: errors };
+  }
+  
+  return { found: false };
 }
 
 type TestStatus = 'passed' | 'failed' | 'skipped';
@@ -135,13 +104,15 @@ async function main(): Promise<void> {
   console.log('═══════════════════════════════════════════════════════════════');
   console.log(' OttoChain Traffic Generator - Integration Test');
   console.log('═══════════════════════════════════════════════════════════════');
-  console.log(`Bridge: ${CONFIG.bridgeUrl}`);
-  console.log(`ML0:    ${CONFIG.ml0Url}`);
+  console.log(`Bridge:  ${CONFIG.bridgeUrl}`);
+  console.log(`Indexer: ${CONFIG.indexerUrl}`);
+  console.log(`ML0:     ${CONFIG.ml0Url}`);
   console.log(`Timeouts: fiber=${CONFIG.fiberWaitTimeout}s, dl1Sync=${CONFIG.dl1SyncWait}s, activation=${CONFIG.activationWait}s`);
   console.log('');
 
   const results: TestResult[] = [];
   let client: InstanceType<typeof BridgeClient>;
+  let indexer: IndexerClient;
   let fiberInState = false; // Track if fiber appeared - skip dependent tests if not
   
   // Test 1: Bridge health check
@@ -160,8 +131,9 @@ async function main(): Promise<void> {
     results.push({ name: 'Bridge Health Check', status: 'failed', message: String(err) });
   }
   
-  // Initialize client
+  // Initialize clients
   client = new BridgeClient({ bridgeUrl: CONFIG.bridgeUrl, ml0Url: CONFIG.ml0Url });
+  indexer = new IndexerClient({ indexerUrl: CONFIG.indexerUrl });
   
   // Test 2: Wallet generation
   console.log('\n🔍 Test 2: Wallet Generation');
@@ -216,17 +188,10 @@ async function main(): Promise<void> {
     
     if (!fiberId) continue;
     
-    // Test 4: Wait for fiber to appear in state
-    console.log(`\n🔍 Test 4: Wait for Fiber in State (attempt ${attempt}/${CONFIG.maxRegistrationRetries})`);
-    console.log(`⏳ Waiting for fiber to appear in ML0 state (up to ${CONFIG.fiberWaitTimeout}s)...`);
+    // Test 4: Wait for fiber to appear in indexer (source of truth)
+    console.log(`\n🔍 Test 4: Wait for Fiber in Indexer (attempt ${attempt}/${CONFIG.maxRegistrationRetries})`);
     
-    const initialOrdinal = await getSnapshotOrdinal(CONFIG.ml0Url);
-    if (initialOrdinal !== null) {
-      console.log(`  📊 Initial snapshot ordinal: ${initialOrdinal}`);
-    }
-    
-    const indexerUrl = process.env.INDEXER_URL;
-    const waitResult = await waitForFiber(CONFIG.ml0Url, fiberId, CONFIG.fiberWaitTimeout, indexerUrl);
+    const waitResult = await waitForFiber(indexer, fiberId, CONFIG.fiberWaitTimeout);
     
     // Fail fast if rejected
     if (waitResult.rejected) {
@@ -240,7 +205,7 @@ async function main(): Promise<void> {
     }
     
     if (waitResult.found) {
-      console.log('✓ Fiber visible in ML0 state checkpoint');
+      console.log('✓ Fiber indexed successfully');
       console.log(`⏳ Waiting for DL1 sync (${CONFIG.dl1SyncWait}s)...`);
       await sleep(CONFIG.dl1SyncWait * 1000);
       if (attempt === 1) {
@@ -251,10 +216,7 @@ async function main(): Promise<void> {
       fiberInState = true;
       break; // Success! Exit retry loop
     } else {
-      const ordinalProgress = initialOrdinal !== null && waitResult.lastOrdinal !== null
-        ? ` (ordinal ${initialOrdinal} → ${waitResult.lastOrdinal})`
-        : '';
-      console.log(`⚠️ Fiber did not appear after ${CONFIG.fiberWaitTimeout}s${ordinalProgress}`);
+      console.log(`⚠️ Fiber did not appear in indexer after ${CONFIG.fiberWaitTimeout}s`);
       
       if (attempt < CONFIG.maxRegistrationRetries) {
         console.log(`🔄 Retrying with new registration...`);
@@ -264,7 +226,7 @@ async function main(): Promise<void> {
         results.push({ 
           name: 'Fiber in State', 
           status: 'failed', 
-          message: `Timeout after ${CONFIG.maxRegistrationRetries} attempts${ordinalProgress}` 
+          message: `Timeout after ${CONFIG.maxRegistrationRetries} attempts` 
         });
       }
     }
@@ -325,65 +287,41 @@ async function main(): Promise<void> {
     }
   }
   
-  // Test 7: Verify fiber is indexed (optional, only if INDEXER_URL is set)
-  const indexerUrl = process.env.INDEXER_URL;
-  console.log(`\n🔍 Test 7: Verify Indexer State`);
-  if (!indexerUrl) {
-    console.log('⏭️  Skipped (INDEXER_URL not set)');
-    results.push({ name: 'Verify Indexer State', status: 'skipped', message: 'INDEXER_URL not set' });
-  } else if (!fiberInState) {
-    console.log('⏭️  Skipped (fiber not in ML0 state)');
-    results.push({ name: 'Verify Indexer State', status: 'skipped', message: 'Fiber not in ML0 state' });
+  // Test 7: Verify full indexer state (detailed check)
+  console.log(`\n🔍 Test 7: Verify Indexer State (detailed)`);
+  if (!fiberInState) {
+    console.log('⏭️  Skipped (fiber not indexed)');
+    results.push({ name: 'Verify Indexer State', status: 'skipped', message: 'Fiber not indexed' });
   } else {
-    const indexerWaitTimeout = parseInt(process.env.INDEXER_WAIT_TIMEOUT ?? '30000', 10);
-    console.log(`⏳ Waiting for fiber to appear in indexer (up to ${indexerWaitTimeout / 1000}s)...`);
-    
-    const indexerDeadline = Date.now() + indexerWaitTimeout;
-    let indexerFound = false;
-    let indexerFiber: any = null;
-    
-    while (Date.now() < indexerDeadline && !indexerFound) {
-      try {
-        const res = await fetch(`${indexerUrl}/fibers/${fiberId}`, {
-          signal: AbortSignal.timeout(5000)
-        });
-        if (res.ok) {
-          indexerFiber = await res.json();
-          indexerFound = true;
-        } else if (res.status !== 404) {
-          throw new Error(`Indexer returned ${res.status}`);
-        }
-      } catch (err) {
-        // Ignore errors, keep polling
-      }
-      if (!indexerFound) {
-        await sleep(2000);
-      }
-    }
-    
-    if (indexerFound && indexerFiber) {
-      console.log(`✓ Fiber found in indexer: state=${indexerFiber.currentState}, ordinal=${indexerFiber.updatedOrdinal}`);
-      results.push({ name: 'Verify Indexer State', status: 'passed' });
+    try {
+      const verification = await indexer.verifyFiber(fiberId);
       
-      // Check for rejections
-      try {
-        const rejRes = await fetch(`${indexerUrl}/fibers/${fiberId}/rejections?limit=5`, {
-          signal: AbortSignal.timeout(5000)
-        });
-        if (rejRes.ok) {
-          const rejData = await rejRes.json() as { rejections: any[]; total: number };
-          if (rejData.total > 0) {
-            console.log(`  ⚠️ Found ${rejData.total} rejection(s) for this fiber`);
-          } else {
-            console.log(`  ✓ No rejections for this fiber`);
-          }
+      if (verification.found && verification.fiber) {
+        console.log(`✓ Fiber in indexer: state=${verification.fiber.currentState}, seq=${verification.fiber.sequenceNumber}`);
+        
+        // Log transition history
+        if (verification.lastTransition) {
+          console.log(`  Last transition: ${verification.lastTransition.eventName} (${verification.lastTransition.fromState} → ${verification.lastTransition.toState})`);
         }
-      } catch {
-        // Ignore rejection check errors
+        
+        // Check for rejections
+        if (verification.rejections.length > 0) {
+          console.log(`  ⚠️ Found ${verification.rejections.length} rejection(s) for this fiber`);
+          for (const rej of verification.rejections.slice(0, 3)) {
+            console.log(`    - ${rej.updateType}: ${rej.errors.map(e => e.code).join(', ')}`);
+          }
+        } else {
+          console.log(`  ✓ No rejections for this fiber`);
+        }
+        
+        results.push({ name: 'Verify Indexer State', status: 'passed' });
+      } else {
+        console.error(`❌ Fiber not found in indexer (unexpected)`);
+        results.push({ name: 'Verify Indexer State', status: 'failed', message: 'Fiber not found' });
       }
-    } else {
-      console.error(`❌ Fiber not found in indexer after ${indexerWaitTimeout / 1000}s`);
-      results.push({ name: 'Verify Indexer State', status: 'failed', message: 'Timeout waiting for indexer' });
+    } catch (err) {
+      console.error(`❌ Indexer verification failed: ${err}`);
+      results.push({ name: 'Verify Indexer State', status: 'failed', message: String(err) });
     }
   }
   
