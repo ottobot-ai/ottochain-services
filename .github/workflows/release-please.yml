@@ -23,6 +23,8 @@ jobs:
         with:
           release-type: node
           package-name: "ottochain-services"
+          # Use PAT so PR commits trigger CI workflows (GITHUB_TOKEN doesn't)
+          token: ${{ secrets.RELEASE_TOKEN }}
 
       - name: Summary
         if: steps.release.outputs.release_created == 'true'
