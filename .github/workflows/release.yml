@@ -106,16 +106,15 @@ jobs:
 
       - name: Notify deploy repo
         env:
-          DEPLOY_TOKEN: ${{ secrets.DEPLOY_REPO_TOKEN }}
+          GH_TOKEN: ${{ secrets.DEPLOY_REPO_TOKEN }}
         run: |
-          if [ -z "$DEPLOY_TOKEN" ]; then
+          if [ -z "$GH_TOKEN" ]; then
             echo "⚠️ DEPLOY_REPO_TOKEN not set, skipping deploy notification"
             exit 0
           fi
           gh api repos/ottobot-ai/ottochain-deploy/dispatches \
             -f event_type=version-bump \
-            -f 'client_payload={"component":"services","version":"${{ steps.version.outputs.version }}"}' \
-            --header "Authorization: token $DEPLOY_TOKEN"
+            -f 'client_payload={"component":"services","version":"${{ steps.version.outputs.version }}"}'
           echo "✅ Notified deploy repo to bump services to v${{ steps.version.outputs.version }}"
 
       - name: Summary
