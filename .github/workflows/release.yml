@@ -106,10 +106,10 @@ jobs:
 
       - name: Notify deploy repo
         env:
-          GH_TOKEN: ${{ secrets.DEPLOY_REPO_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
-            echo "⚠️ DEPLOY_REPO_TOKEN not set, skipping deploy notification"
+            echo "⚠️ RELEASE_TOKEN not set, skipping deploy notification"
             exit 0
           fi
           gh api repos/ottobot-ai/ottochain-deploy/dispatches \
