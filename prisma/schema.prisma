@@ -1,5 +1,7 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // node:20-slim uses Debian Bookworm with OpenSSL 3.0
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
