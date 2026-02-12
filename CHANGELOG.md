@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.3](https://github.com/ottobot-ai/ottochain-services/compare/v0.3.2...v0.3.3) (2026-02-12)
+
+
+### Bug Fixes
+
+* copy prisma schema to production Docker image ([#82](https://github.com/ottobot-ai/ottochain-services/issues/82)) ([12d9a15](https://github.com/ottobot-ai/ottochain-services/commit/12d9a15ae6b9297511300863513f646b69ccff19))
+* normalize state labels to UPPER CASE ([#84](https://github.com/ottobot-ai/ottochain-services/issues/84)) ([1dde6f3](https://github.com/ottobot-ai/ottochain-services/commit/1dde6f39b470e6a170e1bdf34e756581caf85582))
+
 ## [0.3.2](https://github.com/ottobot-ai/ottochain-services/compare/v0.3.1...v0.3.2) (2026-02-11)
 
 
