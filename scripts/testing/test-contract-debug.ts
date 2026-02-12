@@ -8,11 +8,11 @@ async function testDef(name: string, transitions: object[]) {
   const keyPair = generateKeyPair();
   const definition = {
     states: {
-      Proposed: { id: { value: 'Proposed' }, isFinal: false, metadata: null },
-      Active: { id: { value: 'Active' }, isFinal: false, metadata: null },
-      Completed: { id: { value: 'Completed' }, isFinal: true, metadata: null },
+      Proposed: { id: { value: 'PROPOSED' }, isFinal: false, metadata: null },
+      Active: { id: { value: 'ACTIVE' }, isFinal: false, metadata: null },
+      Completed: { id: { value: 'COMPLETED' }, isFinal: true, metadata: null },
     },
-    initialState: { value: 'Proposed' },
+    initialState: { value: 'PROPOSED' },
     transitions,
     metadata: { name: 'Test' },
   };
@@ -34,23 +34,23 @@ async function testDef(name: string, transitions: object[]) {
 async function main() {
   // Test the 'count' operator
   await testDef('With count guard', [
-    { from: { value: 'Active' }, to: { value: 'Completed' }, eventName: 'finalize',
+    { from: { value: 'ACTIVE' }, to: { value: 'COMPLETED' }, eventName: 'finalize',
       guard: { '>=': [{ count: { var: 'state.completions' } }, 2] },
-      effect: { merge: [{ var: 'state' }, { status: 'Completed' }] }, dependencies: [] },
+      effect: { merge: [{ var: 'state' }, { status: 'COMPLETED' }] }, dependencies: [] },
   ]);
 
   // Test without count
   await testDef('Without count (length)', [
-    { from: { value: 'Active' }, to: { value: 'Completed' }, eventName: 'finalize',
+    { from: { value: 'ACTIVE' }, to: { value: 'COMPLETED' }, eventName: 'finalize',
       guard: { '>=': [{ var: 'state.completionsCount' }, 2] },
-      effect: { merge: [{ var: 'state' }, { status: 'Completed' }] }, dependencies: [] },
+      effect: { merge: [{ var: 'state' }, { status: 'COMPLETED' }] }, dependencies: [] },
   ]);
 
   // Test simple guard
   await testDef('Simple guard', [
-    { from: { value: 'Active' }, to: { value: 'Completed' }, eventName: 'finalize',
+    { from: { value: 'ACTIVE' }, to: { value: 'COMPLETED' }, eventName: 'finalize',
       guard: { '==': [1, 1] },
-      effect: { merge: [{ var: 'state' }, { status: 'Completed' }] }, dependencies: [] },
+      effect: { merge: [{ var: 'state' }, { status: 'COMPLETED' }] }, dependencies: [] },
   ]);
 }
 

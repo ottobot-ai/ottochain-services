@@ -59,9 +59,9 @@ function createMockBridge() {
       counterparty: 'DAG1...', 
       hash: 'hash3' 
     }),
-    acceptContract: vi.fn().mockResolvedValue({ hash: 'hash4', contractId: 'contract-uuid-456', status: 'Active' }),
+    acceptContract: vi.fn().mockResolvedValue({ hash: 'hash4', contractId: 'contract-uuid-456', status: 'ACTIVE' }),
     submitCompletion: vi.fn().mockResolvedValue({ hash: 'hash5', contractId: 'contract-uuid-456', message: 'ok' }),
-    finalizeContract: vi.fn().mockResolvedValue({ hash: 'hash6', contractId: 'contract-uuid-456', status: 'Completed' }),
+    finalizeContract: vi.fn().mockResolvedValue({ hash: 'hash6', contractId: 'contract-uuid-456', status: 'COMPLETED' }),
     rejectContract: vi.fn().mockResolvedValue({ hash: 'hash7', contractId: 'contract-uuid-456', status: 'Rejected' }),
     disputeContract: vi.fn().mockResolvedValue({ hash: 'hash8', contractId: 'contract-uuid-456', status: 'Disputed' }),
     

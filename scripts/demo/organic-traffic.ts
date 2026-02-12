@@ -30,7 +30,7 @@ interface Agent {
   wallet: Wallet;
   fiberId: string;
   name: string;
-  status: 'Registered' | 'Active';
+  status: 'REGISTERED' | 'ACTIVE';
   createdAt: number;
   activatedAt?: number;
 }
@@ -39,7 +39,7 @@ interface Contract {
   fiberId: string;
   proposer: Agent;
   counterparty: Agent;
-  status: 'Proposed' | 'Active' | 'Completed' | 'Rejected' | 'Cancelled';
+  status: 'PROPOSED' | 'ACTIVE' | 'COMPLETED' | 'REJECTED' | 'Cancelled';
   proposedAt: number;
   acceptedAt?: number;
   completedAt?: number;
@@ -120,7 +120,7 @@ async function registerAgent(): Promise<boolean> {
       wallet,
       fiberId: data.fiberId || data.hash,
       name,
-      status: 'Registered',
+      status: 'REGISTERED',
       createdAt: Date.now(),
     });
     
@@ -146,7 +146,7 @@ async function activateAgent(agent: Agent): Promise<boolean> {
     
     if (!resp.ok) throw new Error(`${resp.status}`);
     
-    agent.status = 'Active';
+    agent.status = 'ACTIVE';
     agent.activatedAt = Date.now();
     stats.agentsActivated++;
     console.log(`[${timestamp()}] ✅ ${agent.name} activated`);
@@ -185,7 +185,7 @@ async function proposeContract(proposer: Agent, counterparty: Agent): Promise<bo
       fiberId: data.fiberId || data.hash,
       proposer,
       counterparty,
-      status: 'Proposed',
+      status: 'PROPOSED',
       proposedAt: Date.now(),
     });
     
@@ -211,7 +211,7 @@ async function acceptContract(contract: Contract): Promise<boolean> {
     
     if (!resp.ok) throw new Error(`${resp.status}`);
     
-    contract.status = 'Active';
+    contract.status = 'ACTIVE';
     contract.acceptedAt = Date.now();
     stats.contractsAccepted++;
     console.log(`[${timestamp()}] 🤝 ${contract.counterparty.name} accepted contract from ${contract.proposer.name}`);
@@ -239,7 +239,7 @@ async function completeContract(contract: Contract): Promise<boolean> {
     
     if (!resp.ok) throw new Error(`${resp.status}`);
     
-    contract.status = 'Completed';
+    contract.status = 'COMPLETED';
     contract.completedAt = Date.now();
     stats.contractsCompleted++;
     console.log(`[${timestamp()}] 🎉 Contract completed: ${contract.proposer.name} ↔ ${contract.counterparty.name}`);
@@ -274,7 +274,7 @@ async function activationLoop(): Promise<void> {
     
     // Find agents ready to activate (registered for > SYNC_DELAY)
     const readyToActivate = agents.filter(a => 
-      a.status === 'Registered' && 
+      a.status === 'REGISTERED' && 
       (now - a.createdAt) > SYNC_DELAY_MS
     );
     
@@ -290,7 +290,7 @@ async function activationLoop(): Promise<void> {
 async function contractProposalLoop(): Promise<void> {
   while (running) {
     // Need at least 2 active agents
-    const activeAgents = agents.filter(a => a.status === 'Active');
+    const activeAgents = agents.filter(a => a.status === 'ACTIVE');
     
     if (activeAgents.length >= 2) {
       const proposer = randomChoice(activeAgents);
@@ -315,7 +315,7 @@ async function contractAcceptLoop(): Promise<void> {
     
     // Find contracts ready for acceptance
     const readyToAccept = contracts.filter(c =>
-      c.status === 'Proposed' &&
+      c.status === 'PROPOSED' &&
       (now - c.proposedAt) > MIN_ACCEPT_DELAY_MS
     );
     
@@ -337,7 +337,7 @@ async function contractCompleteLoop(): Promise<void> {
     
     // Find contracts ready for completion
     const readyToComplete = contracts.filter(c =>
-      c.status === 'Active' &&
+      c.status === 'ACTIVE' &&
       c.acceptedAt &&
       (now - c.acceptedAt) > MIN_COMPLETE_DELAY_MS
     );
@@ -357,11 +357,11 @@ function printStats(): void {
                   stats.contractsProposed + stats.contractsAccepted + stats.contractsCompleted;
   const tps = totalTx / elapsed;
   
-  const pending = contracts.filter(c => c.status === 'Proposed').length;
-  const active = contracts.filter(c => c.status === 'Active').length;
-  const completed = contracts.filter(c => c.status === 'Completed').length;
-  const registeredAgents = agents.filter(a => a.status === 'Registered').length;
-  const activeAgents = agents.filter(a => a.status === 'Active').length;
+  const pending = contracts.filter(c => c.status === 'PROPOSED').length;
+  const active = contracts.filter(c => c.status === 'ACTIVE').length;
+  const completed = contracts.filter(c => c.status === 'COMPLETED').length;
+  const registeredAgents = agents.filter(a => a.status === 'REGISTERED').length;
+  const activeAgents = agents.filter(a => a.status === 'ACTIVE').length;
   
   console.log(`\n📊 [${timestamp()}] Stats:`);
   console.log(`   TPS: ${tps.toFixed(1)} | Errors: ${stats.errors} | Elapsed: ${elapsed.toFixed(0)}s`);

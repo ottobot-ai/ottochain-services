@@ -266,7 +266,7 @@ async function doAcceptContract(): Promise<boolean> {
   
   // Verify on ML0 before accepting
   const state = await getStateMachineState(contract.contractId);
-  if (!state || state.currentState !== 'Proposed') {
+  if (!state || state.currentState !== 'PROPOSED') {
     // Not ready yet, skip
     return false;
   }
@@ -298,7 +298,7 @@ async function doCompleteContract(): Promise<boolean> {
   
   // Verify on ML0 before completing
   const state = await getStateMachineState(contract.contractId);
-  if (!state || state.currentState !== 'Active') {
+  if (!state || state.currentState !== 'ACTIVE') {
     return false;
   }
   

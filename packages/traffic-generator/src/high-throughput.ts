@@ -58,7 +58,7 @@ export const HIGH_THROUGHPUT_DEFAULTS: HighThroughputConfig = {
   targetTps: 10,
   maxPendingTx: 100,
   batchSize: 20,
-  enabledWorkflows: ['AgentIdentity', 'Contract', 'Voting', 'TokenEscrow', 'TicTacToe', 'SimpleOrder', 'ApprovalWorkflow'],
+  enabledWorkflows: ['AgentIdentity', 'Contract', 'VOTING', 'TokenEscrow', 'TicTacToe', 'SimpleOrder', 'ApprovalWorkflow'],
   maxFibersPerType: 500,
 };
 
@@ -494,7 +494,7 @@ export class HighThroughputSimulator {
           const agent = this.agents.get(addr);
           if (agent) {
             agent.meta.activeContracts.delete(fiberId);
-            if (fiber.currentState === 'Completed' || fiber.currentState === 'Released' || fiber.currentState === 'Delivered' || fiber.currentState === 'Approved') {
+            if (fiber.currentState === 'COMPLETED' || fiber.currentState === 'RELEASED' || fiber.currentState === 'DELIVERED' || fiber.currentState === 'APPROVED') {
               agent.meta.completedContracts++;
             } else {
               agent.meta.failedContracts++;

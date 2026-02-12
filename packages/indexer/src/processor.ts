@@ -442,7 +442,7 @@ function mapAgentState(stateDataStatus: string | undefined, currentState: string
  */
 function mapContractState(currentState: string | undefined, fiberStatus: string): PrismaContractState {
   // If fiber is archived/completed, the contract is done
-  if (fiberStatus !== 'Active') return PrismaContractState.COMPLETED;
+  if (fiberStatus !== 'ACTIVE') return PrismaContractState.COMPLETED;
   
   const state = (currentState || '').toUpperCase();
   

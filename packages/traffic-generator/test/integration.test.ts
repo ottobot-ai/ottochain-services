@@ -274,7 +274,7 @@ async function main(): Promise<void> {
       }
       
       const state = fiber.currentState?.value;
-      if (state === 'Active') {
+      if (state === 'ACTIVE') {
         console.log('✓ Agent state is Active');
         results.push({ name: 'Verify Active State', status: 'passed' });
       } else {
