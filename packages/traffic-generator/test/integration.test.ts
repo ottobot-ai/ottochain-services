@@ -400,16 +400,11 @@ async function main(): Promise<void> {
   await runTest(ctx, 'Test 10: Contract Proposal', async () => {
     const proposeResult = await ctx.client.proposeContract(
       ctx.wallets[0].privateKey,
-      ctx.fiberIds[0],         // proposer (agent 1)
-      ctx.fiberIds[1],         // counterparty (agent 2)
-      {
-        title: 'Integration Test Contract',
-        description: 'Automated test contract for CI',
-        terms: { deliverable: 'Pass all tests', deadline: '2026-12-31' },
-      },
-      BigInt(1000)             // value in tokens
+      ctx.wallets[1].address,  // counterparty address
+      { deliverable: 'Pass all tests', deadline: '2026-12-31' },  // terms
+      { title: 'Integration Test Contract', description: 'Automated test contract for CI' }
     );
-    ctx.contractId = proposeResult.fiberId;
+    ctx.contractId = proposeResult.contractId;
     console.log(`✓ Contract proposed: contractId=${ctx.contractId}`);
     console.log(`  Transaction hash: ${proposeResult.hash}`);
     
@@ -426,7 +421,6 @@ async function main(): Promise<void> {
   await runTest(ctx, 'Test 11: Contract Acceptance', async () => {
     const acceptResult = await ctx.client.acceptContract(
       ctx.wallets[1].privateKey,
-      ctx.fiberIds[1],         // acceptor (agent 2)
       ctx.contractId!
     );
     console.log(`✓ Contract accepted: hash=${acceptResult.hash}`);
@@ -447,7 +441,6 @@ async function main(): Promise<void> {
   await runTest(ctx, 'Test 12: Contract Completion', async () => {
     const completeResult = await ctx.client.submitCompletion(
       ctx.wallets[0].privateKey,
-      ctx.fiberIds[0],         // completer (agent 1)
       ctx.contractId!,
       'All tests passed successfully'
     );
@@ -467,7 +460,6 @@ async function main(): Promise<void> {
   await runTest(ctx, 'Test 13: Contract Finalization', async () => {
     const finalizeResult = await ctx.client.finalizeContract(
       ctx.wallets[1].privateKey,
-      ctx.fiberIds[1],         // finalizer (agent 2)
       ctx.contractId!
     );
     console.log(`✓ Contract finalized: hash=${finalizeResult.hash}`);
