@@ -147,7 +147,8 @@ marketRoutes.post('/create', async (req, res) => {
       title: input.title,
       description: input.description ?? '',
       terms: input.terms,
-      deadline: input.deadline ?? null,
+      // Convert ISO deadline to epoch ms for JSON Logic comparison with $timestamp
+      deadline: input.deadline ? new Date(input.deadline).getTime() : null,
       threshold: input.threshold ?? null,
       oracles: input.oracles.length > 0 ? input.oracles : [creatorAddress],
       quorum: input.quorum,
