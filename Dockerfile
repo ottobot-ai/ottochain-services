@@ -16,7 +16,7 @@ COPY packages/monitor/package.json ./packages/monitor/
 COPY packages/traffic-generator/package.json ./packages/traffic-generator/
 COPY packages/shared/package.json ./packages/shared/
 
-# Copy Prisma schema (needed for postinstall hook)
+# Copy Prisma schema (needed for prisma generate)
 COPY prisma ./prisma/
 
 # Install dependencies
@@ -53,6 +53,9 @@ RUN corepack enable && corepack prepare pnpm@8 --activate
 COPY --from=builder /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
 COPY --from=builder /app/packages ./packages
 COPY --from=builder /app/node_modules ./node_modules
+
+# Copy Prisma schema (needed for runtime migrations via prisma db push)
+COPY --from=builder /app/prisma ./prisma
 
 # Copy entrypoint script
 COPY docker-entrypoint.sh /usr/local/bin/
