@@ -13,6 +13,7 @@ import { governanceRoutes } from './routes/governance.js';
 import { marketRoutes } from './routes/market.js';
 import { oracleRoutes } from './routes/oracle.js';
 import { corporateRoutes } from './routes/corporate.js';
+import { delegateRoutes } from './routes/delegate.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' })); // Larger limit for state machine definitions
@@ -44,6 +45,7 @@ app.use('/governance', governanceRoutes); // DAO/Governance API
 app.use('/market', marketRoutes);         // Market API (predictions, auctions, crowdfunding)
 app.use('/oracle', oracleRoutes);         // Oracle API (registration, attestation, staking)
 app.use('/corporate', corporateRoutes);   // Corporate governance API (entities, board, shareholders)
+app.use('/delegate', delegateRoutes);     // Delegation API (relayer pattern, delegated transactions)
 
 // Start server
 const config = getConfig();
@@ -107,4 +109,10 @@ app.listen(port, () => {
   console.log(`             POST http://localhost:${port}/corporate/:entityId/compliance/file`);
   console.log(`             GET  http://localhost:${port}/corporate/:entityId/compliance`);
   console.log(`             GET  http://localhost:${port}/corporate`);
+  console.log(`   Delegate: POST http://localhost:${port}/delegate/create`);
+  console.log(`             POST http://localhost:${port}/delegate/submit`);
+  console.log(`             GET  http://localhost:${port}/delegate/status/:delegationId`);
+  console.log(`             DELETE http://localhost:${port}/delegate/revoke/:delegationId`);
+  console.log(`             GET  http://localhost:${port}/delegate/active?delegator=X&delegatee=Y`);
+  console.log(`             GET  http://localhost:${port}/delegate/health`);
 });
