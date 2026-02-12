@@ -275,6 +275,62 @@ jobs:
           docker logs ml0-0 2>&1 | tail -50 || true
           exit 1
 
+      - name: Join DL1 validators to cluster
+        run: |
+          echo "=== Joining DL1 validators to cluster ==="
+          
+          # Get DL1-0 (genesis) peer ID and IP for join payload
+          DL1_PEER_ID=$(curl -s http://localhost:9400/node/info | jq -r '.id')
+          # DL1-0 is on the tessellation_common network at 172.32.0.50
+          DL1_IP="172.32.0.50"
+          DL1_P2P_PORT="9401"
+          
+          echo "DL1 genesis peer: ${DL1_PEER_ID:0:32}..."
+          echo "DL1 genesis IP: $DL1_IP"
+          
+          # Wait for DL1-1 and DL1-2 to reach ReadyToJoin state
+          echo "Waiting for DL1 validators to reach ReadyToJoin state..."
+          for port in 9410 9420; do
+            for i in $(seq 1 30); do
+              STATE=$(curl -s http://localhost:$port/node/state 2>/dev/null | tr -d '"' || echo "unknown")
+              echo "DL1 (port $port) state: $STATE (attempt $i/30)"
+              if [ "$STATE" = "ReadyToJoin" ] || [ "$STATE" = "Observing" ] || [ "$STATE" = "Ready" ]; then
+                echo "✓ DL1 (port $port) ready to join"
+                break
+              fi
+              if [ "$i" = "30" ]; then
+                echo "::warning::DL1 (port $port) did not reach ReadyToJoin state (current: $STATE)"
+              fi
+              sleep 2
+            done
+          done
+          
+          # Join DL1-1 and DL1-2 to cluster via their CLI ports (9412, 9422)
+          echo "Joining DL1 validators to cluster..."
+          JOIN_PAYLOAD=$(printf '{"id":"%s","ip":"%s","p2pPort":%s}' "$DL1_PEER_ID" "$DL1_IP" "$DL1_P2P_PORT")
+          echo "JOIN_PAYLOAD: $JOIN_PAYLOAD"
+          
+          for cli_port in 9412 9422; do
+            echo "Joining DL1 on CLI port $cli_port..."
+            # Execute join from inside the container to reach localhost CLI
+            container_name="dl1-$((cli_port == 9412 ? 1 : 2))"
+            if docker exec $container_name curl -sf -X POST http://localhost:9042/cluster/join \
+                -H 'Content-Type: application/json' \
+                -d "$JOIN_PAYLOAD"; then
+              echo "✓ DL1 ($container_name) join initiated"
+            else
+              echo "::warning::DL1 ($container_name) join may have failed"
+            fi
+          done
+          
+          # Wait for cluster to form
+          echo "Waiting for DL1 cluster to stabilize..."
+          sleep 10
+          
+          # Verify cluster size
+          cluster_size=$(curl -s http://localhost:9400/cluster/info | jq 'length' 2>/dev/null || echo "0")
+          echo "DL1 cluster size after join: $cluster_size"
+
       - name: Verify DL1 cluster formation
         run: |
           echo "=== Verifying DL1 cluster has multiple unique peers ==="
