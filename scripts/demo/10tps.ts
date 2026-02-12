@@ -30,14 +30,14 @@ interface Wallet {
 interface Agent {
   wallet: Wallet;
   fiberId: string;
-  status: 'Registered' | 'Active';
+  status: 'REGISTERED' | 'ACTIVE';
 }
 
 interface Contract {
   fiberId: string;
   proposer: Agent;
   counterparty: Agent;
-  status: 'Proposed' | 'Active' | 'Completed';
+  status: 'PROPOSED' | 'ACTIVE' | 'COMPLETED';
 }
 
 // Stats
@@ -85,14 +85,14 @@ async function registerAgent(): Promise<void> {
   agents.push({
     wallet,
     fiberId: data.fiberId || data.hash,
-    status: 'Registered',
+    status: 'REGISTERED',
   });
   
   successCount++;
 }
 
 async function activateAgent(): Promise<void> {
-  const registered = agents.filter(a => a.status === 'Registered');
+  const registered = agents.filter(a => a.status === 'REGISTERED');
   if (registered.length === 0) {
     await registerAgent();
     return;
@@ -110,7 +110,7 @@ async function activateAgent(): Promise<void> {
   });
   
   if (!resp.ok) throw new Error(`Activate failed: ${resp.status}`);
-  agent.status = 'Active';
+  agent.status = 'ACTIVE';
   successCount++;
 }
 
@@ -149,14 +149,14 @@ async function proposeContract(): Promise<void> {
     fiberId: data.fiberId || data.hash,
     proposer,
     counterparty,
-    status: 'Proposed',
+    status: 'PROPOSED',
   });
   
   successCount++;
 }
 
 async function acceptContract(): Promise<void> {
-  const proposed = contracts.filter(c => c.status === 'Proposed');
+  const proposed = contracts.filter(c => c.status === 'PROPOSED');
   if (proposed.length === 0) {
     await proposeContract();
     return;
@@ -174,12 +174,12 @@ async function acceptContract(): Promise<void> {
   });
   
   if (!resp.ok) throw new Error(`Accept failed: ${resp.status}`);
-  contract.status = 'Active';
+  contract.status = 'ACTIVE';
   successCount++;
 }
 
 async function completeContract(): Promise<void> {
-  const active = contracts.filter(c => c.status === 'Active');
+  const active = contracts.filter(c => c.status === 'ACTIVE');
   if (active.length === 0) {
     await acceptContract();
     return;
@@ -199,7 +199,7 @@ async function completeContract(): Promise<void> {
   });
   
   if (!resp.ok) throw new Error(`Complete failed: ${resp.status}`);
-  contract.status = 'Completed';
+  contract.status = 'COMPLETED';
   successCount++;
 }
 
@@ -231,9 +231,9 @@ function printStats(): void {
   const elapsed = (Date.now() - startTime) / 1000;
   const actualTps = successCount / elapsed;
   const successRate = txCount > 0 ? ((successCount / txCount) * 100).toFixed(1) : '0';
-  const proposedCount = contracts.filter(c => c.status === 'Proposed').length;
-  const activeCount = contracts.filter(c => c.status === 'Active').length;
-  const completedCount = contracts.filter(c => c.status === 'Completed').length;
+  const proposedCount = contracts.filter(c => c.status === 'PROPOSED').length;
+  const activeCount = contracts.filter(c => c.status === 'ACTIVE').length;
+  const completedCount = contracts.filter(c => c.status === 'COMPLETED').length;
   
   process.stdout.write(
     `\r⚡ TPS: ${actualTps.toFixed(1)} | Sent: ${txCount} | ✅ ${successCount} | ❌ ${errorCount} | ` +

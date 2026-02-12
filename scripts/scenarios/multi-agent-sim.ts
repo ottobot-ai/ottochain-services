@@ -29,20 +29,20 @@ const CONFIG = {
 // ============================================================================
 
 const AGENT_IDENTITY_DEFINITION = {
-  states: ['Registered', 'Active', 'Withdrawn'],
-  initialState: 'Registered',
+  states: ['REGISTERED', 'ACTIVE', 'WITHDRAWN'],
+  initialState: 'REGISTERED',
   transitions: [
     {
-      from: 'Registered',
+      from: 'REGISTERED',
       event: 'activate',
-      to: 'Active',
+      to: 'ACTIVE',
       guards: [],
-      effects: [{ op: 'merge', path: ['status'], value: 'Active' }],
+      effects: [{ op: 'merge', path: ['status'], value: 'ACTIVE' }],
     },
     {
-      from: 'Active',
+      from: 'ACTIVE',
       event: 'receive_vouch',
-      to: 'Active',
+      to: 'ACTIVE',
       guards: [],
       effects: [
         { op: 'apply', path: ['reputation'], expr: { '+': [{ var: 'reputation' }, 2] } },
@@ -50,71 +50,71 @@ const AGENT_IDENTITY_DEFINITION = {
       ],
     },
     {
-      from: 'Active',
+      from: 'ACTIVE',
       event: 'receive_completion',
-      to: 'Active',
+      to: 'ACTIVE',
       guards: [],
       effects: [
         { op: 'apply', path: ['reputation'], expr: { '+': [{ var: 'reputation' }, 5] } },
       ],
     },
     {
-      from: 'Active',
+      from: 'ACTIVE',
       event: 'receive_violation',
-      to: 'Active',
+      to: 'ACTIVE',
       guards: [],
       effects: [
         { op: 'apply', path: ['reputation'], expr: { max: [0, { '-': [{ var: 'reputation' }, 10] }] } },
       ],
     },
     {
-      from: 'Active',
+      from: 'ACTIVE',
       event: 'withdraw',
-      to: 'Withdrawn',
+      to: 'WITHDRAWN',
       guards: [],
-      effects: [{ op: 'merge', path: ['status'], value: 'Withdrawn' }],
+      effects: [{ op: 'merge', path: ['status'], value: 'WITHDRAWN' }],
     },
   ],
 };
 
 const CONTRACT_DEFINITION = {
-  states: ['Proposed', 'Active', 'Completed', 'Disputed', 'Rejected'],
-  initialState: 'Proposed',
+  states: ['PROPOSED', 'ACTIVE', 'COMPLETED', 'DISPUTED', 'REJECTED'],
+  initialState: 'PROPOSED',
   transitions: [
     {
-      from: 'Proposed',
+      from: 'PROPOSED',
       event: 'accept',
-      to: 'Active',
+      to: 'ACTIVE',
       guards: [{ '==': [{ var: 'event.agent' }, { var: 'counterparty' }] }],
       effects: [{ op: 'merge', path: ['acceptedAt'], value: { var: '$timestamp' } }],
     },
     {
-      from: 'Proposed',
+      from: 'PROPOSED',
       event: 'reject',
-      to: 'Rejected',
+      to: 'REJECTED',
       guards: [{ '==': [{ var: 'event.agent' }, { var: 'counterparty' }] }],
       effects: [],
     },
     {
-      from: 'Active',
+      from: 'ACTIVE',
       event: 'complete',
-      to: 'Active', // Stays Active until both complete
+      to: 'ACTIVE', // Stays Active until both complete
       guards: [],
       effects: [
         { op: 'push', path: ['completions'], value: { var: 'event.agent' } },
       ],
     },
     {
-      from: 'Active',
+      from: 'ACTIVE',
       event: 'finalize',
-      to: 'Completed',
+      to: 'COMPLETED',
       guards: [{ '>=': [{ count: { var: 'completions' } }, 2] }],
       effects: [{ op: 'merge', path: ['completedAt'], value: { var: '$timestamp' } }],
     },
     {
-      from: 'Active',
+      from: 'ACTIVE',
       event: 'dispute',
-      to: 'Disputed',
+      to: 'DISPUTED',
       guards: [],
       effects: [
         { op: 'merge', path: ['disputedAt'], value: { var: '$timestamp' } },
@@ -222,7 +222,7 @@ async function createAgentIdentity(agent: Agent): Promise<string> {
         displayName: agent.name,
         reputation: 10,
         vouches: [],
-        status: 'Registered',
+        status: 'REGISTERED',
       },
     },
   };
@@ -268,7 +268,7 @@ async function createContract(
         counterparty: counterparty.address,
         terms,
         completions: [],
-        status: 'Proposed',
+        status: 'PROPOSED',
       },
     },
   };

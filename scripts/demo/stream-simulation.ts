@@ -31,45 +31,45 @@ interface StreamTemplate {
 // Agent Identity Flow (from AgentIdentityLifecycleSuite)
 const AGENT_STREAM: StreamTemplate = {
   name: 'AgentIdentity',
-  initialState: 'Registered',
+  initialState: 'REGISTERED',
   steps: {
-    'Registered': [
+    'REGISTERED': [
       { action: 'activate', weight: 90 },
       { action: 'withdraw', weight: 10 },  // Rage quit before starting
     ],
-    'Active': [
+    'ACTIVE': [
       { action: 'receive_vouch', weight: 40 },
       { action: 'receive_completion', weight: 35 },
       { action: 'receive_violation', weight: 5 },
       { action: 'withdraw', weight: 5 },
       { action: 'idle', weight: 15 },  // Stay in state
     ],
-    'Withdrawn': [], // Terminal
+    'WITHDRAWN': [], // Terminal
   }
 };
 
 // Contract Flow (Proposed → Active → Completed)
 const CONTRACT_STREAM: StreamTemplate = {
   name: 'Contract',
-  initialState: 'Proposed',
+  initialState: 'PROPOSED',
   steps: {
-    'Proposed': [
+    'PROPOSED': [
       { action: 'accept', weight: 70 },
       { action: 'reject', weight: 15 },
       { action: 'cancel', weight: 10 },
       { action: 'idle', weight: 5 },
     ],
-    'Active': [
+    'ACTIVE': [
       { action: 'submit_completion', weight: 60 },
       { action: 'dispute', weight: 10 },
       { action: 'idle', weight: 30 },
     ],
-    'Disputed': [
+    'DISPUTED': [
       { action: 'resolve', weight: 80 },
       { action: 'idle', weight: 20 },
     ],
-    'Completed': [],  // Terminal
-    'Rejected': [],   // Terminal
+    'COMPLETED': [],  // Terminal
+    'REJECTED': [],   // Terminal
     'Cancelled': [],  // Terminal
   }
 };
@@ -188,7 +188,7 @@ async function createAgentStream(): Promise<StreamInstance | null> {
       id: `agent-${randomId(8)}`,
       template: AGENT_STREAM,
       fiberId: data.fiberId || data.hash,
-      currentState: 'Registered',
+      currentState: 'REGISTERED',
       wallet,
       createdAt: Date.now(),
       lastActionAt: Date.now(),
@@ -228,7 +228,7 @@ async function createContractStream(proposer: Wallet, counterparty: Wallet): Pro
       id: `contract-${randomId(8)}`,
       template: CONTRACT_STREAM,
       fiberId: data.fiberId || data.hash,
-      currentState: 'Proposed',
+      currentState: 'PROPOSED',
       wallet: proposer,
       counterpartyWallet: counterparty,
       createdAt: Date.now(),
@@ -273,7 +273,7 @@ async function advanceStream(stream: StreamInstance): Promise<boolean> {
             fiberId: stream.fiberId,
           }),
         });
-        if (resp.ok) newState = 'Active';
+        if (resp.ok) newState = 'ACTIVE';
       } else if (selected.action === 'withdraw') {
         resp = await fetch(`${BRIDGE_URL}/agent/transition`, {
           method: 'POST',
@@ -284,7 +284,7 @@ async function advanceStream(stream: StreamInstance): Promise<boolean> {
             event: 'withdraw',
           }),
         });
-        if (resp.ok) newState = 'Withdrawn';
+        if (resp.ok) newState = 'WITHDRAWN';
       } else {
         // Attestation events (receive_vouch, etc.) - stay in Active
         resp = await fetch(`${BRIDGE_URL}/agent/transition`, {
@@ -312,7 +312,7 @@ async function advanceStream(stream: StreamInstance): Promise<boolean> {
             fiberId: stream.fiberId,
           }),
         });
-        if (resp.ok) newState = 'Active';
+        if (resp.ok) newState = 'ACTIVE';
       } else if (selected.action === 'submit_completion') {
         resp = await fetch(`${BRIDGE_URL}/contract/complete`, {
           method: 'POST',
@@ -323,7 +323,7 @@ async function advanceStream(stream: StreamInstance): Promise<boolean> {
             proof: 'Work completed',
           }),
         });
-        if (resp.ok) newState = 'Completed';
+        if (resp.ok) newState = 'COMPLETED';
       } else {
         // Generic transition
         resp = await fetch(`${BRIDGE_URL}/contract/transition`, {

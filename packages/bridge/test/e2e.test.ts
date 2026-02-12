@@ -146,7 +146,7 @@ describe('Bridge E2E Tests', () => {
       const fiber = await waitForFiber(agent1FiberId);
       
       assert.ok(fiber, 'Fiber should appear on ML0');
-      assert.strictEqual(fiber.currentState.value, 'Registered', 'Should be in Registered state');
+      assert.strictEqual(fiber.currentState.value, 'REGISTERED', 'Should be in Registered state');
       assert.strictEqual(fiber.owners[0], wallet1.address, 'Should be owned by registrant');
       assert.strictEqual(fiber.stateData.displayName, 'E2E Test Agent 1', 'Should have correct displayName');
       assert.strictEqual(fiber.stateData.reputation, 10, 'Should have initial reputation of 10');
@@ -198,10 +198,10 @@ describe('Bridge E2E Tests', () => {
     });
 
     it('should transition to Active state on ML0', async () => {
-      const fiber = await waitForState(agent1FiberId, 'Active');
+      const fiber = await waitForState(agent1FiberId, 'ACTIVE');
       
       assert.ok(fiber, 'Fiber should transition to Active');
-      assert.strictEqual(fiber.currentState.value, 'Active', 'State should be Active');
+      assert.strictEqual(fiber.currentState.value, 'ACTIVE', 'State should be Active');
       assert.strictEqual(fiber.sequenceNumber, 1, 'Sequence number should be 1 after activation');
       
       console.log(`  ✓ Agent activated: state=${fiber.currentState.value}, seq=${fiber.sequenceNumber}`);
@@ -215,7 +215,7 @@ describe('Bridge E2E Tests', () => {
       
       const agent = await response.json() as StateMachine;
       assert.strictEqual(agent.fiberId, agent1FiberId);
-      assert.strictEqual(agent.currentState.value, 'Active');
+      assert.strictEqual(agent.currentState.value, 'ACTIVE');
       
       console.log(`  ✓ Queried agent: ${agent.fiberId}`);
     });

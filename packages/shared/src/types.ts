@@ -131,7 +131,7 @@ export type ContractActionRequest = z.infer<typeof ContractActionRequestSchema>;
 export interface MetagraphFiber {
   id: string;
   kind: 'StateMachine' | 'Script';
-  status: 'Active' | 'Completed' | 'Failed';
+  status: 'ACTIVE' | 'COMPLETED' | 'Failed';
   state: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;

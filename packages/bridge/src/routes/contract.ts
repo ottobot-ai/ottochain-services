@@ -158,7 +158,7 @@ contractRoutes.post('/accept', async (req, res) => {
     res.json({
       hash: result.hash,
       contractId: input.contractId,
-      status: 'Active',
+      status: 'ACTIVE',
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -215,7 +215,7 @@ contractRoutes.post('/reject', async (req, res) => {
     res.json({
       hash: result.hash,
       contractId: input.contractId,
-      status: 'Rejected',
+      status: 'REJECTED',
     });
   } catch (err) {
     console.error('[contract/reject] Error:', err);
@@ -328,7 +328,7 @@ contractRoutes.post('/finalize', async (req, res) => {
     res.json({
       hash: result.hash,
       contractId: input.contractId,
-      status: 'Completed',
+      status: 'COMPLETED',
     });
   } catch (err) {
     console.error('[contract/finalize] Error:', err);
@@ -385,7 +385,7 @@ contractRoutes.post('/dispute', async (req, res) => {
     res.json({
       hash: result.hash,
       contractId: input.contractId,
-      status: 'Disputed',
+      status: 'DISPUTED',
     });
   } catch (err) {
     console.error('[contract/dispute] Error:', err);
