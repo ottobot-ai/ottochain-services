@@ -53,7 +53,7 @@ for i in {1..30}; do
 done
 
 # Push schema
-DATABASE_URL="postgresql://ottochain:ottochain@localhost:5432/ottochain_identity" \
+DATABASE_URL="postgresql://ottochain:ottochain@localhost:5432/ottochain" \
     pnpm db:push --skip-generate 2>/dev/null
 log "  ✓ Schema pushed"
 
@@ -102,7 +102,7 @@ fi
 
 # Start Indexer
 log "  Starting Indexer (port 3031)..."
-DATABASE_URL="postgresql://ottochain:ottochain@localhost:5432/ottochain_identity" \
+DATABASE_URL="postgresql://ottochain:ottochain@localhost:5432/ottochain" \
 METAGRAPH_ML0_URL="http://localhost:9200" \
 METAGRAPH_DL1_URL="http://localhost:9400" \
 INDEXER_PORT=3031 \
@@ -119,7 +119,7 @@ fi
 
 # Start Gateway
 log "  Starting Gateway (port 4000)..."
-DATABASE_URL="postgresql://ottochain:ottochain@localhost:5432/ottochain_identity" \
+DATABASE_URL="postgresql://ottochain:ottochain@localhost:5432/ottochain" \
 METAGRAPH_ML0_URL="http://localhost:9200" \
 GATEWAY_PORT=4000 \
     node packages/gateway/dist/index.js > /tmp/gateway.log 2>&1 &
@@ -136,7 +136,7 @@ fi
 
 # Start Bridge
 log "  Starting Bridge (port 3030)..."
-DATABASE_URL="postgresql://ottochain:ottochain@localhost:5432/ottochain_identity" \
+DATABASE_URL="postgresql://ottochain:ottochain@localhost:5432/ottochain" \
 METAGRAPH_ML0_URL="http://localhost:9200" \
 METAGRAPH_DL1_URL="http://localhost:9400" \
 BRIDGE_PORT=3030 \

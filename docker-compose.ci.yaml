@@ -19,7 +19,7 @@ services:
       - SERVICE=indexer
       - NODE_ENV=test
       # Connect to postgres on host via host.docker.internal
-      - DATABASE_URL=postgresql://ottochain:ottochain@host.docker.internal:5432/ottochain_identity
+      - DATABASE_URL=postgresql://ottochain:ottochain@host.docker.internal:5432/ottochain
       # Connect to metagraph via container names on tessellation_common
       - METAGRAPH_ML0_URL=http://ml0-0:9200
       - METAGRAPH_DL1_URL=http://dl1-0:9400
@@ -48,7 +48,7 @@ services:
       - SERVICE=bridge
       - NODE_ENV=test
       # Connect to postgres on host via host.docker.internal
-      - DATABASE_URL=postgresql://ottochain:ottochain@host.docker.internal:5432/ottochain_identity
+      - DATABASE_URL=postgresql://ottochain:ottochain@host.docker.internal:5432/ottochain
       # Connect to metagraph via container names on tessellation_common
       - METAGRAPH_ML0_URL=http://ml0-0:9200
       - METAGRAPH_DL1_URL=http://dl1-0:9400

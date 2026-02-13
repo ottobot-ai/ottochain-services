@@ -7,7 +7,7 @@ services:
       - "4000:4000"
     environment:
       SERVICE: gateway
-      DATABASE_URL: postgresql://ottochain:ottochain@postgres:5432/ottochain_identity
+      DATABASE_URL: postgresql://ottochain:ottochain@postgres:5432/ottochain
       METAGRAPH_ML0_URL: http://host.docker.internal:9200
       METAGRAPH_DL1_URL: http://host.docker.internal:9400
       GATEWAY_PORT: 4000
@@ -27,7 +27,7 @@ services:
       - "3030:3030"
     environment:
       SERVICE: bridge
-      DATABASE_URL: postgresql://ottochain:ottochain@postgres:5432/ottochain_identity
+      DATABASE_URL: postgresql://ottochain:ottochain@postgres:5432/ottochain
       METAGRAPH_ML0_URL: http://host.docker.internal:9200
       METAGRAPH_DL1_URL: http://host.docker.internal:9400
       BRIDGE_PORT: 3030
@@ -47,7 +47,7 @@ services:
       - "3031:3031"
     environment:
       SERVICE: indexer
-      DATABASE_URL: postgresql://ottochain:ottochain@postgres:5432/ottochain_identity
+      DATABASE_URL: postgresql://ottochain:ottochain@postgres:5432/ottochain
       METAGRAPH_ML0_URL: http://host.docker.internal:9200
       METAGRAPH_DL1_URL: http://host.docker.internal:9400
       INDEXER_PORT: 3031
@@ -71,7 +71,7 @@ services:
     environment:
       POSTGRES_USER: ottochain
       POSTGRES_PASSWORD: ottochain
-      POSTGRES_DB: ottochain_identity
+      POSTGRES_DB: ottochain
     ports:
       - "5432:5432"
     volumes:

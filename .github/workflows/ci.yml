@@ -55,11 +55,11 @@ jobs:
         env:
           POSTGRES_USER: ottochain
           POSTGRES_PASSWORD: ottochain
-          POSTGRES_DB: ottochain_identity
+          POSTGRES_DB: ottochain
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U ottochain -d ottochain_identity"
+          --health-cmd "pg_isready -U ottochain -d ottochain"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -93,7 +93,7 @@ jobs:
       
       - name: Validate schema
         env:
-          DATABASE_URL: postgresql://ottochain:ottochain@localhost:5432/ottochain_identity
+          DATABASE_URL: postgresql://ottochain:ottochain@localhost:5432/ottochain
         run: |
           pnpm db:push --skip-generate
           pnpm db:generate

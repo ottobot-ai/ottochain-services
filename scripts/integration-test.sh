@@ -85,7 +85,7 @@ for i in {1..30}; do
 done
 
 log "Pushing database schema..."
-DATABASE_URL="postgresql://ottochain:ottochain@localhost:$POSTGRES_PORT/ottochain_identity" \
+DATABASE_URL="postgresql://ottochain:ottochain@localhost:$POSTGRES_PORT/ottochain" \
     pnpm db:push --skip-generate 2>/dev/null
 
 log "Starting metagraph cluster..."
@@ -123,7 +123,7 @@ cd "$SERVICES_DIR"
 pnpm build >/dev/null 2>&1
 
 log "Starting indexer..."
-DATABASE_URL="postgresql://ottochain:ottochain@localhost:$POSTGRES_PORT/ottochain_identity" \
+DATABASE_URL="postgresql://ottochain:ottochain@localhost:$POSTGRES_PORT/ottochain" \
 METAGRAPH_ML0_URL="http://localhost:$ML0_PORT" \
 METAGRAPH_DL1_URL="http://localhost:$DL1_PORT" \
 INDEXER_PORT=$INDEXER_PORT \
@@ -210,7 +210,7 @@ log "  ✅ Indexer processed ordinal $INDEXED_ORDINAL"
 
 log "TEST 3: PostgreSQL persistence"
 
-SNAPSHOT_COUNT=$(docker compose exec -T postgres psql -U ottochain -d ottochain_identity -t -c \
+SNAPSHOT_COUNT=$(docker compose exec -T postgres psql -U ottochain -d ottochain -t -c \
     "SELECT COUNT(*) FROM \"IndexedSnapshot\";" 2>/dev/null | tr -d ' ')
 
 if [ "$SNAPSHOT_COUNT" -lt 1 ]; then
