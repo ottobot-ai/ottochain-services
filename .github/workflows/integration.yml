@@ -33,6 +33,18 @@ jobs:
           --health-retries 5
 
     steps:
+      - name: Free disk space
+        run: |
+          # Remove unnecessary tools to free ~6-10GB
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          # Clean Docker
+          docker system prune -af --volumes || true
+          # Show available space
+          df -h /
+
       - name: Checkout ottochain-services
         uses: actions/checkout@v4
 
@@ -128,6 +140,15 @@ jobs:
         working-directory: ottochain
         run: |
           sbt "currencyL0/assembly; dataL1/assembly"
+
+      - name: Clean up build artifacts
+        run: |
+          # Remove sbt intermediate files to free disk space
+          # Keep only the final assembly JARs (cached separately)
+          find tessellation/modules -name "*.class" -delete 2>/dev/null || true
+          find ottochain/modules -name "*.class" -delete 2>/dev/null || true
+          rm -rf ~/.sbt/boot ~/.ivy2/cache 2>/dev/null || true
+          df -h /
 
       - name: Verify test keys exist and are different
         working-directory: tessellation/docker
