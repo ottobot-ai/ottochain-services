@@ -27,7 +27,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U ottochain"
+          --health-cmd "pg_isready -U ottochain -d ottochain_identity"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
