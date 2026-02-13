@@ -331,57 +331,47 @@ jobs:
           sleep 2
           docker exec redis-ci redis-cli ping
 
-      - name: Setup webhook proxy
+      - name: Build services Docker image
         run: |
-          # ML0 container can't reach localhost directly, so we run a socat proxy
-          # on the tessellation_common network that forwards to host.docker.internal
-          docker run -d --name webhook-proxy \
-            --network tessellation_common \
-            --add-host=host.docker.internal:host-gateway \
-            alpine/socat \
-            TCP-LISTEN:3031,fork,reuseaddr TCP:host.docker.internal:3031
-          
-          sleep 2
-          
-          # Get proxy container IP
-          PROXY_IP=$(docker inspect webhook-proxy --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
-          echo "PROXY_IP=$PROXY_IP" >> $GITHUB_ENV
-          echo "Webhook proxy running at $PROXY_IP:3031"
+          docker build -t ottochain-services:ci .
+          echo "SERVICES_IMAGE=ottochain-services:ci" >> $GITHUB_ENV
 
-      - name: Start indexer
-        env:
-          DATABASE_URL: postgresql://ottochain:ottochain@localhost:5432/ottochain_identity
-          METAGRAPH_ML0_URL: http://localhost:9200
-          METAGRAPH_DL1_URL: http://localhost:9400
-          INDEXER_PORT: 3031
+      - name: Start services containers
         run: |
-          # Use proxy IP from previous step for webhook callback
-          export INDEXER_CALLBACK_URL="http://${PROXY_IP}:3031/webhook/snapshot"
-          echo "Indexer callback URL: $INDEXER_CALLBACK_URL"
-          node packages/indexer/dist/index.js &
-          sleep 3
-          curl -s http://localhost:3031/health | grep -q '"status":"ok"'
-          # Verify proxy connectivity from ML0
-          docker exec ml0-0 curl -sf http://$PROXY_IP:3031/health
+          # Start indexer and bridge as containers on tessellation_common network
+          # This allows ML0 to reach them directly without proxy hacks
+          docker compose -f docker-compose.ci.yaml up -d
+          
+          # Wait for services to be healthy
+          echo "Waiting for services to be healthy..."
+          for i in {1..60}; do
+            indexer_ok=$(curl -sf http://localhost:3031/health 2>/dev/null | grep -c '"status":"ok"' || echo "0")
+            bridge_ok=$(curl -sf http://localhost:3030/health 2>/dev/null | grep -c '"status":"ok"' || echo "0")
+            
+            if [ "$indexer_ok" = "1" ] && [ "$bridge_ok" = "1" ]; then
+              echo "✓ Both services healthy after ${i}s"
+              break
+            fi
+            
+            if [ $i -eq 60 ]; then
+              echo "❌ Services failed to become healthy"
+              docker compose -f docker-compose.ci.yaml logs
+              exit 1
+            fi
+            sleep 1
+          done
+          
+          # Verify ML0 can reach indexer directly (no proxy needed!)
+          docker exec ml0-0 curl -sf http://indexer:3031/health
+          echo "✓ ML0 can reach indexer directly on tessellation_common network"
 
       - name: Run webhook integration tests
         env:
           ML0_URL: http://localhost:9200
           INDEXER_URL: http://localhost:3031
-          HOST_IP: ${{ env.PROXY_IP }}
+          # Use 'indexer' hostname since tests run subscription from ML0's perspective
+          HOST_IP: indexer
         run: npx tsx scripts/test-webhook.ts
-
-      - name: Start bridge
-        env:
-          DATABASE_URL: postgresql://ottochain:ottochain@localhost:5432/ottochain_identity
-          METAGRAPH_ML0_URL: http://localhost:9200
-          METAGRAPH_DL1_URL: http://localhost:9400
-          BRIDGE_PORT: 3030
-        run: |
-          node packages/bridge/dist/index.js &
-          sleep 3
-          curl -s http://localhost:3030/health | grep -q '"status":"ok"'
-          echo "Bridge is healthy"
 
       - name: Run traffic generator integration test
         env:
@@ -437,18 +427,20 @@ jobs:
           docker logs dl1-1 2>&1 | tail -50 || true
           echo "=== DL1-2 Logs ==="
           docker logs dl1-2 2>&1 | tail -50 || true
-          echo "=== Webhook Proxy Logs ==="
-          docker logs webhook-proxy 2>&1 | tail -50 || true
+          echo "=== Indexer Logs ==="
+          docker logs indexer 2>&1 | tail -100 || true
+          echo "=== Bridge Logs ==="
+          docker logs bridge 2>&1 | tail -50 || true
           echo "=== Webhook Subscribers ==="
           curl -s http://localhost:9200/data-application/v1/webhooks/subscribers | jq . || true
-          echo "=== Indexer Logs ==="
-          cat /tmp/indexer.log 2>/dev/null | tail -50 || true
 
       - name: Cleanup
         if: always()
-        working-directory: tessellation/docker
         run: |
-          docker rm -f webhook-proxy 2>/dev/null || true
+          # Stop services containers
+          docker compose -f docker-compose.ci.yaml down 2>/dev/null || true
           docker rm -f redis-ci 2>/dev/null || true
+          # Stop tessellation cluster
+          cd tessellation/docker
           chmod +x bin/*.sh 2>/dev/null || true
           ./bin/compose-runner.sh --down || true
