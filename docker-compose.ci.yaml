@@ -1,0 +1,71 @@
+# CI-only compose file for integration tests
+# Runs indexer and bridge as containers on the tessellation_common network
+# so ML0 can reach them directly without proxy hacks.
+#
+# Usage:
+#   docker compose -f docker-compose.ci.yaml up -d
+#
+# Prerequisites:
+#   - tessellation_common network must exist (created by tessellation compose-runner)
+#   - GitHub Actions postgres service running on host:5432 (accessed via host.docker.internal)
+
+services:
+  indexer:
+    image: ${SERVICES_IMAGE:-ghcr.io/ottobot-ai/ottochain-services:latest}
+    container_name: indexer
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - SERVICE=indexer
+      - NODE_ENV=test
+      # Connect to postgres on host via host.docker.internal
+      - DATABASE_URL=postgresql://ottochain:ottochain@host.docker.internal:5432/ottochain_identity
+      # Connect to metagraph via container names on tessellation_common
+      - METAGRAPH_ML0_URL=http://ml0-0:9200
+      - METAGRAPH_DL1_URL=http://dl1-0:9400
+      - INDEXER_PORT=3031
+      # ML0 can reach us directly at http://indexer:3031
+      - INDEXER_CALLBACK_URL=http://indexer:3031/webhook/snapshot
+    ports:
+      - "3031:3031"
+    networks:
+      tessellation_common:
+        aliases:
+          - indexer
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3031/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  bridge:
+    image: ${SERVICES_IMAGE:-ghcr.io/ottobot-ai/ottochain-services:latest}
+    container_name: bridge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - SERVICE=bridge
+      - NODE_ENV=test
+      # Connect to postgres on host via host.docker.internal
+      - DATABASE_URL=postgresql://ottochain:ottochain@host.docker.internal:5432/ottochain_identity
+      # Connect to metagraph via container names on tessellation_common
+      - METAGRAPH_ML0_URL=http://ml0-0:9200
+      - METAGRAPH_DL1_URL=http://dl1-0:9400
+      - BRIDGE_PORT=3030
+    ports:
+      - "3030:3030"
+    networks:
+      tessellation_common:
+        aliases:
+          - bridge
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3030/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+networks:
+  tessellation_common:
+    external: true
