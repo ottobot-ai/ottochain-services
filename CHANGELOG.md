@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.4](https://github.com/ottobot-ai/ottochain-services/compare/v0.3.3...v0.3.4) (2026-02-13)
+
+
+### Bug Fixes
+
+* **ci:** free disk space before integration tests ([#92](https://github.com/ottobot-ai/ottochain-services/issues/92)) ([0781923](https://github.com/ottobot-ai/ottochain-services/commit/0781923e18919b202d59e9f899cf9af074cf1761))
+* **ci:** use correct database in postgres health check ([#89](https://github.com/ottobot-ai/ottochain-services/issues/89)) ([5e9ff9a](https://github.com/ottobot-ai/ottochain-services/commit/5e9ff9ae36c6c8cd3f01c133b4cb908516b60db3))
+* **ci:** use external network instead of socat proxy ([#88](https://github.com/ottobot-ai/ottochain-services/issues/88)) ([bc1f2db](https://github.com/ottobot-ai/ottochain-services/commit/bc1f2db08c15c87aeb366dfff870b084d2ba2267))
+
 ## [0.3.3](https://github.com/ottobot-ai/ottochain-services/compare/v0.3.2...v0.3.3) (2026-02-12)
 
 
