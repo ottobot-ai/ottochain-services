@@ -11,7 +11,7 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-ottochain}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-      POSTGRES_DB: ${POSTGRES_DB:-ottochain_identity}
+      POSTGRES_DB: ${POSTGRES_DB:-ottochain}
     ports:
       - "5432:5432"
     volumes:
@@ -30,7 +30,7 @@ services:
     ports:
       - "4000:4000"
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-ottochain}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ottochain_identity}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ottochain}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ottochain}
       METAGRAPH_ML0_URL: http://host.docker.internal:9100
       METAGRAPH_DL1_URL: http://host.docker.internal:9400
       GATEWAY_PORT: 4000
@@ -46,7 +46,7 @@ services:
     ports:
       - "3030:3030"
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-ottochain}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ottochain_identity}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ottochain}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ottochain}
       METAGRAPH_ML0_URL: http://host.docker.internal:9100
       METAGRAPH_DL1_URL: http://host.docker.internal:9400
       BRIDGE_PORT: 3030
@@ -62,7 +62,7 @@ services:
     ports:
       - "3031:3031"
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-ottochain}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ottochain_identity}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ottochain}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ottochain}
       METAGRAPH_ML0_URL: http://host.docker.internal:9100
       METAGRAPH_DL1_URL: http://host.docker.internal:9400
       INDEXER_PORT: 3031
