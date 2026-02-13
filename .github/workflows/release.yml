@@ -114,7 +114,8 @@ jobs:
           fi
           gh api repos/ottobot-ai/ottochain-deploy/dispatches \
             -f event_type=version-bump \
-            -f 'client_payload={"component":"services","version":"${{ steps.version.outputs.version }}"}'
+            -f client_payload[component]=services \
+            -f client_payload[version]=${{ steps.version.outputs.version }}
           echo "✅ Notified deploy repo to bump services to v${{ steps.version.outputs.version }}"
 
       - name: Summary
