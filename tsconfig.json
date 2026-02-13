@@ -1,0 +1,25 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/bridge" },
+    { "path": "./packages/gateway" },
+    { "path": "./packages/indexer" },
+    { "path": "./packages/monitor" },
+    { "path": "./packages/shared" },
+    { "path": "./packages/traffic-generator" }
+  ],
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true,
+    "sourceMap": true,
+    "composite": true,
+    "isolatedModules": true
+  }
+}

@@ -1,0 +1,25 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 70%
+        threshold: 1%
+        base: auto
+    patch:
+      default:
+        target: 70%
+        threshold: 1%
+        base: auto
+  
+  ignore:
+    - "packages/*/test/**"
+    - "packages/*/dist/**"
+    - "packages/*/node_modules/**"
+    - "**/*.test.ts"
+    - "**/*.d.ts"
+    - "**/generated/**"
+
+comment:
+  layout: "reach,diff,flags,files,footer"
+  behavior: default
+  require_changes: false
