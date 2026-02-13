@@ -260,6 +260,234 @@ describe('Bridge E2E Tests', () => {
       console.log(`  ✓ Rejected activation of non-existent agent`);
     });
   });
+
+  describe('Market Lifecycle', () => {
+    let marketWallet: Wallet;
+    let participantWallet: Wallet;
+    let oracleWallet: Wallet;
+    let marketId: string;
+
+    before(async () => {
+      // Generate fresh wallets for market tests
+      const [mw, pw, ow] = await Promise.all([
+        fetch(`${BRIDGE_URL}/wallet/generate`, { method: 'POST' }).then(r => r.json()),
+        fetch(`${BRIDGE_URL}/wallet/generate`, { method: 'POST' }).then(r => r.json()),
+        fetch(`${BRIDGE_URL}/wallet/generate`, { method: 'POST' }).then(r => r.json()),
+      ]);
+      marketWallet = mw as Wallet;
+      participantWallet = pw as Wallet;
+      oracleWallet = ow as Wallet;
+      console.log(`  ✓ Generated market wallets`);
+    });
+
+    it('should create a prediction market with ISO deadline', async () => {
+      // Use ISO deadline string - bridge should convert to epoch ms
+      const deadline = new Date(Date.now() + 3600000).toISOString(); // 1 hour from now
+      
+      const response = await fetch(`${BRIDGE_URL}/market/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          privateKey: marketWallet.privateKey,
+          marketType: 'prediction',
+          title: 'E2E Test Market - Deadline Handling',
+          description: 'Tests that ISO deadline is converted to epoch for JSON Logic',
+          deadline,
+          threshold: 10,
+          quorum: 1,
+          oracles: [oracleWallet.address],
+          terms: {
+            question: 'Will this test pass?',
+            outcomes: ['YES', 'NO'],
+            feePercent: 0.02,
+          },
+        }),
+      });
+
+      assert.strictEqual(response.status, 201, 'Should return 201 Created');
+      const result = await response.json() as { marketId: string; hash: string };
+      assert.ok(result.marketId, 'Should have marketId');
+      marketId = result.marketId;
+      
+      console.log(`  ✓ Created market: ${marketId}`);
+    });
+
+    it('should appear on ML0 with epoch deadline', async () => {
+      const fiber = await waitForFiber(marketId);
+      assert.ok(fiber, 'Market should appear on ML0');
+      assert.strictEqual(fiber.currentState.value, 'PROPOSED', 'Should be PROPOSED');
+      
+      // Verify deadline is stored as number (epoch ms), not string
+      const deadline = fiber.stateData.deadline as number;
+      assert.strictEqual(typeof deadline, 'number', 'Deadline should be epoch ms (number)');
+      assert.ok(deadline > Date.now(), 'Deadline should be in the future');
+      
+      console.log(`  ✓ Market on ML0, deadline=${deadline} (epoch ms)`);
+    });
+
+    it('should open the market', async () => {
+      const response = await fetch(`${BRIDGE_URL}/market/open`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          privateKey: marketWallet.privateKey,
+          marketId,
+        }),
+      });
+
+      assert.strictEqual(response.status, 200);
+      const result = await response.json() as { status: string };
+      assert.strictEqual(result.status, 'OPEN');
+      
+      console.log(`  ✓ Market opened`);
+    });
+
+    it('should transition to OPEN on ML0', async () => {
+      const fiber = await waitForState(marketId, 'OPEN');
+      assert.ok(fiber, 'Market should transition to OPEN');
+      
+      console.log(`  ✓ Market state: ${fiber.currentState.value}`);
+    });
+
+    it('should accept a commitment', async () => {
+      const response = await fetch(`${BRIDGE_URL}/market/commit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          privateKey: participantWallet.privateKey,
+          marketId,
+          amount: 100,
+          data: { side: 'YES' },
+        }),
+      });
+
+      assert.strictEqual(response.status, 200);
+      const result = await response.json() as { hash: string; amount: number };
+      assert.strictEqual(result.amount, 100);
+      
+      console.log(`  ✓ Committed 100 on YES`);
+    });
+
+    it('should reflect commitment on ML0', async () => {
+      // Wait a bit for state to sync
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      
+      const response = await fetch(`${BRIDGE_URL}/market/${marketId}`);
+      const market = await response.json() as StateMachine;
+      
+      assert.strictEqual(market.stateData.totalCommitted, 100, 'Total should be 100');
+      
+      console.log(`  ✓ Commitment reflected: totalCommitted=${market.stateData.totalCommitted}`);
+    });
+
+    it('should close the market', async () => {
+      const response = await fetch(`${BRIDGE_URL}/market/close`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          privateKey: marketWallet.privateKey,
+          marketId,
+        }),
+      });
+
+      assert.strictEqual(response.status, 200);
+      const result = await response.json() as { status: string };
+      assert.strictEqual(result.status, 'CLOSED');
+      
+      console.log(`  ✓ Market closed`);
+    });
+
+    it('should transition to CLOSED on ML0', async () => {
+      const fiber = await waitForState(marketId, 'CLOSED');
+      assert.ok(fiber, 'Market should transition to CLOSED');
+      
+      console.log(`  ✓ Market state: ${fiber.currentState.value}`);
+    });
+
+    it('should accept oracle resolution', async () => {
+      const response = await fetch(`${BRIDGE_URL}/market/resolve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          privateKey: oracleWallet.privateKey,
+          marketId,
+          outcome: 'YES',
+          proof: 'E2E test confirmed passing',
+        }),
+      });
+
+      assert.strictEqual(response.status, 200);
+      const result = await response.json() as { outcome: string };
+      assert.strictEqual(result.outcome, 'YES');
+      
+      console.log(`  ✓ Oracle resolved: YES`);
+    });
+
+    it('should transition to RESOLVING on ML0', async () => {
+      const fiber = await waitForState(marketId, 'RESOLVING');
+      assert.ok(fiber, 'Market should transition to RESOLVING');
+      
+      const resolutions = fiber.stateData.resolutions as Array<{ outcome: string }>;
+      assert.ok(resolutions.length >= 1, 'Should have at least 1 resolution');
+      
+      console.log(`  ✓ Market resolving: ${resolutions.length} resolution(s)`);
+    });
+
+    it('should finalize the market', async () => {
+      const response = await fetch(`${BRIDGE_URL}/market/finalize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          privateKey: marketWallet.privateKey,
+          marketId,
+          outcome: 'YES',
+        }),
+      });
+
+      assert.strictEqual(response.status, 200);
+      const result = await response.json() as { status: string };
+      assert.strictEqual(result.status, 'SETTLED');
+      
+      console.log(`  ✓ Market finalized`);
+    });
+
+    it('should transition to SETTLED on ML0', async () => {
+      const fiber = await waitForState(marketId, 'SETTLED');
+      assert.ok(fiber, 'Market should transition to SETTLED');
+      assert.strictEqual(fiber.stateData.finalOutcome, 'YES', 'Final outcome should be YES');
+      
+      console.log(`  ✓ Market settled: outcome=${fiber.stateData.finalOutcome}`);
+    });
+
+    it('should allow winner to claim', async () => {
+      const response = await fetch(`${BRIDGE_URL}/market/claim`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          privateKey: participantWallet.privateKey,
+          marketId,
+        }),
+      });
+
+      assert.strictEqual(response.status, 200);
+      
+      console.log(`  ✓ Winner claimed`);
+    });
+
+    it('should record claim on ML0', async () => {
+      // Wait for claim to propagate
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      
+      const response = await fetch(`${BRIDGE_URL}/market/${marketId}`);
+      const market = await response.json() as StateMachine;
+      
+      const claims = market.stateData.claims as Record<string, unknown> | Array<{ agent: string }>;
+      const claimCount = Array.isArray(claims) ? claims.length : Object.keys(claims).length;
+      assert.ok(claimCount >= 1, 'Should have at least 1 claim');
+      
+      console.log(`  ✓ Claim recorded: ${claimCount} claim(s)`);
+    });
+  });
 });
 
 // Run if executed directly

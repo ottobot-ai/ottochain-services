@@ -236,6 +236,32 @@ export async function getFiberSequenceNumber(fiberId: string): Promise<number> {
 }
 
 /**
+ * Get the current epoch progress from ML0.
+ * 
+ * EpochProgress is a steady time measure that doesn't burst with high traffic
+ * like ordinals. Use this for deadline calculations and time-based guards.
+ * 
+ * @returns The current epoch progress value
+ */
+export async function getEpochProgress(): Promise<number> {
+  const config = getConfig();
+  const client = new HttpClient(config.METAGRAPH_ML0_URL);
+  
+  try {
+    const nodeInfo = await client.get<{
+      epochProgress?: number;
+    }>('/node/info');
+    
+    const epoch = nodeInfo?.epochProgress ?? 0;
+    console.log(`[metagraph] Current epoch progress: ${epoch}`);
+    return epoch;
+  } catch (err) {
+    console.warn(`[metagraph] Could not get epoch progress, defaulting to 0`);
+    return 0;
+  }
+}
+
+/**
  * Wait for a fiber's sequence number to reach a target value.
  * 
  * Use this after submitting a transaction to ensure it's been processed
