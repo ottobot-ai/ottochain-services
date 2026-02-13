@@ -5,7 +5,7 @@
 import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
-import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey, waitForFiber, getFiberSequenceNumber } from '../metagraph.js';
+import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey, waitForFiber, getFiberSequenceNumber, getEpochProgress } from '../metagraph.js';
 import { MarketType, MarketState, getMarketDefinition } from '@ottochain/sdk/apps/markets';
 
 export const marketRoutes: RouterType = Router();
@@ -40,12 +40,17 @@ const MARKET_STATE_MAP: Record<MarketState, string> = {
 
 const MarketTypeSchema = z.enum(['prediction', 'auction', 'crowdfund', 'group_buy']);
 
+// Approximate seconds per epoch progress increment (configurable)
+// DAG network advances epoch roughly every 30 seconds
+const SECONDS_PER_EPOCH = 30;
+
 const CreateMarketRequestSchema = z.object({
   privateKey: z.string().length(64),
   marketType: MarketTypeSchema,
   title: z.string().min(1),
   description: z.string().optional(),
-  deadline: z.string().nullable().optional(),
+  deadline: z.string().nullable().optional(), // ISO timestamp (converted to epoch progress)
+  deadlineEpoch: z.number().nullable().optional(), // Direct epoch progress value (overrides deadline)
   threshold: z.number().nullable().optional(),
   oracles: z.array(z.string()).optional().default([]),
   quorum: z.number().int().min(1).optional().default(1),
@@ -139,6 +144,22 @@ marketRoutes.post('/create', async (req, res) => {
     // Map API type to proto enum for storage
     const protoMarketType = MARKET_TYPE_MAP[input.marketType];
 
+    // Calculate deadline as epoch progress value
+    let deadlineEpoch: number | null = null;
+    if (input.deadlineEpoch) {
+      // User provided direct epoch progress value
+      deadlineEpoch = input.deadlineEpoch;
+    } else if (input.deadline) {
+      // Convert ISO deadline to epoch progress
+      const currentEpoch = await getEpochProgress();
+      const deadlineMs = new Date(input.deadline).getTime();
+      const nowMs = Date.now();
+      const secondsUntilDeadline = Math.max(0, (deadlineMs - nowMs) / 1000);
+      const epochsUntilDeadline = Math.ceil(secondsUntilDeadline / SECONDS_PER_EPOCH);
+      deadlineEpoch = currentEpoch + epochsUntilDeadline;
+      console.log(`[market/create] Deadline ${input.deadline} → epoch ${deadlineEpoch} (current: ${currentEpoch}, +${epochsUntilDeadline} epochs)`);
+    }
+
     const initialData = {
       schema: 'Market',
       marketType: input.marketType,
@@ -147,8 +168,8 @@ marketRoutes.post('/create', async (req, res) => {
       title: input.title,
       description: input.description ?? '',
       terms: input.terms,
-      // Convert ISO deadline to epoch ms for JSON Logic comparison with $timestamp
-      deadline: input.deadline ? new Date(input.deadline).getTime() : null,
+      // Deadline stored as epoch progress for JSON Logic guard: $epochProgress >= state.deadline
+      deadline: deadlineEpoch,
       threshold: input.threshold ?? null,
       oracles: input.oracles.length > 0 ? input.oracles : [creatorAddress],
       quorum: input.quorum,
