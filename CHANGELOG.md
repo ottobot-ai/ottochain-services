@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.5](https://github.com/ottobot-ai/ottochain-services/compare/v0.3.4...v0.3.5) (2026-02-13)
+
+
+### Bug Fixes
+
+* **bridge:** use epochProgress for market deadlines ([#87](https://github.com/ottobot-ai/ottochain-services/issues/87)) ([bda6107](https://github.com/ottobot-ai/ottochain-services/commit/bda6107310080340de92fa0f2b4b34e302e17bb6))
+* **ci:** use proper gh api syntax for client_payload ([#93](https://github.com/ottobot-ai/ottochain-services/issues/93)) ([2aabc41](https://github.com/ottobot-ai/ottochain-services/commit/2aabc41c9a24bd5aaa06ad37eead2eba011e5738))
+
 ## [0.3.4](https://github.com/ottobot-ai/ottochain-services/compare/v0.3.3...v0.3.4) (2026-02-13)
 
 
