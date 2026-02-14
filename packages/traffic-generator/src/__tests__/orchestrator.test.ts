@@ -5,10 +5,10 @@
  * Verifies SDK-compliant contract and fiber flows without live cluster.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { FiberOrchestrator, TrafficConfig } from '../orchestrator.js';
-import { BridgeClient } from '../bridge-client.js';
-import { Agent } from '../types.js';
+// Jest globals are automatically available in test files
+import { FiberOrchestrator, TrafficConfig } from '../orchestrator';
+import { BridgeClient } from '../bridge-client';
+import { Agent } from '../types';
 
 // Mock wallet pool
 const mockAgents: Agent[] = Array.from({ length: 10 }, (_, i) => ({
@@ -49,29 +49,29 @@ const mockAgents: Agent[] = Array.from({ length: 10 }, (_, i) => ({
 function createMockBridge() {
   return {
     // Agent operations
-    registerAgent: vi.fn().mockResolvedValue({ fiberId: 'agent-fiber-123', address: 'DAG...', hash: 'hash1' }),
-    activateAgent: vi.fn().mockResolvedValue({ hash: 'hash2', event: 'activate', fiberId: 'agent-fiber-123' }),
+    registerAgent: jest.fn().mockResolvedValue({ fiberId: 'agent-fiber-123', address: 'DAG...', hash: 'hash1' }),
+    activateAgent: jest.fn().mockResolvedValue({ hash: 'hash2', event: 'activate', fiberId: 'agent-fiber-123' }),
     
     // Contract operations
-    proposeContract: vi.fn().mockResolvedValue({ 
+    proposeContract: jest.fn().mockResolvedValue({ 
       contractId: 'contract-uuid-456', 
       proposer: 'DAG0...', 
       counterparty: 'DAG1...', 
       hash: 'hash3' 
     }),
-    acceptContract: vi.fn().mockResolvedValue({ hash: 'hash4', contractId: 'contract-uuid-456', status: 'ACTIVE' }),
-    submitCompletion: vi.fn().mockResolvedValue({ hash: 'hash5', contractId: 'contract-uuid-456', message: 'ok' }),
-    finalizeContract: vi.fn().mockResolvedValue({ hash: 'hash6', contractId: 'contract-uuid-456', status: 'COMPLETED' }),
-    rejectContract: vi.fn().mockResolvedValue({ hash: 'hash7', contractId: 'contract-uuid-456', status: 'Rejected' }),
-    disputeContract: vi.fn().mockResolvedValue({ hash: 'hash8', contractId: 'contract-uuid-456', status: 'Disputed' }),
+    acceptContract: jest.fn().mockResolvedValue({ hash: 'hash4', contractId: 'contract-uuid-456', status: 'Active' }),
+    submitCompletion: jest.fn().mockResolvedValue({ hash: 'hash5', contractId: 'contract-uuid-456', message: 'ok' }),
+    finalizeContract: jest.fn().mockResolvedValue({ hash: 'hash6', contractId: 'contract-uuid-456', status: 'Completed' }),
+    rejectContract: jest.fn().mockResolvedValue({ hash: 'hash7', contractId: 'contract-uuid-456', status: 'Rejected' }),
+    disputeContract: jest.fn().mockResolvedValue({ hash: 'hash8', contractId: 'contract-uuid-456', status: 'Disputed' }),
     
     // Fiber operations
-    createFiber: vi.fn().mockResolvedValue({ fiberId: 'fiber-uuid-789', hash: 'hash9' }),
-    transitionFiber: vi.fn().mockResolvedValue({ hash: 'hash10', event: 'move', fiberId: 'fiber-uuid-789' }),
-    transitionContract: vi.fn().mockResolvedValue({ hash: 'hash11', event: 'custom', fiberId: 'contract-uuid-456' }),
+    createFiber: jest.fn().mockResolvedValue({ fiberId: 'fiber-uuid-789', hash: 'hash9' }),
+    transitionFiber: jest.fn().mockResolvedValue({ hash: 'hash10', event: 'move', fiberId: 'fiber-uuid-789' }),
+    transitionContract: jest.fn().mockResolvedValue({ hash: 'hash11', event: 'custom', fiberId: 'contract-uuid-456' }),
     
     // Status
-    checkSyncStatus: vi.fn().mockResolvedValue({ ready: true, allReady: true }),
+    checkSyncStatus: jest.fn().mockResolvedValue({ ready: true, allReady: true }),
   } as unknown as BridgeClient;
 }
 
@@ -113,7 +113,7 @@ describe('FiberOrchestrator', () => {
     });
 
     it('should handle registration errors gracefully', async () => {
-      bridge.registerAgent = vi.fn()
+      bridge.registerAgent = jest.fn()
         .mockResolvedValueOnce({ fiberId: 'f1', address: 'a1', hash: 'h1' })
         .mockRejectedValueOnce(new Error('already exists'))
         .mockResolvedValueOnce({ fiberId: 'f2', address: 'a2', hash: 'h2' });
@@ -127,7 +127,7 @@ describe('FiberOrchestrator', () => {
 
   describe('tick', () => {
     it('should skip when network is unhealthy', async () => {
-      bridge.checkSyncStatus = vi.fn().mockResolvedValue({ ready: false });
+      bridge.checkSyncStatus = jest.fn().mockResolvedValue({ ready: false });
       
       const stats = await orchestrator.tick();
       
@@ -143,8 +143,8 @@ describe('FiberOrchestrator', () => {
       expect(stats.created).toBeGreaterThan(0);
       // Should have called either proposeContract or createFiber
       const totalCreations = 
-        (bridge.proposeContract as ReturnType<typeof vi.fn>).mock.calls.length +
-        (bridge.createFiber as ReturnType<typeof vi.fn>).mock.calls.length;
+        (bridge.proposeContract as ReturnType<typeof jest.fn>).mock.calls.length +
+        (bridge.createFiber as ReturnType<typeof jest.fn>).mock.calls.length;
       expect(totalCreations).toBeGreaterThan(0);
     });
 
@@ -207,8 +207,8 @@ describe('FiberOrchestrator', () => {
         await orchestrator.tick();
       }
       
-      const proposeCount = (bridge.proposeContract as ReturnType<typeof vi.fn>).mock.calls.length;
-      const createCount = (bridge.createFiber as ReturnType<typeof vi.fn>).mock.calls.length;
+      const proposeCount = (bridge.proposeContract as ReturnType<typeof jest.fn>).mock.calls.length;
+      const createCount = (bridge.createFiber as ReturnType<typeof jest.fn>).mock.calls.length;
       
       // Both should have been called (rough 50/50 split)
       expect(proposeCount).toBeGreaterThan(0);

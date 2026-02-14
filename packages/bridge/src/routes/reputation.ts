@@ -4,9 +4,11 @@
  * API endpoints for tracking, scoring, and querying agent reputation
  */
 
-import express from 'express';
+import * as express from 'express';
 import { z } from 'zod';
 import { keyPairFromPrivateKey } from '@ottochain/sdk';
+import AgentRankingService from '../services/agent-ranking.js';
+import { AgentSelectionCriteria, AgentRecommendation } from '../services/trust-calculator.js';
 
 // Reputation data types (matching Scala definitions)
 enum ReputationEventType {
@@ -36,6 +38,18 @@ interface TaskCompletion {
   taskId: string;
   agentId: string;
   completedAt: Date;
+  qualityScore: number;
+  efficiencyScore: number;
+  domain: string;
+  complexity: number;
+  delegatedBy?: string;
+  stakingAmount?: number;
+}
+
+interface TaskCompletionRequest {
+  taskId: string;
+  agentId: string;
+  completedAt: string;
   qualityScore: number;
   efficiencyScore: number;
   domain: string;
@@ -115,7 +129,101 @@ const DEFAULT_REPUTATION_CONFIG: ReputationConfig = {
   slashingPenaltyMultiplier: 0.9,
 };
 
-const router = express.Router();
+// Initialize agent ranking service
+const agentRankingService = new AgentRankingService({
+  enableRealTimeChecks: true,
+  maxParallelChecks: 10,
+  availabilityTimeoutMs: 3000,
+  useCache: true,
+  cacheRefreshIntervalMs: 60000,
+});
+
+const router: express.Router = express.Router();
+
+/**
+ * GET /reputation/agents/search
+ * Search agents by skill with ranking
+ */
+router.get('/agents/search', async (req, res) => {
+  try {
+    const skill = req.query.skill as string;
+    const minReputationScore = parseFloat(req.query.minReputationScore as string) || 0.5;
+    const maxResults = parseInt(req.query.maxResults as string) || 20;
+    const requireOnline = req.query.requireOnline === 'true';
+    
+    if (!skill) {
+      return res.status(400).json({
+        error: 'skill parameter is required',
+      });
+    }
+    
+    const recommendations = await agentRankingService.searchAgentsBySkill(skill, {
+      minReputationScore,
+      maxResults,
+      requireOnline,
+    });
+    
+    res.json({
+      skill,
+      recommendations,
+      count: recommendations.length,
+      timestamp: new Date(),
+    });
+  } catch (error) {
+    console.error('Error searching agents by skill:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /reputation/agents/top/:domain
+ * Get top agents in a domain with diversity
+ */
+router.get('/agents/top/:domain', async (req, res) => {
+  try {
+    const { domain } = req.params;
+    const maxResults = parseInt(req.query.maxResults as string) || 10;
+    const diversityFactor = parseFloat(req.query.diversityFactor as string) || 0.3;
+    
+    const recommendations = await agentRankingService.getTopAgentsWithDiversity(
+      domain,
+      maxResults,
+      diversityFactor
+    );
+    
+    res.json({
+      domain,
+      recommendations,
+      count: recommendations.length,
+      diversityFactor,
+      timestamp: new Date(),
+    });
+  } catch (error) {
+    console.error('Error getting top agents:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /reputation/agents/:agentId/availability
+ * Check real-time availability for a specific agent
+ */
+router.get('/agents/:agentId/availability', async (req, res) => {
+  try {
+    const { agentId } = req.params;
+    
+    const availability = await agentRankingService.checkAgentAvailability(agentId);
+    
+    res.json({
+      agentId,
+      availability,
+      timestamp: new Date(),
+    });
+  } catch (error) {
+    console.error('Error checking agent availability:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 /**
  * GET /reputation/agents/:agentId
@@ -190,11 +298,30 @@ router.post('/agents/recommend', async (req, res) => {
   try {
     const criteria = AgentSelectionSchema.parse(req.body);
     
-    const recommendations = await getAgentRecommendations(criteria);
+    // Convert API schema to internal criteria format
+    const internalCriteria = {
+      requiredScore: criteria.requiredScore,
+      domains: criteria.domains,
+      maxCandidates: criteria.maxCandidates,
+      excludeAgents: criteria.excludeAgents,
+      requireActive: criteria.requireActive,
+      taskRequirements: req.body.taskRequirements ? {
+        skills: req.body.taskRequirements.skills || [],
+        models: req.body.taskRequirements.models,
+        minHardware: req.body.taskRequirements.minHardware,
+        maxBudget: req.body.taskRequirements.maxBudget,
+        minReputationScore: req.body.taskRequirements.minReputationScore || criteria.requiredScore,
+        requiresRealTime: req.body.taskRequirements.requiresRealTime || false,
+        complexity: req.body.taskRequirements.complexity || 1,
+      } : undefined,
+    };
+    
+    const result = await getAgentRecommendations(internalCriteria);
     
     res.json({
-      recommendations,
-      criteria,
+      recommendations: result.recommendations,
+      metadata: result.metadata,
+      criteria: internalCriteria,
       timestamp: new Date(),
     });
   } catch (error) {
@@ -228,8 +355,21 @@ router.post('/tasks/:taskId/complete', async (req, res) => {
       });
     }
     
+    // Convert string to Date and create TaskCompletion object
+    const taskCompletion: TaskCompletion = {
+      taskId: taskData.taskId,
+      agentId: taskData.agentId,
+      completedAt: new Date(taskData.completedAt),
+      qualityScore: taskData.qualityScore,
+      efficiencyScore: taskData.efficiencyScore,
+      domain: taskData.domain,
+      complexity: taskData.complexity,
+      delegatedBy: taskData.delegatedBy,
+      stakingAmount: taskData.stakingAmount,
+    };
+    
     // Record task completion and update reputation
-    const result = await recordTaskCompletion(taskData);
+    const result = await recordTaskCompletion(taskCompletion);
     
     res.json({
       success: true,
@@ -336,9 +476,16 @@ async function queryAgentReputations(query: any): Promise<AgentReputation[]> {
   return [];
 }
 
-async function getAgentRecommendations(criteria: any): Promise<AgentReputation[]> {
-  // TODO: Implement recommendation algorithm
-  return [];
+async function getAgentRecommendations(criteria: AgentSelectionCriteria): Promise<{
+  recommendations: AgentRecommendation[];
+  metadata: {
+    totalCandidates: number;
+    filteredCount: number;
+    availabilityChecked: boolean;
+    processingTimeMs: number;
+  };
+}> {
+  return await agentRankingService.getRecommendations(criteria);
 }
 
 async function recordTaskCompletion(taskData: TaskCompletion): Promise<{
@@ -373,6 +520,11 @@ function isActiveAgent(reputation: AgentReputation): boolean {
   return daysSinceActivity <= DEFAULT_REPUTATION_CONFIG.decayHalfLifeDays;
 }
 
+// Periodic cache cleanup (run every 5 minutes)
+setInterval(() => {
+  agentRankingService.cleanup();
+}, 5 * 60 * 1000);
+
 export default router;
 export {
   AgentReputation,
@@ -381,4 +533,9 @@ export {
   ReputationEventType,
   SpecializationArea,
   ReputationConfig,
+  agentRankingService,
 };
+
+// Re-export service types for external use
+export type { AgentRecommendation, AgentSelectionCriteria } from '../services/trust-calculator.js';
+export type { AvailabilityStatus } from '../services/agent-ranking.js';

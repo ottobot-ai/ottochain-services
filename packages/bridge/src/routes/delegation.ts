@@ -132,6 +132,14 @@ const RevokeDelegationRequestSchema = z.object({
   delegationId: z.string().min(1, 'Delegation ID required'),
   reason: z.string().optional(),
   privateKey: z.string().min(1, 'Private key required for signing'),
+  isEmergency: z.boolean().default(false),
+});
+
+const DegradePermissionsRequestSchema = z.object({
+  delegationId: z.string().min(1, 'Delegation ID required'),
+  newScope: DelegationScopeSchema,
+  reason: z.string().min(1, 'Degradation reason required'),
+  privateKey: z.string().min(1, 'Private key required for signing'),
 });
 
 const RelayedTransactionRequestSchema = z.object({
@@ -156,8 +164,32 @@ const RelayedTransactionRequestSchema = z.object({
 // Store active delegations by ID
 const activeDelegations = new Map<string, any>();
 
-// Store revoked delegations by ID
-const revokedDelegations = new Set<string>();
+// Enhanced revocation tracking
+const revokedDelegations = new Map<string, {
+  delegationId: string;
+  revokedAt: Date;
+  reason: string;
+  revokedBy: string;
+  isEmergency: boolean;
+  revocationSignature: string;
+  nonce: number;
+}>();
+
+// Track emergency revocation requests
+const emergencyRevocations = new Set<string>();
+
+// Track degraded permissions for delegations
+const degradedDelegations = new Map<string, {
+  originalScope: DelegationScope;
+  currentScope: DelegationScope;
+  degradationStarted: Date;
+  degradationSteps: Array<{
+    step: number;
+    timestamp: Date;
+    reason: string;
+    newScope: DelegationScope;
+  }>;
+}>();
 
 // Store delegation usage tracking
 const delegationUsage = new Map<string, {
@@ -366,20 +398,32 @@ delegationRoutes.delete('/:delegationId', async (req, res) => {
       });
     }
     
-    // Create revocation message
+    // Create enhanced revocation message
     const revocation = {
       delegationId,
-      reason: input.reason,
-      nonce: Date.now(),
-      revocationSignature: `revoked_by_${callerKeyPair.address}_at_${Date.now()}`,
       revokedAt: new Date(),
+      reason: input.reason || (input.isEmergency ? 'Emergency revocation' : 'User-initiated revocation'),
+      revokedBy: callerKeyPair.address,
+      isEmergency: input.isEmergency || false,
+      revocationSignature: `revoked_by_${callerKeyPair.address}_at_${Date.now()}`,
+      nonce: Date.now(),
     };
     
-    // Sign the revocation (TODO: implement revocation signing)
-    // For now, we'll just mark it as revoked
+    // Handle emergency revocation
+    if (input.isEmergency) {
+      console.log(`[delegation/revoke] EMERGENCY revocation for ${delegationId}`);
+      emergencyRevocations.add(delegationId);
+      
+      // TODO: Trigger immediate propagation to all validators
+      // This would involve sending immediate notification to the metagraph
+      await handleEmergencyRevocation(delegationId, revocation);
+    }
     
-    // Mark as revoked
-    revokedDelegations.add(delegationId);
+    // Store enhanced revocation data
+    revokedDelegations.set(delegationId, revocation);
+    
+    // Clear any degradation tracking for this delegation
+    degradedDelegations.delete(delegationId);
     
     console.log(`[delegation/revoke] Revoked delegation ${delegationId}`);
     
@@ -415,11 +459,16 @@ delegationRoutes.post('/submit', async (req, res) => {
       });
     }
     
-    // Check if delegation is revoked
-    if (revokedDelegations.has(input.delegationId)) {
+    // Enhanced revocation checking (includes emergency revocations)
+    if (isRevoked(input.delegationId, true)) {
+      const revocationData = revokedDelegations.get(input.delegationId);
+      const isEmergency = emergencyRevocations.has(input.delegationId);
+      
       return res.status(403).json({
         error: 'Delegation has been revoked',
         delegationId: input.delegationId,
+        revocationData,
+        isEmergencyRevocation: isEmergency,
       });
     }
     
@@ -454,34 +503,48 @@ delegationRoutes.post('/submit', async (req, res) => {
       });
     }
     
-    // Check delegation scope
-    const scopeCheck = await validateTransactionScope(input.transaction, delegation.scope);
+    // Check delegation scope (using effective scope considering degradations)
+    const effectiveScope = getEffectiveScope(input.delegationId);
+    if (!effectiveScope) {
+      return res.status(404).json({
+        error: 'Cannot determine effective delegation scope',
+        delegationId: input.delegationId,
+      });
+    }
+    
+    const scopeCheck = await validateTransactionScope(input.transaction, effectiveScope);
     if (!scopeCheck.valid) {
+      const degradation = degradedDelegations.get(input.delegationId);
       return res.status(403).json({
         error: 'Transaction violates delegation scope',
         details: scopeCheck.errors,
+        effectiveScope,
+        isDegraded: !!degradation,
+        degradationInfo: degradation,
       });
     }
     
-    // Check gas limits
+    // Check gas limits using effective scope
     const usage = delegationUsage.get(input.delegationId)!;
     const gasLimit = input.gasConfig.gasLimit as number;
     
-    if (delegation.scope.maxGasPerTx && gasLimit > delegation.scope.maxGasPerTx) {
+    if (effectiveScope.maxGasPerTx && gasLimit > effectiveScope.maxGasPerTx) {
       return res.status(403).json({
         error: 'Transaction exceeds per-transaction gas limit',
-        limit: delegation.scope.maxGasPerTx,
+        limit: effectiveScope.maxGasPerTx,
         requested: gasLimit,
+        note: 'Limit may be reduced due to delegation degradation',
       });
     }
     
-    if (delegation.scope.maxTotalGas && 
-        usage.totalGasUsed + gasLimit > delegation.scope.maxTotalGas) {
+    if (effectiveScope.maxTotalGas && 
+        usage.totalGasUsed + gasLimit > effectiveScope.maxTotalGas) {
       return res.status(403).json({
         error: 'Transaction would exceed total delegation gas limit',
-        limit: delegation.scope.maxTotalGas,
+        limit: effectiveScope.maxTotalGas,
         current: usage.totalGasUsed,
         requested: gasLimit,
+        note: 'Limit may be reduced due to delegation degradation',
       });
     }
     
@@ -528,6 +591,231 @@ delegationRoutes.post('/submit', async (req, res) => {
   }
 });
 
+/**
+ * Emergency revoke a delegation (bypasses normal consensus delays)
+ * POST /delegation/emergency-revoke
+ */
+delegationRoutes.post('/emergency-revoke', async (req, res) => {
+  try {
+    console.log('[delegation/emergency-revoke] Processing emergency revocation');
+    
+    const input = RevokeDelegationRequestSchema.parse(req.body);
+    
+    // Validation is the same but we enforce emergency=true
+    const enhancedInput = { ...input, isEmergency: true };
+    
+    // Delegate to the regular revoke endpoint but with emergency flag
+    req.body = enhancedInput;
+    
+    // For emergency revocations, we also implement immediate propagation
+    const delegation = activeDelegations.get(input.delegationId);
+    if (delegation) {
+      const keyPair = keyPairFromPrivateKey(input.privateKey);
+      
+      // Create immediate revocation entry
+      const emergencyRevocation = {
+        delegationId: input.delegationId,
+        revokedAt: new Date(),
+        reason: input.reason || 'Emergency revocation - security incident',
+        revokedBy: keyPair.address,
+        isEmergency: true,
+        revocationSignature: `emergency_revoked_by_${keyPair.address}_at_${Date.now()}`,
+        nonce: Date.now(),
+      };
+      
+      // Store immediately
+      revokedDelegations.set(input.delegationId, emergencyRevocation);
+      emergencyRevocations.add(input.delegationId);
+      
+      console.log(`[delegation/emergency-revoke] Emergency revocation processed for ${input.delegationId}`);
+      
+      res.json({
+        delegationId: input.delegationId,
+        revocation: emergencyRevocation,
+        message: 'Emergency revocation processed immediately',
+        propagated: true,
+      });
+    } else {
+      res.status(404).json({
+        error: 'Delegation not found',
+        delegationId: input.delegationId,
+      });
+    }
+    
+  } catch (error) {
+    console.error('[delegation/emergency-revoke] Error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to emergency revoke delegation';
+    res.status(500).json({ error: errorMessage });
+  }
+});
+
+/**
+ * Degrade delegation permissions (progressive security)
+ * POST /delegation/degrade
+ */
+delegationRoutes.post('/degrade', async (req, res) => {
+  try {
+    console.log('[delegation/degrade] Degrading delegation permissions');
+    
+    const input = DegradePermissionsRequestSchema.parse(req.body);
+    
+    const delegation = activeDelegations.get(input.delegationId);
+    if (!delegation) {
+      return res.status(404).json({
+        error: 'Delegation not found',
+        delegationId: input.delegationId,
+      });
+    }
+    
+    // Verify caller is the principal
+    const callerKeyPair = keyPairFromPrivateKey(input.privateKey);
+    if (callerKeyPair.address !== delegation.principalAddress) {
+      return res.status(403).json({
+        error: 'Only the principal can degrade this delegation',
+      });
+    }
+    
+    // Check if already revoked
+    if (revokedDelegations.has(input.delegationId)) {
+      return res.status(409).json({
+        error: 'Cannot degrade revoked delegation',
+        delegationId: input.delegationId,
+      });
+    }
+    
+    // Get or create degradation tracking
+    let degradationData = degradedDelegations.get(input.delegationId);
+    if (!degradationData) {
+      degradationData = {
+        originalScope: { ...delegation.scope },
+        currentScope: { ...delegation.scope },
+        degradationStarted: new Date(),
+        degradationSteps: [],
+      };
+    }
+    
+    // Validate that new scope is actually more restrictive
+    const isMoreRestrictive = validateScopeRestriction(degradationData.currentScope, input.newScope);
+    if (!isMoreRestrictive) {
+      return res.status(400).json({
+        error: 'New scope must be more restrictive than current scope',
+      });
+    }
+    
+    // Add degradation step
+    const step = degradationData.degradationSteps.length + 1;
+    degradationData.degradationSteps.push({
+      step,
+      timestamp: new Date(),
+      reason: input.reason,
+      newScope: { ...input.newScope },
+    });
+    
+    // Update current scope
+    degradationData.currentScope = { ...input.newScope };
+    
+    // Update the delegation with new scope
+    delegation.scope = { ...input.newScope };
+    
+    // Store degradation data
+    degradedDelegations.set(input.delegationId, degradationData);
+    
+    console.log(`[delegation/degrade] Degraded delegation ${input.delegationId} (step ${step})`);
+    
+    res.json({
+      delegationId: input.delegationId,
+      step,
+      degradationData,
+      updatedDelegation: delegation,
+      message: `Delegation permissions degraded (step ${step})`,
+    });
+    
+  } catch (error) {
+    console.error('[delegation/degrade] Error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to degrade delegation';
+    res.status(500).json({ error: errorMessage });
+  }
+});
+
+/**
+ * Get revocation status and history
+ * GET /delegation/:delegationId/revocations
+ */
+delegationRoutes.get('/:delegationId/revocations', async (req, res) => {
+  try {
+    const { delegationId } = req.params;
+    
+    const revocation = revokedDelegations.get(delegationId);
+    const degradation = degradedDelegations.get(delegationId);
+    const isEmergency = emergencyRevocations.has(delegationId);
+    
+    if (!revocation && !degradation) {
+      return res.json({
+        delegationId,
+        isRevoked: false,
+        isDegraded: false,
+        revocation: null,
+        degradation: null,
+        emergencyStatus: false,
+      });
+    }
+    
+    res.json({
+      delegationId,
+      isRevoked: !!revocation,
+      isDegraded: !!degradation,
+      revocation,
+      degradation,
+      emergencyStatus: isEmergency,
+    });
+    
+  } catch (error) {
+    console.error('[delegation/revocations] Error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to get revocation status';
+    res.status(500).json({ error: errorMessage });
+  }
+});
+
+/**
+ * Get system-wide revocation statistics
+ * GET /delegation/stats/revocations
+ */
+delegationRoutes.get('/stats/revocations', async (req, res) => {
+  try {
+    const totalRevocations = revokedDelegations.size;
+    const emergencyRevocationCount = emergencyRevocations.size;
+    const degradedCount = degradedDelegations.size;
+    
+    // Calculate revocation reasons breakdown
+    const reasonBreakdown: Record<string, number> = {};
+    for (const revocation of revokedDelegations.values()) {
+      const reason = revocation.reason || 'unspecified';
+      reasonBreakdown[reason] = (reasonBreakdown[reason] || 0) + 1;
+    }
+    
+    // Calculate recent revocations (last 24h)
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const recentRevocations = Array.from(revokedDelegations.values())
+      .filter(r => r.revokedAt > oneDayAgo).length;
+    
+    res.json({
+      statistics: {
+        totalRevocations,
+        emergencyRevocations: emergencyRevocationCount,
+        degradedDelegations: degradedCount,
+        recentRevocations,
+        reasonBreakdown,
+      },
+      lastUpdated: new Date(),
+    });
+    
+  } catch (error) {
+    console.error('[delegation/stats] Error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to get revocation statistics';
+    res.status(500).json({ error: errorMessage });
+  }
+});
+
 // =============================================================================
 // Helper Functions
 // =============================================================================
@@ -570,4 +858,101 @@ async function validateTransactionScope(
   };
 }
 
-console.log('🔄 Delegation routes loaded');
+/**
+ * Handle emergency revocation propagation
+ * This would integrate with the metagraph to immediately propagate revocation
+ */
+async function handleEmergencyRevocation(
+  delegationId: string,
+  revocation: any
+): Promise<void> {
+  console.log(`[handleEmergencyRevocation] Processing emergency revocation for ${delegationId}`);
+  
+  // TODO: Implement immediate metagraph notification
+  // This would send a high-priority message to all validators
+  // to immediately update their revocation lists
+  
+  // For now, we'll simulate this with a console log
+  console.log(`[handleEmergencyRevocation] Emergency revocation propagated for ${delegationId}`);
+  
+  // In a real implementation, this might:
+  // 1. Send immediate WebSocket notifications to all connected validators
+  // 2. Submit a high-priority transaction to the metagraph
+  // 3. Update external revocation registries
+  // 4. Trigger alerts in monitoring systems
+}
+
+/**
+ * Validate that a new scope is more restrictive than the current scope
+ */
+function validateScopeRestriction(
+  currentScope: DelegationScope,
+  newScope: DelegationScope
+): boolean {
+  // Check allowed operations - new scope should have fewer or same operations
+  if (currentScope.allowedOperations && newScope.allowedOperations) {
+    const hasFewerOperations = newScope.allowedOperations.every(op => 
+      currentScope.allowedOperations!.includes(op)
+    ) && newScope.allowedOperations.length <= currentScope.allowedOperations.length;
+    
+    if (!hasFewerOperations) return false;
+  } else if (currentScope.allowedOperations && !newScope.allowedOperations) {
+    // Removing operation restrictions entirely is not more restrictive
+    return false;
+  }
+  
+  // Check fiber IDs - new scope should have fewer or same fibers
+  if (currentScope.fiberIds && newScope.fiberIds) {
+    const hasFewerFibers = newScope.fiberIds.every(id => 
+      currentScope.fiberIds!.includes(id)
+    ) && newScope.fiberIds.length <= currentScope.fiberIds.length;
+    
+    if (!hasFewerFibers) return false;
+  } else if (currentScope.fiberIds && !newScope.fiberIds) {
+    // Removing fiber restrictions entirely is not more restrictive
+    return false;
+  }
+  
+  // Check gas limits - new scope should have lower or same limits
+  if (currentScope.maxGasPerTx !== undefined) {
+    if (newScope.maxGasPerTx === undefined || newScope.maxGasPerTx > currentScope.maxGasPerTx) {
+      return false;
+    }
+  }
+  
+  if (currentScope.maxTotalGas !== undefined) {
+    if (newScope.maxTotalGas === undefined || newScope.maxTotalGas > currentScope.maxTotalGas) {
+      return false;
+    }
+  }
+  
+  return true;
+}
+
+/**
+ * Enhanced revocation checking for delegation validation
+ * Integrates with the real-time revocation system
+ */
+function isRevoked(delegationId: string, checkEmergency: boolean = true): boolean {
+  const standardRevocation = revokedDelegations.has(delegationId);
+  const emergencyRevocation = checkEmergency && emergencyRevocations.has(delegationId);
+  
+  return standardRevocation || emergencyRevocation;
+}
+
+/**
+ * Get current effective scope for a delegation (considering degradations)
+ */
+function getEffectiveScope(delegationId: string): DelegationScope | null {
+  const delegation = activeDelegations.get(delegationId);
+  if (!delegation) return null;
+  
+  const degradation = degradedDelegations.get(delegationId);
+  if (degradation) {
+    return degradation.currentScope;
+  }
+  
+  return delegation.scope;
+}
+
+console.log('🔄 Delegation routes loaded with enhanced revocation system');

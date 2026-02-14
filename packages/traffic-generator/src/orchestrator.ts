@@ -1,8 +1,8 @@
-import { BridgeClient } from './bridge-client.js';
-import { IndexerClient } from './indexer-client.js';
-import { FIBER_DEFINITIONS, type FiberDefinition, type MarketStateData, type DAOStateData, type GovernanceStateData, type CorporateEntityStateData, type CorporateBoardStateData, type CorporateShareholdersStateData, type CorporateSecuritiesStateData } from './fiber-definitions.js';
-import { MARKET_SM_DEFINITION } from './market-workflows.js';
-import { Agent } from './types.js';
+import { BridgeClient } from './bridge-client';
+import { IndexerClient } from './indexer-client';
+import { FIBER_DEFINITIONS, type FiberDefinition, type MarketStateData, type DAOStateData, type GovernanceStateData, type CorporateEntityStateData, type CorporateBoardStateData, type CorporateShareholdersStateData, type CorporateSecuritiesStateData } from './fiber-definitions';
+import { MARKET_SM_DEFINITION } from './market-workflows';
+import { Agent } from './types';
 
 export interface TrafficConfig {
   generationIntervalMs: number;

@@ -8,8 +8,9 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "lint": "eslint src --ext .ts",
-    "test": "node --test --experimental-strip-types test/*.test.ts",
-    "test:e2e": "node --test --experimental-strip-types test/e2e.test.ts"
+    "test": "jest",
+    "test:coverage": "jest --coverage",
+    "test:e2e": "jest test/e2e.test.ts"
   },
   "dependencies": {
     "@ottochain/shared": "workspace:*",
