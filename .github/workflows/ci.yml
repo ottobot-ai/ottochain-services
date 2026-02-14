@@ -45,6 +45,26 @@ jobs:
       
       - name: Type check
         run: pnpm -r exec tsc --noEmit
+      
+      - name: Run tests with coverage
+        run: pnpm test:coverage
+      
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage/lcov.info
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+          verbose: true
+      
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 30
 
   db-schema:
     runs-on: ubuntu-latest

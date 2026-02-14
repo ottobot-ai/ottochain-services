@@ -17,6 +17,7 @@
     "dev": "pnpm -r --parallel dev",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
+    "test:coverage": "jest --coverage",
     "test:integration": "./scripts/integration-test.sh",
     "test:e2e": "tsx scripts/scenarios/multi-agent-sim.ts",
     "test:webhook": "tsx scripts/test-webhook.ts",
@@ -29,8 +30,11 @@
     "postinstall": "prisma generate"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.11.0",
+    "jest": "^30.2.0",
     "prisma": "^5.9.0",
+    "ts-jest": "^29.4.6",
     "tsx": "^4.7.0",
     "tweetnacl": "^1.0.3",
     "typescript": "^5.3.0"

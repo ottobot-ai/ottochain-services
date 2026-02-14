@@ -254,7 +254,7 @@ async function waitForFiber(fiberId: string, timeoutMs = 30000): Promise<StateMa
     try {
       const response = await fetch(`${ML0_URL}/data-application/v1/state-machines/${fiberId}`);
       if (response.ok) {
-        const data = await response.json();
+        const data = await response.json() as any;
         if (data && data.fiberId) {
           return data as StateMachine;
         }
@@ -806,7 +806,7 @@ describe('State Machine E2E Tests', () => {
 
       assert.strictEqual(response.status, 400, 'Should return 400 for closed market');
 
-      const error = await response.json();
+      const error = await response.json() as any;
       assert.ok(error.error.includes('not open'), 'Should mention market not open');
       assert.strictEqual(error.currentState, 'CLOSED', 'Should report current state');
 
@@ -857,7 +857,7 @@ describe('State Machine E2E Tests', () => {
 });
 
 // Run info if executed directly
-if (process.argv[1] === import.meta.filename) {
+if (require.main === module) {
   console.log('\n🧪 Running State Machine E2E Tests\n');
   console.log(`Bridge: ${BRIDGE_URL}`);
   console.log(`ML0: ${ML0_URL}\n`);

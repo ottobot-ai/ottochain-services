@@ -1,5 +1,7 @@
 # OttoChain Services
 
+[![codecov](https://codecov.io/gh/ottobot-ai/ottochain-services/branch/main/graph/badge.svg?token=CODECOV_TOKEN)](https://codecov.io/gh/ottobot-ai/ottochain-services)
+
 TypeScript companion services for the OttoChain metagraph — providing API gateway, transaction bridge, and indexing for the Agent Identity Platform.
 
 ## Architecture
