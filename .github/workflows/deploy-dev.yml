@@ -1,0 +1,185 @@
+name: Auto-Deploy to Development
+
+on:
+  push:
+    branches:
+      - 'feature/**'
+      - 'feat/**'
+      - 'bugfix/**'
+      - 'fix/**'
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to deploy'
+        required: true
+        default: 'main'
+
+env:
+  NODE_VERSION: '20'
+  ENVIRONMENT: development
+
+jobs:
+  # CI validation for development
+  ci-checks:
+    name: CI Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Type check
+        run: pnpm -r exec tsc --noEmit
+
+      - name: Run unit tests
+        run: pnpm test
+
+      - name: Build packages
+        run: pnpm build
+
+  # Build development Docker images
+  build-development:
+    name: Build Development Images
+    runs-on: ubuntu-latest
+    needs: ci-checks
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Generate development version
+        id: version
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          DEV_VERSION="${PACKAGE_VERSION}-dev-${{ github.run_number }}"
+          echo "version=$DEV_VERSION" >> $GITHUB_OUTPUT
+          echo "Development version: $DEV_VERSION"
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push development images
+        run: |
+          # Build bridge service
+          docker buildx build \
+            --platform linux/amd64 \
+            --tag ghcr.io/ottobot-ai/ottochain-bridge:${{ steps.version.outputs.version }} \
+            --tag ghcr.io/ottobot-ai/ottochain-bridge:dev-latest \
+            --push \
+            --file packages/bridge/Dockerfile \
+            .
+
+          # Build indexer service  
+          docker buildx build \
+            --platform linux/amd64 \
+            --tag ghcr.io/ottobot-ai/ottochain-indexer:${{ steps.version.outputs.version }} \
+            --tag ghcr.io/ottobot-ai/ottochain-indexer:dev-latest \
+            --push \
+            --file packages/indexer/Dockerfile \
+            .
+
+          # Build gateway service
+          docker buildx build \
+            --platform linux/amd64 \
+            --tag ghcr.io/ottobot-ai/ottochain-gateway:${{ steps.version.outputs.version }} \
+            --tag ghcr.io/ottobot-ai/ottochain-gateway:dev-latest \
+            --push \
+            --file packages/gateway/Dockerfile \
+            .
+
+      - name: Generate deployment manifest
+        run: |
+          cat > deployment-manifest.json << EOF
+          {
+            "version": "${{ steps.version.outputs.version }}",
+            "commit": "${{ github.sha }}",
+            "branch": "${{ github.event.inputs.branch || github.ref_name }}",
+            "built_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "environment": "development",
+            "images": {
+              "bridge": "ghcr.io/ottobot-ai/ottochain-bridge:${{ steps.version.outputs.version }}",
+              "indexer": "ghcr.io/ottobot-ai/ottochain-indexer:${{ steps.version.outputs.version }}",
+              "gateway": "ghcr.io/ottobot-ai/ottochain-gateway:${{ steps.version.outputs.version }}"
+            }
+          }
+          EOF
+
+      - name: Upload deployment manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-services-manifest-${{ github.run_number }}
+          path: deployment-manifest.json
+          retention-days: 7
+
+  # Trigger services deployment
+  trigger-services-deploy:
+    name: Trigger Services Deployment
+    runs-on: ubuntu-latest
+    needs: [ci-checks, build-development]
+    
+    steps:
+      - name: Trigger services deployment
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.OTTOCHAIN_DEPLOY_TOKEN }}
+          repository: ottobot-ai/ottochain-deploy
+          event-type: deploy-services-development
+          client-payload: |
+            {
+              "source_repo": "ottochain-services",
+              "branch": "${{ github.event.inputs.branch || github.ref_name }}",
+              "version": "${{ needs.build-development.outputs.version }}",
+              "commit_sha": "${{ github.sha }}",
+              "manifest_artifact": "dev-services-manifest-${{ github.run_number }}",
+              "run_id": "${{ github.run_id }}",
+              "environment": "development"
+            }
+
+      - name: Development services deployment started
+        run: |
+          echo "🚀 Development services deployment triggered"
+          echo "Version: ${{ needs.build-development.outputs.version }}"
+          echo "Branch: ${{ github.event.inputs.branch || github.ref_name }}"
+          echo "Services will be available at:"
+          echo "- Bridge: https://dev-bridge.ottochain.ai"
+          echo "- Gateway: https://dev-gateway.ottochain.ai"
+          echo "- Explorer: https://dev-explorer.ottochain.ai"
