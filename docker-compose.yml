@@ -23,10 +23,7 @@ services:
       retries: 5
 
   gateway:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: gateway
+    image: ghcr.io/ottobot-ai/ottochain-services-gateway:latest
     ports:
       - "4000:4000"
     environment:
@@ -39,10 +36,7 @@ services:
         condition: service_healthy
 
   bridge:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: bridge
+    image: ghcr.io/ottobot-ai/ottochain-services-bridge:latest
     ports:
       - "3030:3030"
     environment:
@@ -55,10 +49,7 @@ services:
         condition: service_healthy
 
   indexer:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: indexer
+    image: ghcr.io/ottobot-ai/ottochain-services-indexer:latest
     ports:
       - "3031:3031"
     environment:

@@ -8,6 +8,7 @@ import {
   publishEvent, 
   CHANNELS,
 } from '@ottochain/shared';
+// import { processDelegationEvents } from './events/delegation-events';
 import { AgentState as PrismaAgentState, ContractState as PrismaContractState } from '@prisma/client';
 
 interface ProcessResult {
@@ -15,6 +16,9 @@ interface ProcessResult {
   fibersUpdated: number;
   agentsUpdated: number;
   contractsUpdated: number;
+  delegationEventsProcessed: number;
+  revocationsProcessed: number;
+  emergencyRevocations: number;
 }
 
 interface MetagraphState {
@@ -188,8 +192,35 @@ export async function processSnapshot(notification: SnapshotNotification): Promi
     },
   });
   
-  const result = { ordinal: notification.ordinal, fibersUpdated, agentsUpdated, contractsUpdated };
-  console.log(`✅ Indexed snapshot ${notification.ordinal}: ${fibersUpdated} fibers, ${agentsUpdated} agents, ${contractsUpdated} contracts`);
+  // Process delegation events for real-time revocation system
+  let delegationEventsProcessed = 0;
+  let revocationsProcessed = 0;
+  let emergencyRevocations = 0;
+  
+  try {
+    // const delegationResult = await processDelegationEvents(notification);
+    // delegationEventsProcessed = delegationResult.delegationEventsProcessed;
+    // revocationsProcessed = delegationResult.revocationsProcessed;
+    // emergencyRevocations = delegationResult.emergencyRevocations;
+    
+    if (delegationEventsProcessed > 0) {
+      console.log(`🔐 Processed ${delegationEventsProcessed} delegation events (${revocationsProcessed} revocations, ${emergencyRevocations} emergency)`);
+    }
+  } catch (error) {
+    console.error('Failed to process delegation events:', error);
+    // Don't fail the entire snapshot processing for delegation events
+  }
+
+  const result = { 
+    ordinal: notification.ordinal, 
+    fibersUpdated, 
+    agentsUpdated, 
+    contractsUpdated,
+    delegationEventsProcessed,
+    revocationsProcessed,
+    emergencyRevocations
+  };
+  console.log(`✅ Indexed snapshot ${notification.ordinal}: ${fibersUpdated} fibers, ${agentsUpdated} agents, ${contractsUpdated} contracts, ${delegationEventsProcessed} delegation events`);
   
   await publishEvent(CHANNELS.STATS_UPDATED, result);
   return result;

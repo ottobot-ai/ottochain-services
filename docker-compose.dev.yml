@@ -1,0 +1,26 @@
+version: '3.8'
+
+# Development compose file for local builds
+# Use: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: gateway
+    image: null  # Override published image
+
+  bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: bridge
+    image: null  # Override published image
+
+  indexer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: indexer
+    image: null  # Override published image

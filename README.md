@@ -70,6 +70,10 @@ pnpm dev
 
 ### Using Docker Compose
 
+#### Production (Published Images)
+
+By default, docker-compose uses published images from GitHub Container Registry:
+
 ```bash
 # Start everything (Postgres + all services)
 docker-compose up -d
@@ -77,6 +81,21 @@ docker-compose up -d
 # View logs
 docker-compose logs -f gateway
 docker-compose logs -f indexer
+
+# Pull latest images
+docker-compose pull
+```
+
+#### Development (Local Build)
+
+For local development with code changes:
+
+```bash
+# Use development compose file for local builds
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+
+# Rebuild after code changes
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml build --no-cache
 ```
 
 ### Environment Variables
