@@ -269,15 +269,24 @@ jobs:
             if [ $i -eq 180 ]; then echo "ML0 timeout"; docker logs ml0-0 2>&1 | tail -30 || true; exit 1; fi
           done
           
-          echo "=== Waiting for DL1 ==="
-          for i in {1..180}; do
-            if curl -s http://localhost:9400/node/info | grep -q '"state":"Ready"'; then
-              echo "DL1 ready after ${i}s"
-              break
-            fi
-            sleep 1
-            if [ $i -eq 180 ]; then echo "DL1 timeout"; docker logs dl1-0 2>&1 | tail -30 || true; exit 1; fi
+          echo "=== Waiting for ALL DL1 nodes ==="
+          for port in 9400 9410 9420; do
+            node_name="dl1-$((($port - 9400) / 10))"
+            echo "Waiting for $node_name (port $port)..."
+            for i in {1..180}; do
+              if curl -s http://localhost:$port/node/info | grep -q '"state":"Ready"'; then
+                echo "$node_name ready after ${i}s"
+                break
+              fi
+              sleep 1
+              if [ $i -eq 180 ]; then 
+                echo "$node_name timeout"
+                docker logs $node_name 2>&1 | tail -30 || true
+                exit 1
+              fi
+            done
           done
+          echo "✓ All DL1 nodes ready"
           
           echo "=== Waiting for first metagraph snapshot ==="
           # Use /snapshots/latest (ML0's own snapshots) NOT /global-snapshots/latest (synced from GL0)
@@ -308,6 +317,23 @@ jobs:
           echo "DL1-0 (port 9400): ${PEER_0:0:32}..."
           echo "DL1-1 (port 9410): ${PEER_1:0:32}..."
           echo "DL1-2 (port 9420): ${PEER_2:0:32}..."
+          
+          # Check for error/empty responses first (nodes not responding)
+          if [ -z "$PEER_0" ] || [ "$PEER_0" = "error" ] || [ "$PEER_0" = "unreachable" ]; then
+            echo "❌ ERROR: DL1-0 (port 9400) not responding!"
+            docker logs dl1-0 2>&1 | tail -20 || true
+            exit 1
+          fi
+          if [ -z "$PEER_1" ] || [ "$PEER_1" = "error" ] || [ "$PEER_1" = "unreachable" ]; then
+            echo "❌ ERROR: DL1-1 (port 9410) not responding!"
+            docker logs dl1-1 2>&1 | tail -20 || true
+            exit 1
+          fi
+          if [ -z "$PEER_2" ] || [ "$PEER_2" = "error" ] || [ "$PEER_2" = "unreachable" ]; then
+            echo "❌ ERROR: DL1-2 (port 9420) not responding!"
+            docker logs dl1-2 2>&1 | tail -20 || true
+            exit 1
+          fi
           
           # Check if all peer IDs are unique (the core issue we're fixing)
           if [ "$PEER_0" = "$PEER_1" ] || [ "$PEER_0" = "$PEER_2" ] || [ "$PEER_1" = "$PEER_2" ]; then
