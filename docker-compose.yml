@@ -23,6 +23,12 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - METAGRAPH_ML0_URL=${METAGRAPH_ML0_URL}
       - METAGRAPH_DL1_URL=${METAGRAPH_DL1_URL}
+      - GL0_URL=${GL0_URL}
+      - GL0_URLS=${GL0_URLS:-${GL0_URL}}
+      - ML0_URLS=${ML0_URLS:-${ML0_URL}}
+      - CL1_URLS=${CL1_URLS:-${CL1_URL}}
+      - DL1_URLS=${DL1_URLS:-${DL1_URL}}
+      - METAGRAPH_ID=${METAGRAPH_ID}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
     depends_on:
       - redis
@@ -46,6 +52,12 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - METAGRAPH_ML0_URL=${METAGRAPH_ML0_URL}
       - METAGRAPH_DL1_URL=${METAGRAPH_DL1_URL}
+      - GL0_URL=${GL0_URL}
+      - GL0_URLS=${GL0_URLS:-${GL0_URL}}
+      - ML0_URLS=${ML0_URLS:-${ML0_URL}}
+      - CL1_URLS=${CL1_URLS:-${CL1_URL}}
+      - DL1_URLS=${DL1_URLS:-${DL1_URL}}
+      - METAGRAPH_ID=${METAGRAPH_ID}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
     depends_on:
       - redis
@@ -69,6 +81,12 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - METAGRAPH_ML0_URL=${METAGRAPH_ML0_URL}
       - METAGRAPH_DL1_URL=${METAGRAPH_DL1_URL}
+      - GL0_URL=${GL0_URL}
+      - GL0_URLS=${GL0_URLS:-${GL0_URL}}
+      - ML0_URLS=${ML0_URLS:-${ML0_URL}}
+      - CL1_URLS=${CL1_URLS:-${CL1_URL}}
+      - DL1_URLS=${DL1_URLS:-${DL1_URL}}
+      - METAGRAPH_ID=${METAGRAPH_ID}
       - INDEXER_PORT=3031
       - INDEXER_CALLBACK_URL=${INDEXER_CALLBACK_URL:-http://indexer:3031/webhook/snapshot}
     depends_on:
@@ -93,6 +111,12 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - METAGRAPH_ML0_URL=${METAGRAPH_ML0_URL}
       - METAGRAPH_DL1_URL=${METAGRAPH_DL1_URL}
+      - GL0_URL=${GL0_URL}
+      - GL0_URLS=${GL0_URLS:-${GL0_URL}}
+      - ML0_URLS=${ML0_URLS:-${ML0_URL}}
+      - CL1_URLS=${CL1_URLS:-${CL1_URL}}
+      - DL1_URLS=${DL1_URLS:-${DL1_URL}}
+      - METAGRAPH_ID=${METAGRAPH_ID}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
     depends_on:
       - redis
