@@ -17,6 +17,7 @@
     "dev": "pnpm -r --parallel dev",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
+    "test:coverage": "pnpm -r test:coverage",
     "test:integration": "./scripts/integration-test.sh",
     "test:e2e": "tsx scripts/scenarios/multi-agent-sim.ts",
     "test:webhook": "tsx scripts/test-webhook.ts",
