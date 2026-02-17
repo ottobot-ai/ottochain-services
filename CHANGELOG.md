@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.6](https://github.com/ottobot-ai/ottochain-services/compare/v0.3.5...v0.3.6) (2026-02-17)
+
+
+### Bug Fixes
+
+* **ci:** wait for ALL DL1 nodes before peer ID verification ([#101](https://github.com/ottobot-ai/ottochain-services/issues/101)) ([89ec214](https://github.com/ottobot-ai/ottochain-services/commit/89ec2141348620e6135ef4d6fac21a40708cd118))
+* **monitor:** add plural node URL env vars for health checks ([#99](https://github.com/ottobot-ai/ottochain-services/issues/99)) ([97bae67](https://github.com/ottobot-ai/ottochain-services/commit/97bae678a4512c844797f2b8d7fc8d2917461dc3))
+
 ## [0.3.5](https://github.com/ottobot-ai/ottochain-services/compare/v0.3.4...v0.3.5) (2026-02-13)
 
 
