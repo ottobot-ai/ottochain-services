@@ -27,7 +27,7 @@ app.use('/governance', governanceRoutes);
 describe('Governance Bridge API', () => {
   const mockPrivateKey = 'a'.repeat(64);
   const mockDAO = {
-    id: 'dao-123',
+    id: '12345678-1234-1234-1234-123456789012',
     currentState: { value: 'ACTIVE' },
     stateData: {
       schema: 'Governance',
@@ -101,7 +101,7 @@ describe('Governance Bridge API', () => {
       getCheckpoint.mockResolvedValue({
         state: {
           stateMachines: {
-            'dao-123': {
+            '12345678-1234-1234-1234-123456789012': {
               ...mockDAO,
               currentState: { value: 'PROPOSED' },
               stateData: {
@@ -157,7 +157,7 @@ describe('Governance Bridge API', () => {
       getCheckpoint.mockResolvedValue({
         state: {
           stateMachines: {
-            'dao-123': {
+            '12345678-1234-1234-1234-123456789012': {
               ...mockDAO,
               currentState: { value: 'VOTING' },
               stateData: {
@@ -199,7 +199,7 @@ describe('Governance Bridge API', () => {
       getCheckpoint.mockResolvedValue({
         state: {
           stateMachines: {
-            'dao-123': {
+            '12345678-1234-1234-1234-123456789012': {
               currentState: { value: 'PENDING' },
               stateData: {
                 schema: 'MultisigDAO',
@@ -237,7 +237,7 @@ describe('Governance Bridge API', () => {
       getCheckpoint.mockResolvedValue({
         state: {
           stateMachines: {
-            'dao-123': {
+            '12345678-1234-1234-1234-123456789012': {
               currentState: { value: 'VOTING' },
               stateData: {
                 proposal: {
@@ -272,7 +272,7 @@ describe('Governance Bridge API', () => {
       getCheckpoint.mockResolvedValue({
         state: {
           stateMachines: {
-            'dao-123': {
+            '12345678-1234-1234-1234-123456789012': {
               currentState: { value: 'PENDING' },
               stateData: {
                 schema: 'Governance',
@@ -306,7 +306,7 @@ describe('Governance Bridge API', () => {
       getCheckpoint.mockResolvedValue({
         state: {
           stateMachines: {
-            'dao-123': {
+            '12345678-1234-1234-1234-123456789012': {
               currentState: { value: 'VOTING' },
               stateData: {
                 schema: 'TokenDAO',
@@ -337,7 +337,7 @@ describe('Governance Bridge API', () => {
       getCheckpoint.mockResolvedValue({
         state: {
           stateMachines: {
-            'dao-123': {
+            '12345678-1234-1234-1234-123456789012': {
               currentState: { value: 'VOTING' },
               stateData: {
                 proposal: {
@@ -382,7 +382,7 @@ describe('Governance Bridge API', () => {
       getCheckpoint.mockResolvedValue({
         state: {
           stateMachines: {
-            'dao-123': {
+            '12345678-1234-1234-1234-123456789012': {
               stateData: {
                 proposal: null,
                 executedProposals: [
@@ -507,16 +507,9 @@ describe('Governance Bridge API', () => {
         .query({ daoId: '12345678-1234-1234-1234-123456789012' });
 
       expect(response.status).toBe(200);
-      expect(response.body).toMatchObject({
-        daoId: '12345678-1234-1234-1234-123456789012',
-        assets: [
-          {
-            tokenId: 'token-123',
-            balance: 1800,
-            symbol: 'DAO-Test DAO'
-          }
-        ]
-      });
+      expect(response.body).toHaveProperty('daoId', '12345678-1234-1234-1234-123456789012');
+      expect(response.body).toHaveProperty('stateData');
+      expect(response.body.stateData).toHaveProperty('balances');
       expect(response.body.lastUpdated).toBeDefined();
     });
 

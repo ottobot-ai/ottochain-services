@@ -595,6 +595,61 @@ governanceRoutes.post('/veto', async (req, res) => {
 });
 
 /**
+ * Get treasury status for a DAO
+ * GET /governance/treasury
+ * NOTE: This must come before /:daoId to avoid matching 'treasury' as a daoId
+ */
+governanceRoutes.get('/treasury', async (req, res) => {
+  try {
+    const { daoId } = req.query;
+
+    if (!daoId || typeof daoId !== 'string') {
+      return res.status(400).json({ error: 'daoId query parameter is required' });
+    }
+
+    const state = await getStateMachine(daoId) as {
+      stateData?: DAOStateData;
+    } | null;
+
+    if (!state) {
+      return res.status(404).json({ error: 'DAO not found' });
+    }
+
+    const stateData = state.stateData;
+    const assets: TreasuryStatus['assets'] = [];
+
+    if (stateData?.schema === 'TokenDAO') {
+      // For Token DAOs, include the governance token
+      const tokenDAO = stateData as unknown as { tokenId?: string; name?: string; balances?: Record<string, number> };
+      if (tokenDAO.tokenId) {
+        // Calculate total supply (sum of all balances)
+        const totalSupply = Object.values(tokenDAO.balances ?? {}).reduce((sum: number, balance) => sum + balance, 0);
+        
+        assets.push({
+          tokenId: tokenDAO.tokenId,
+          balance: totalSupply,
+          symbol: `DAO-${tokenDAO.name}`,
+        });
+      }
+    }
+
+    // TODO: Integrate with actual treasury/asset management when available
+    // For now, return basic structure
+    const treasury: TreasuryStatus = {
+      daoId,
+      assets,
+      lastUpdated: new Date().toISOString(),
+    };
+
+    res.json(treasury);
+  } catch (err) {
+    console.error('[governance/treasury] Error:', err);
+    const errorMessage = err instanceof Error ? err.message : 'Query failed';
+    res.status(500).json({ error: errorMessage });
+  }
+});
+
+/**
  * Get DAO state
  * GET /governance/:daoId
  */
@@ -1296,56 +1351,4 @@ governanceRoutes.get('/voting-power/:address', async (req, res) => {
   }
 });
 
-/**
- * Get treasury status for a DAO
- * GET /governance/treasury
- */
-governanceRoutes.get('/treasury', async (req, res) => {
-  try {
-    const { daoId } = req.query;
-
-    if (!daoId || typeof daoId !== 'string') {
-      return res.status(400).json({ error: 'daoId query parameter is required' });
-    }
-
-    const state = await getStateMachine(daoId) as {
-      stateData?: DAOStateData;
-    } | null;
-
-    if (!state) {
-      return res.status(404).json({ error: 'DAO not found' });
-    }
-
-    const stateData = state.stateData;
-    const assets: TreasuryStatus['assets'] = [];
-
-    if (stateData?.schema === 'TokenDAO') {
-      // For Token DAOs, include the governance token
-      const tokenDAO = stateData as any;
-      if (tokenDAO.tokenId) {
-        // Calculate total supply (sum of all balances)
-        const totalSupply = Object.values(tokenDAO.balances ?? {}).reduce((sum: number, balance) => sum + (balance as number), 0);
-        
-        assets.push({
-          tokenId: tokenDAO.tokenId,
-          balance: totalSupply,
-          symbol: `DAO-${tokenDAO.name}`,
-        });
-      }
-    }
-
-    // TODO: Integrate with actual treasury/asset management when available
-    // For now, return basic structure
-    const treasury: TreasuryStatus = {
-      daoId,
-      assets,
-      lastUpdated: new Date().toISOString(),
-    };
-
-    res.json(treasury);
-  } catch (err) {
-    console.error('[governance/treasury] Error:', err);
-    const errorMessage = err instanceof Error ? err.message : 'Query failed';
-    res.status(500).json({ error: errorMessage });
-  }
-});
+// Treasury route moved above /:daoId to prevent path conflict

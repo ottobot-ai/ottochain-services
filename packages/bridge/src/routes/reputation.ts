@@ -103,10 +103,10 @@ const TaskCompletionSchema = z.object({
 
 const ReputationQuerySchema = z.object({
   agentIds: z.array(z.string()).optional(),
-  minScore: z.number().min(0).max(1).optional(),
+  minScore: z.coerce.number().min(0).max(1).optional(),
   domain: z.string().optional(),
-  limit: z.number().int().min(1).max(100).default(10),
-  includeInactive: z.boolean().default(false),
+  limit: z.coerce.number().int().min(1).max(100).default(10),
+  includeInactive: z.preprocess((val) => val === 'true' || val === true, z.boolean()).default(false),
 });
 
 const AgentSelectionSchema = z.object({
