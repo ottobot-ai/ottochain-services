@@ -503,6 +503,35 @@ async function main(): Promise<void> {
     res.json({ token: wsToken });
   });
   
+  // Traffic generator control proxy
+  // These forward requests to the traffic-gen service
+  app.post('/api/traffic-gen/:action', async (req, res) => {
+    const { action } = req.params;
+    const trafficGenUrl = config.trafficGenUrl;
+    
+    if (!trafficGenUrl) {
+      return res.status(503).json({ error: 'Traffic generator URL not configured' });
+    }
+    
+    if (!['start', 'stop', 'config'].includes(action)) {
+      return res.status(400).json({ error: 'Invalid action. Use: start, stop, config' });
+    }
+    
+    try {
+      const response = await fetch(`${trafficGenUrl}/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: action === 'config' ? JSON.stringify(req.body) : undefined,
+      });
+      
+      const data = await response.json();
+      res.status(response.status).json(data);
+    } catch (err) {
+      console.error(`Traffic gen ${action} error:`, err);
+      res.status(502).json({ error: 'Failed to reach traffic generator' });
+    }
+  });
+  
   // WebSocket server for real-time updates
   const wss = new WebSocketServer({ 
     server, 

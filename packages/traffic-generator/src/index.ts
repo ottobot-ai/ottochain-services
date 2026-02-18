@@ -30,7 +30,7 @@ import { HighThroughputSimulator, runHighThroughput } from './high-throughput.js
 import { FiberOrchestrator, TrafficConfig } from './orchestrator.js';
 import { BridgeClient } from './bridge-client.js';
 import { loadWalletPool, type WalletPool } from './wallets.js';
-import { startStatusServer, setStatusProvider, type TrafficGenStatus } from './status-server.js';
+import { startStatusServer, setStatusProvider, setControlCallbacks, type TrafficGenStatus } from './status-server.js';
 
 // =============================================================================
 // Configuration from Environment
@@ -383,13 +383,15 @@ async function main(): Promise<void> {
   
   // Set up standard mode status provider
   simulatorRef = simulator;
+  let isRunning = false;
+  
   setStatusProvider(() => {
     const stats = simulator.getStats();
     const totalTx = stats.totalTransactions ?? 0;
     const successTx = stats.successfulTransactions ?? totalTx;
     return {
-      enabled: true,
-      mode: 'standard',
+      enabled: isRunning,
+      mode: isRunning ? 'standard' : 'idle',
       targetTps: Math.round(1000 / config.generationIntervalMs), // Approximate
       targetPopulation: config.targetPopulation,
       currentPopulation: stats.population,
@@ -400,6 +402,30 @@ async function main(): Promise<void> {
       uptime: Date.now() - new Date(startedAt).getTime(),
       startedAt,
     };
+  });
+  
+  // Set up control callbacks
+  setControlCallbacks({
+    onStart: async () => {
+      if (isRunning) return;
+      console.log('\n🚀 Starting traffic generation via API...');
+      isRunning = true;
+      await simulator.start();
+    },
+    onStop: async () => {
+      if (!isRunning) return;
+      console.log('\n⏹️  Stopping traffic generation via API...');
+      simulator.stop();
+      isRunning = false;
+    },
+    onConfig: async (newConfig) => {
+      console.log('\n⚙️  Updating config via API:', newConfig);
+      // Config updates would require restarting the simulator
+      // For now, just log - full implementation would update config and restart
+      if (newConfig.targetPopulation) {
+        config.targetPopulation = newConfig.targetPopulation;
+      }
+    },
   });
   
   // Handle graceful shutdown
@@ -423,8 +449,19 @@ async function main(): Promise<void> {
     process.exit(0);
   });
   
-  // Start simulation
-  await simulator.start();
+  // Start simulation (unless AUTO_START=false)
+  const autoStart = process.env.AUTO_START !== 'false';
+  if (autoStart) {
+    console.log('\n🚀 Auto-starting traffic generation...');
+    console.log('   (Set AUTO_START=false to start via API instead)');
+    isRunning = true;
+    await simulator.start();
+  } else {
+    console.log('\n⏸️  Waiting for start command via API...');
+    console.log('   POST /start to begin traffic generation');
+    // Keep process alive
+    await new Promise(() => {});
+  }
 }
 
 main().catch((err) => {

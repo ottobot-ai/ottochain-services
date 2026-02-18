@@ -157,6 +157,34 @@
     
     .card-details .value { color: var(--text); }
     
+    .card-controls {
+      margin-top: 12px;
+      display: flex;
+      gap: 8px;
+    }
+    
+    .btn {
+      padding: 6px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    
+    .btn:hover { opacity: 0.8; }
+    
+    .btn-start {
+      background: var(--green);
+      color: var(--bg-dark);
+    }
+    
+    .btn-stop {
+      background: var(--red);
+      color: var(--bg-dark);
+    }
+    
     .error-text {
       color: var(--red);
       font-size: 12px;
@@ -378,15 +406,33 @@
       `;
     }
     
+    // Traffic gen control functions
+    let trafficGenUrl = null;
+    
+    async function trafficGenControl(action) {
+      if (!trafficGenUrl) return;
+      try {
+        const res = await fetch(`/api/traffic-gen/${action}`, { method: 'POST' });
+        const data = await res.json();
+        console.log(`Traffic gen ${action}:`, data);
+      } catch (err) {
+        console.error(`Failed to ${action} traffic gen:`, err);
+      }
+    }
+    
     function createServiceCard(service) {
       // Special rendering for traffic generator
-      if (service.type === 'traffic-gen' && service.trafficGen) {
+      if (service.type === 'traffic-generator' && service.trafficGen) {
         const tg = service.trafficGen;
+        trafficGenUrl = service.url;
+        const buttonText = tg.enabled ? 'Stop' : 'Start';
+        const buttonAction = tg.enabled ? 'stop' : 'start';
+        const buttonClass = tg.enabled ? 'btn-stop' : 'btn-start';
         return `
           <div class="card">
             <div class="card-header">
               <div class="card-title">${service.name}</div>
-              <div class="status-badge ${tg.enabled ? 'healthy' : 'degraded'}">${tg.enabled ? tg.mode : 'disabled'}</div>
+              <div class="status-badge ${tg.enabled ? 'healthy' : 'degraded'}">${tg.enabled ? tg.mode : 'idle'}</div>
             </div>
             <div class="card-details">
               <div class="row"><span>Mode</span><span class="value">${tg.mode}</span></div>
@@ -394,6 +440,9 @@
               <div class="row"><span>Population</span><span class="value">${tg.currentPopulation}/${tg.targetPopulation}</span></div>
               <div class="row"><span>Generation</span><span class="value">${tg.generation}</span></div>
               <div class="row"><span>Transactions</span><span class="value">${tg.totalTransactions}</span></div>
+            </div>
+            <div class="card-controls">
+              <button class="btn ${buttonClass}" onclick="trafficGenControl('${buttonAction}')">${buttonText}</button>
             </div>
             ${service.error ? `<div class="error-text">${service.error}</div>` : ''}
           </div>
