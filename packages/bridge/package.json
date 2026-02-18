@@ -9,7 +9,8 @@
     "start": "node dist/index.js",
     "lint": "eslint src --ext .ts",
     "test": "node --test --experimental-strip-types test/*.test.ts",
-    "test:e2e": "node --test --experimental-strip-types test/e2e.test.ts"
+    "test:e2e": "node --test --experimental-strip-types test/e2e.test.ts",
+    "test:lifecycle": "node --test --experimental-strip-types test/lifecycle.test.ts"
   },
   "dependencies": {
     "@ottochain/shared": "workspace:*",
