@@ -8,12 +8,16 @@ import { prisma, getConfig, SnapshotNotificationSchema, RejectionNotificationSch
 import { processSnapshot } from './processor.js';
 import { startConfirmationPoller, stopConfirmationPoller, getConfirmationStats } from './confirmations.js';
 import { startSnapshotPoller, stopSnapshotPoller, getPollerStats } from './poller.js';
+import { apiRouter } from './routes/index.js';
 
 // Stats collector - initialized in server.listen with config
 let statsCollector: ReturnType<typeof getStatsCollector> | null = null;
 
 const app = express();
 app.use(express.json());
+
+// Mount API routes (rejection queries, fiber sub-resources, etc.)
+app.use('/api', apiRouter);
 
 // Health check
 app.get('/health', (_, res) => {
@@ -218,68 +222,7 @@ app.get('/snapshots', async (req, res) => {
   });
 });
 
-// Get rejected transactions with optional filters
-app.get('/rejections', async (req, res) => {
-  const fiberId = req.query.fiberId as string | undefined;
-  const updateType = req.query.updateType as string | undefined;
-  const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
-  const offset = parseInt(req.query.offset as string) || 0;
-  
-  const where: any = {};
-  if (fiberId) where.fiberId = fiberId;
-  if (updateType) where.updateType = updateType;
-  
-  const [rejections, total] = await Promise.all([
-    prisma.rejectedTransaction.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      skip: offset,
-    }),
-    prisma.rejectedTransaction.count({ where }),
-  ]);
-  
-  res.json({
-    rejections: rejections.map(r => ({
-      id: r.id,
-      ordinal: Number(r.ordinal),
-      timestamp: r.timestamp,
-      updateType: r.updateType,
-      fiberId: r.fiberId,
-      updateHash: r.updateHash,
-      errors: r.errors,
-      signers: r.signers,
-      createdAt: r.createdAt,
-    })),
-    total,
-    hasMore: offset + rejections.length < total,
-  });
-});
-
-// Get rejection by updateHash
-app.get('/rejections/:updateHash', async (req, res) => {
-  const rejection = await prisma.rejectedTransaction.findUnique({
-    where: { updateHash: req.params.updateHash }
-  });
-  
-  if (!rejection) {
-    res.status(404).json({ error: 'Rejection not found' });
-    return;
-  }
-  
-  res.json({
-    id: rejection.id,
-    ordinal: Number(rejection.ordinal),
-    timestamp: rejection.timestamp,
-    updateType: rejection.updateType,
-    fiberId: rejection.fiberId,
-    updateHash: rejection.updateHash,
-    errors: rejection.errors,
-    signers: rejection.signers,
-    rawPayload: rejection.rawPayload,
-    createdAt: rejection.createdAt,
-  });
-});
+// Rejection query API is mounted at /api/rejections — see routes/rejections.ts
 
 // Get a specific fiber by ID
 app.get('/fibers/:fiberId', async (req, res) => {
@@ -346,36 +289,7 @@ app.get('/fibers/:fiberId/transitions', async (req, res) => {
   });
 });
 
-// Get rejections for a specific fiber
-app.get('/fibers/:fiberId/rejections', async (req, res) => {
-  const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
-  
-  const [rejections, total] = await Promise.all([
-    prisma.rejectedTransaction.findMany({
-      where: { fiberId: req.params.fiberId },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-    }),
-    prisma.rejectedTransaction.count({ 
-      where: { fiberId: req.params.fiberId } 
-    }),
-  ]);
-  
-  res.json({
-    rejections: rejections.map(r => ({
-      id: r.id,
-      ordinal: Number(r.ordinal),
-      timestamp: r.timestamp,
-      updateType: r.updateType,
-      fiberId: r.fiberId,
-      updateHash: r.updateHash,
-      errors: r.errors,
-      signers: r.signers,
-      createdAt: r.createdAt,
-    })),
-    total,
-  });
-});
+// Fiber rejection history is mounted at /api/fibers/:fiberId/rejections — see routes/index.ts
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
@@ -431,7 +345,9 @@ app.listen(port, '0.0.0.0', async () => {
   console.log(`   APIs:`);
   console.log(`     GET  http://localhost:${port}/status`);
   console.log(`     GET  http://localhost:${port}/snapshots?status=PENDING|CONFIRMED|ORPHANED`);
-  console.log(`     GET  http://localhost:${port}/rejections?fiberId=...&updateType=...`);
+  console.log(`     GET  http://localhost:${port}/api/rejections?fiberId=...&signer=...&errorCode=...`);
+  console.log(`     GET  http://localhost:${port}/api/rejections/:updateHash`);
+  console.log(`     GET  http://localhost:${port}/api/fibers/:fiberId/rejections`);
   
   // Register with ML0 for push-based snapshot notifications
   const ml0Url = config.METAGRAPH_ML0_URL;
