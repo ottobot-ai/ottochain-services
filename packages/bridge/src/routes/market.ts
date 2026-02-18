@@ -5,7 +5,7 @@
 import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
-import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey, waitForFiber, getFiberSequenceNumber, getEpochProgress } from '../metagraph.js';
+import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey, waitForFiber, getFiberSequenceNumber, waitForSequence, getEpochProgress } from '../metagraph.js';
 import { MarketType, MarketState, getMarketDefinition } from '@ottochain/sdk/apps/markets';
 
 export const marketRoutes: RouterType = Router();
@@ -255,6 +255,15 @@ marketRoutes.post('/open', async (req, res) => {
 
     console.log(`[market/open] Opening market ${input.marketId}`);
     const result = await submitTransaction(message, input.privateKey);
+
+    // Wait for the OPEN transition to be reflected in DL1's onchain state before
+    // returning. This prevents a race condition where an immediate /commit call
+    // reads the old sequence number (pre-OPEN) and gets rejected by the validator.
+    const expectedSeqAfterOpen = targetSequenceNumber + 1;
+    const synced = await waitForSequence(input.marketId, expectedSeqAfterOpen, 30, 1000);
+    if (!synced) {
+      console.warn(`[market/open] Sequence ${expectedSeqAfterOpen} not confirmed within 30s — proceeding anyway`);
+    }
 
     res.json({
       hash: result.hash,

@@ -6,7 +6,7 @@
  */
 
 import { getConfig } from '@ottochain/shared';
-import { batchSign, generateKeyPair as sdkGenerateKeyPair, keyPairFromPrivateKey as sdkKeyPairFromPrivateKey, HttpClient } from '@ottochain/sdk';
+import { batchSign, generateKeyPair as sdkGenerateKeyPair, keyPairFromPrivateKey as sdkKeyPairFromPrivateKey, HttpClient, NetworkError } from '@ottochain/sdk';
 import type { KeyPair } from '@ottochain/sdk';
 
 // Re-export SDK core types for use by route handlers
@@ -45,50 +45,66 @@ interface TransactionResult {
 }
 
 /**
- * Sign and submit a transaction to the metagraph DL1
- * 
- * @param message - The OttochainMessage (CreateStateMachine, TransitionStateMachine, etc.)
- * @param privateKey - Wallet private key in hex format
+ * Sign and submit a transaction to the metagraph DL1, with optional retry on 400.
+ *
+ * DL1 returns HTTP 400 when the submitted sequence number doesn't match the
+ * validator's finalized state (race condition between calculated state at DL1
+ * and snapshot-finalized state at the validator). Retrying after a short delay
+ * lets the snapshot settle and usually resolves the conflict.
+ *
+ * @param message      - The OttochainMessage (CreateStateMachine, etc.)
+ * @param privateKey   - Wallet private key in hex format
+ * @param maxRetries   - Number of retry attempts on HTTP 400 (default 3)
+ * @param retryDelayMs - Base delay between retries in ms (default 5000; doubles each retry)
  * @returns Transaction hash and optional ordinal
  */
 export async function submitTransaction(
   message: unknown,
-  privateKey: string
+  privateKey: string,
+  maxRetries = 3,
+  retryDelayMs = 5000
 ): Promise<TransactionResult> {
   const config = getConfig();
-
-  // Sign using SDK's batchSign (same as e2e tests)
-  const signed = await batchSign(message, [privateKey], { isDataUpdate: true });
-
-  // Wrap in DataTransactionRequest format expected by tessellation DL1
-  // Format: { data: Signed<DataUpdate>, fee: Option<Signed<FeeTransaction>> }
-  const payload = {
-    data: signed,
-    fee: null,
-  };
-
-  console.log(`[metagraph] Submitting to ${config.METAGRAPH_DL1_URL}/data`);
-  console.log(`[metagraph] Message type: ${Object.keys(message as object)[0]}`);
-  console.log(`[metagraph] Payload (truncated): ${JSON.stringify(payload).substring(0, 300)}...`);
-
-  // Use SDK's HttpClient
   const client = new HttpClient(config.METAGRAPH_DL1_URL);
 
-  try {
-    const result = await client.post<{ hash?: string; ordinal?: number }>('/data', payload);
+  const msgType = Object.keys(message as object)[0];
+  let attempt = 0;
 
-    console.log(`[metagraph] Success: ${JSON.stringify(result)}`);
+  while (true) {
+    // Sign fresh on every attempt (nonce may differ)
+    const signed = await batchSign(message, [privateKey], { isDataUpdate: true });
+    const payload = { data: signed, fee: null };
 
-    return {
-      hash: result.hash ?? 'pending',
-      ordinal: result.ordinal,
-    };
-  } catch (err) {
-    const error = err as Error & { response?: string };
-    if (error.response) {
-      console.error(`[metagraph] Error response: ${error.response}`);
+    console.log(`[metagraph] Submitting to ${config.METAGRAPH_DL1_URL}/data (attempt ${attempt + 1}/${maxRetries + 1})`);
+    console.log(`[metagraph] Message type: ${msgType}`);
+    console.log(`[metagraph] Payload (truncated): ${JSON.stringify(payload).substring(0, 300)}...`);
+
+    try {
+      const result = await client.post<{ hash?: string; ordinal?: number }>('/data', payload);
+      console.log(`[metagraph] Success: ${JSON.stringify(result)}`);
+      return { hash: result.hash ?? 'pending', ordinal: result.ordinal };
+    } catch (err) {
+      const isNetErr = err instanceof NetworkError;
+      const statusCode = isNetErr ? (err as NetworkError).statusCode : undefined;
+      const responseBody = isNetErr ? (err as NetworkError).responseBody : undefined;
+
+      if (responseBody) {
+        console.error(`[metagraph] Error response (attempt ${attempt + 1}): ${responseBody}`);
+      }
+
+      // Retry on HTTP 400 (sequence mismatch / validator lag) up to maxRetries
+      if (statusCode === 400 && attempt < maxRetries) {
+        const delay = retryDelayMs * Math.pow(2, attempt); // exponential backoff
+        console.warn(`[metagraph] 400 received — retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        attempt++;
+        continue;
+      }
+
+      // Non-retriable error or retries exhausted
+      const error = err as Error;
+      throw new Error(`Metagraph submission failed after ${attempt + 1} attempt(s): ${error.message}`);
     }
-    throw new Error(`Metagraph submission failed: ${error.message}`);
   }
 }
 
