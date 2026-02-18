@@ -4,11 +4,12 @@ module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   
-  // Test file patterns
-  testMatch: ['<rootDir>/test/**/*.test.ts'],
+  // Test file patterns - only unit tests in src/__tests__/
+  // Integration tests in test/ require a running bridge service and should be run separately
+  testMatch: ['<rootDir>/src/**/__tests__/**/*.test.ts'],
   
   // Source and coverage paths
-  roots: ['<rootDir>/src', '<rootDir>/test'],
+  roots: ['<rootDir>/src'],
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',
