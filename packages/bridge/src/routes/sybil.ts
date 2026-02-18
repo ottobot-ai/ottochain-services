@@ -5,10 +5,10 @@
  * Provides comprehensive agent screening, detection analysis, and penalty management.
  */
 
-import { Router } from 'express';
+import { Router, type Router as RouterType } from 'express';
 import sybilDetectorService from '../services/sybil-detector';
 
-const router = Router();
+const router: RouterType = Router();
 
 /**
  * @route POST /api/sybil/screen

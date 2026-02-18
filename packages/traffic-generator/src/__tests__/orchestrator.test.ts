@@ -6,9 +6,9 @@
  */
 
 // Jest globals are automatically available in test files
-import { FiberOrchestrator, TrafficConfig } from '../orchestrator';
-import { BridgeClient } from '../bridge-client';
-import { Agent } from '../types';
+import { FiberOrchestrator, TrafficConfig } from '../orchestrator.js';
+import { BridgeClient } from '../bridge-client.js';
+import { Agent } from '../types.js';
 
 // Mock wallet pool
 const mockAgents: Agent[] = Array.from({ length: 10 }, (_, i) => ({

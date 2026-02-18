@@ -1,8 +1,8 @@
-import { BridgeClient } from './bridge-client';
-import { IndexerClient } from './indexer-client';
-import { FIBER_DEFINITIONS, type FiberDefinition, type MarketStateData, type DAOStateData, type GovernanceStateData, type CorporateEntityStateData, type CorporateBoardStateData, type CorporateShareholdersStateData, type CorporateSecuritiesStateData } from './fiber-definitions';
-import { MARKET_SM_DEFINITION } from './market-workflows';
-import { Agent } from './types';
+import { BridgeClient } from './bridge-client.js';
+import { IndexerClient } from './indexer-client.js';
+import { FIBER_DEFINITIONS, type FiberDefinition, type TransitionDef, type MarketStateData, type DAOStateData, type GovernanceStateData, type CorporateEntityStateData, type CorporateBoardStateData, type CorporateShareholdersStateData, type CorporateSecuritiesStateData } from './fiber-definitions.js';
+import { MARKET_SM_DEFINITION } from './market-workflows.js';
+import { Agent } from './types.js';
 
 export interface TrafficConfig {
   generationIntervalMs: number;
@@ -268,7 +268,7 @@ export class FiberOrchestrator {
     
     if (verification.hasUnprocessedRejection) {
       const latestRejection = verification.rejections[0];
-      console.log(`  ❌ Fiber ${fiber.id.slice(0, 8)} rejected: ${latestRejection?.errors.map(e => e.code).join(', ')}`);
+      console.log(`  ❌ Fiber ${fiber.id.slice(0, 8)} rejected: ${latestRejection?.errors.map((e: { code: string; message: string }) => e.code).join(', ')}`);
       return 'rejected';
     }
     
@@ -443,7 +443,7 @@ export class FiberOrchestrator {
             name: def.name,
             initialState: def.initialState,
             states: def.states,
-            transitions: def.transitions.map(t => ({
+            transitions: def.transitions.map((t: TransitionDef) => ({
               from: t.from,
               to: t.to,
               event: t.event,
@@ -483,13 +483,13 @@ export class FiberOrchestrator {
     }
     
     // Find next available transition from current state
-    const availableTransitions = def.transitions.filter(t => t.from === fiber.currentState);
+    const availableTransitions = def.transitions.filter((t: TransitionDef) => t.from === fiber.currentState);
     if (availableTransitions.length === 0) {
       return 'waiting'; // No transitions available
     }
     
     // Pick a transition (prefer non-rejection paths for now)
-    const transition = availableTransitions.find(t => 
+    const transition = availableTransitions.find((t: TransitionDef) => 
       !t.event.includes('reject') && !t.event.includes('cancel') && !t.event.includes('dispute')
     ) ?? availableTransitions[0];
     

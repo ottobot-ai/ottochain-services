@@ -4,7 +4,7 @@
  * End-to-end tests for the trust-based agent selection and recommendation API
  */
 
-import request from 'supertest';
+import request, { Response } from 'supertest';
 import express from 'express';
 import reputationRoutes from '../reputation.js';
 
@@ -449,7 +449,7 @@ describe('Reputation Routes Integration', () => {
       const responses = await Promise.all(promises);
 
       // All requests should succeed
-      responses.forEach(response => {
+      responses.forEach((response: Response) => {
         expect(response.status).toBe(200);
         expect(response.body.recommendations).toBeDefined();
       });

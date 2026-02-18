@@ -256,7 +256,7 @@ describe('TrustCalculator', () => {
       const filtered = trustCalculator.filterByCapabilities(agents, requirements);
       
       expect(filtered).toHaveLength(1);
-      expect(filtered[0].agentId).toBe('agent-123');
+      expect(filtered[0].reputation.agentId).toBe('agent-123');
     });
 
     it('should filter by required skills', () => {
@@ -267,7 +267,7 @@ describe('TrustCalculator', () => {
       const filtered = trustCalculator.filterByCapabilities(agents, requirements);
       
       expect(filtered).toHaveLength(1);
-      expect(filtered[0].agentId).toBe('agent-123');
+      expect(filtered[0].reputation.agentId).toBe('agent-123');
     });
 
     it('should filter by real-time requirement', () => {
@@ -279,7 +279,7 @@ describe('TrustCalculator', () => {
       const filtered = trustCalculator.filterByCapabilities(agents, requirements);
       
       expect(filtered).toHaveLength(1);
-      expect(filtered[0].agentId).toBe('agent-123'); // Only online agent
+      expect(filtered[0].reputation.agentId).toBe('agent-123'); // Only online agent
     });
 
     it('should filter by model requirements', () => {
@@ -291,7 +291,7 @@ describe('TrustCalculator', () => {
       const filtered = trustCalculator.filterByCapabilities(agents, requirements);
       
       expect(filtered).toHaveLength(1);
-      expect(filtered[0].agentId).toBe('agent-123');
+      expect(filtered[0].reputation.agentId).toBe('agent-123');
     });
   });
 
