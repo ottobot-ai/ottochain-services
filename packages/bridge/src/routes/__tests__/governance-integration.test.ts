@@ -508,8 +508,8 @@ describe('Governance Bridge API', () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('daoId', '12345678-1234-1234-1234-123456789012');
-      expect(response.body).toHaveProperty('stateData');
-      expect(response.body.stateData).toHaveProperty('balances');
+      expect(response.body).toHaveProperty('assets');
+      expect(Array.isArray(response.body.assets)).toBe(true);
       expect(response.body.lastUpdated).toBeDefined();
     });
 
