@@ -551,7 +551,7 @@ describe('Governance Bridge API', () => {
         .post('/governance/proposals')
         .send({
           privateKey: mockPrivateKey,
-          daoId: 'non-existent-dao',
+          daoId: '00000000-0000-0000-0000-000000000000', // Valid UUID format, but doesn't exist
           title: 'Test'
         });
 
@@ -568,7 +568,7 @@ describe('Governance Bridge API', () => {
         .post('/governance/proposals')
         .send({
           privateKey: mockPrivateKey,
-          daoId: 'dao-123',
+          daoId: '11111111-1111-1111-1111-111111111111', // Valid UUID format
           title: 'Test'
         });
 

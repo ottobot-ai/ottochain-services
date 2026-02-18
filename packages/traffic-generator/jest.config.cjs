@@ -18,6 +18,11 @@ module.exports = {
   // Module resolution
   moduleFileExtensions: ['ts', 'js', 'json'],
   
+  // Handle ES module imports with .js extensions
+  moduleNameMapper: {
+    '^(\\.{1,2}/.*)\\.js$': '$1',
+  },
+  
   // Transform configuration
   transform: {
     '^.+\\.ts$': ['ts-jest', {
