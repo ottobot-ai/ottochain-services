@@ -387,8 +387,6 @@ async function main(): Promise<void> {
   
   setStatusProvider(() => {
     const stats = simulator.getStats();
-    const totalTx = stats.totalTransactions ?? 0;
-    const successTx = stats.successfulTransactions ?? totalTx;
     return {
       enabled: isRunning,
       mode: isRunning ? 'standard' : 'idle',
@@ -397,8 +395,8 @@ async function main(): Promise<void> {
       currentPopulation: stats.population,
       currentTps: 0, // Standard mode doesn't track TPS directly
       generation: stats.generation,
-      totalTransactions: totalTx,
-      successRate: totalTx > 0 ? successTx / totalTx : 1,
+      totalTransactions: 0, // Standard simulator doesn't track this
+      successRate: 1,
       uptime: Date.now() - new Date(startedAt).getTime(),
       startedAt,
     };
