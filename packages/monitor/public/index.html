@@ -290,6 +290,10 @@
       <div class="metric-label">Healthy Nodes</div>
       <div class="metric-value" id="healthy-nodes">-</div>
     </div>
+    <div class="metric" id="traffic-gen-metric" style="display: none;">
+      <div class="metric-label">Traffic Gen</div>
+      <div class="metric-value" id="traffic-gen-tps">-</div>
+    </div>
     <div class="metric">
       <div class="metric-label">Last Update</div>
       <div class="metric-value last-update" id="last-update">-</div>
@@ -375,6 +379,27 @@
     }
     
     function createServiceCard(service) {
+      // Special rendering for traffic generator
+      if (service.type === 'traffic-gen' && service.trafficGen) {
+        const tg = service.trafficGen;
+        return `
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">${service.name}</div>
+              <div class="status-badge ${tg.enabled ? 'healthy' : 'degraded'}">${tg.enabled ? tg.mode : 'disabled'}</div>
+            </div>
+            <div class="card-details">
+              <div class="row"><span>Mode</span><span class="value">${tg.mode}</span></div>
+              <div class="row"><span>Target TPS</span><span class="value">${tg.targetTps}</span></div>
+              <div class="row"><span>Population</span><span class="value">${tg.currentPopulation}/${tg.targetPopulation}</span></div>
+              <div class="row"><span>Generation</span><span class="value">${tg.generation}</span></div>
+              <div class="row"><span>Transactions</span><span class="value">${tg.totalTransactions}</span></div>
+            </div>
+            ${service.error ? `<div class="error-text">${service.error}</div>` : ''}
+          </div>
+        `;
+      }
+      
       return `
         <div class="card">
           <div class="card-header">
@@ -422,6 +447,18 @@
       
       logicServicesGrid.innerHTML = logicServices.map(createServiceCard).join('');
       storageServicesGrid.innerHTML = storageServicesList.map(createServiceCard).join('');
+      
+      // Traffic generator metrics in top bar
+      const trafficGenService = data.services.find(s => s.type === 'traffic-generator');
+      const trafficGenMetric = document.getElementById('traffic-gen-metric');
+      const trafficGenTps = document.getElementById('traffic-gen-tps');
+      if (trafficGenService && trafficGenService.trafficGen) {
+        trafficGenMetric.style.display = 'flex';
+        const tg = trafficGenService.trafficGen;
+        trafficGenTps.textContent = tg.enabled ? `${tg.targetTps} TPS` : 'Off';
+      } else {
+        trafficGenMetric.style.display = 'none';
+      }
     }
     
     function setConnected(connected) {

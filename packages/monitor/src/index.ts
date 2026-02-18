@@ -146,6 +146,7 @@ function loadConfig(): MonitorConfig {
     bridgeUrl: process.env.BRIDGE_URL ?? 'http://localhost:3030',
     indexerUrl: process.env.INDEXER_URL,
     gatewayUrl: process.env.GATEWAY_URL,
+    trafficGenUrl: process.env.TRAFFIC_GEN_URL,
     redisUrl: process.env.REDIS_URL ?? 'redis://localhost:6379',
     postgresUrl: process.env.DATABASE_URL,
     

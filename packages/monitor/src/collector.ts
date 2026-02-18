@@ -313,6 +313,53 @@ export async function checkPostgres(url: string, timeoutMs: number): Promise<Ser
   }
 }
 
+export interface TrafficGenStatus {
+  enabled: boolean;
+  mode: 'standard' | 'high-throughput' | 'orchestrator' | 'idle';
+  targetTps: number;
+  targetPopulation: number;
+  currentPopulation: number;
+  currentTps: number;
+  generation: number;
+  totalTransactions: number;
+  successRate: number;
+  uptime: number;
+  startedAt: string | null;
+}
+
+export async function checkTrafficGen(url: string, timeoutMs: number): Promise<ServiceHealth & { trafficGen?: TrafficGenStatus }> {
+  const startTime = Date.now();
+  
+  try {
+    const res = await fetchWithTimeout(`${url}/status`, timeoutMs);
+    const latencyMs = Date.now() - startTime;
+    
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    
+    const data = await res.json() as TrafficGenStatus;
+    
+    return {
+      name: 'Traffic Generator',
+      type: 'traffic-generator',
+      url,
+      status: data.enabled ? 'healthy' : 'degraded',
+      lastCheck: Date.now(),
+      latencyMs,
+      trafficGen: data,
+    };
+  } catch (err) {
+    return {
+      name: 'Traffic Generator',
+      type: 'traffic-generator',
+      url,
+      status: 'unhealthy',
+      lastCheck: Date.now(),
+      latencyMs: Date.now() - startTime,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
 // Genesis wallet address (from key)
 const GENESIS_WALLET = process.env.GENESIS_WALLET || 'DAG3yG9CRoYd4XF4PTBtLo95h8uiGNWYXXrASJGg';
 
@@ -569,6 +616,10 @@ export class HealthCollector {
     
     if (this.config.postgresUrl) {
       services.push(await checkPostgres(this.config.postgresUrl, this.config.timeoutMs));
+    }
+    
+    if (this.config.trafficGenUrl) {
+      services.push(await checkTrafficGen(this.config.trafficGenUrl, this.config.timeoutMs));
     }
     
     // Metagraph metrics (use first healthy nodes of each type)
