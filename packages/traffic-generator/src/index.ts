@@ -30,6 +30,7 @@ import { HighThroughputSimulator, runHighThroughput } from './high-throughput.js
 import { FiberOrchestrator, TrafficConfig } from './orchestrator.js';
 import { BridgeClient } from './bridge-client.js';
 import { loadWalletPool, type WalletPool } from './wallets.js';
+import { startStatusServer, setStatusProvider, setControlCallbacks, type TrafficGenStatus } from './status-server.js';
 
 // =============================================================================
 // Configuration from Environment
@@ -290,6 +291,14 @@ async function runWeightedOrchestrator(): Promise<void> {
 // =============================================================================
 
 async function main(): Promise<void> {
+  // Start status server for monitoring
+  const statusPort = parseInt(process.env.STATUS_PORT ?? '3033', 10);
+  const startedAt = new Date().toISOString();
+  let currentMode: TrafficGenStatus['mode'] = 'idle';
+  let simulatorRef: Simulator | null = null;
+  
+  await startStatusServer(statusPort);
+  
   // Check for weighted mode
   const isWeighted = 
     process.argv.includes('--weighted') ||
@@ -297,6 +306,8 @@ async function main(): Promise<void> {
     process.env.MODE === 'weighted';
   
   if (isWeighted) {
+    currentMode = 'orchestrator';
+    // TODO: Wire up orchestrator status provider
     return runWeightedOrchestrator();
   }
   
@@ -307,6 +318,25 @@ async function main(): Promise<void> {
     process.env.MODE === 'high-throughput';
   
   if (isHighThroughput) {
+    currentMode = 'high-throughput';
+    const targetTps = parseInt(process.env.TARGET_TPS ?? '10', 10);
+    const targetPopulation = parseInt(process.env.TARGET_POPULATION ?? '1000', 10);
+    
+    // Set up high-throughput status provider
+    setStatusProvider(() => ({
+      enabled: true,
+      mode: 'high-throughput',
+      targetTps,
+      targetPopulation,
+      currentPopulation: 0, // TODO: Wire up from HighThroughputSimulator
+      currentTps: 0,
+      generation: 0,
+      totalTransactions: 0,
+      successRate: 0,
+      uptime: Date.now() - new Date(startedAt).getTime(),
+      startedAt,
+    }));
+    
     console.log('═══════════════════════════════════════════════════════════════');
     console.log(' OttoChain HIGH-THROUGHPUT Traffic Generator');
     console.log('═══════════════════════════════════════════════════════════════');
@@ -351,6 +381,51 @@ async function main(): Promise<void> {
     },
   });
   
+  // Set up standard mode status provider
+  simulatorRef = simulator;
+  let isRunning = false;
+  
+  setStatusProvider(() => {
+    const stats = simulator.getStats();
+    return {
+      enabled: isRunning,
+      mode: isRunning ? 'standard' : 'idle',
+      targetTps: Math.round(1000 / config.generationIntervalMs), // Approximate
+      targetPopulation: config.targetPopulation,
+      currentPopulation: stats.population,
+      currentTps: 0, // Standard mode doesn't track TPS directly
+      generation: stats.generation,
+      totalTransactions: 0, // Standard simulator doesn't track this
+      successRate: 1,
+      uptime: Date.now() - new Date(startedAt).getTime(),
+      startedAt,
+    };
+  });
+  
+  // Set up control callbacks
+  setControlCallbacks({
+    onStart: async () => {
+      if (isRunning) return;
+      console.log('\n🚀 Starting traffic generation via API...');
+      isRunning = true;
+      await simulator.start();
+    },
+    onStop: async () => {
+      if (!isRunning) return;
+      console.log('\n⏹️  Stopping traffic generation via API...');
+      simulator.stop();
+      isRunning = false;
+    },
+    onConfig: async (newConfig) => {
+      console.log('\n⚙️  Updating config via API:', newConfig);
+      // Config updates would require restarting the simulator
+      // For now, just log - full implementation would update config and restart
+      if (newConfig.targetPopulation) {
+        config.targetPopulation = newConfig.targetPopulation;
+      }
+    },
+  });
+  
   // Handle graceful shutdown
   process.on('SIGINT', () => {
     console.log('\n\n📊 Shutting down...');
@@ -372,8 +447,19 @@ async function main(): Promise<void> {
     process.exit(0);
   });
   
-  // Start simulation
-  await simulator.start();
+  // Start simulation (unless AUTO_START=false)
+  const autoStart = process.env.AUTO_START !== 'false';
+  if (autoStart) {
+    console.log('\n🚀 Auto-starting traffic generation...');
+    console.log('   (Set AUTO_START=false to start via API instead)');
+    isRunning = true;
+    await simulator.start();
+  } else {
+    console.log('\n⏸️  Waiting for start command via API...');
+    console.log('   POST /start to begin traffic generation');
+    // Keep process alive
+    await new Promise(() => {});
+  }
 }
 
 main().catch((err) => {
@@ -392,3 +478,4 @@ export * from './workflows.js';
 export * from './wallets.js';
 export * from './fiber-definitions.js';
 export * from './market-workflows.js';
+export * from './status-server.js';

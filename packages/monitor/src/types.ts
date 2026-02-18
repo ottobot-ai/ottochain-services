@@ -68,6 +68,7 @@ export interface MonitorConfig {
   bridgeUrl?: string;
   indexerUrl?: string;
   gatewayUrl?: string;
+  trafficGenUrl?: string;
   redisUrl?: string;
   postgresUrl?: string;
   
