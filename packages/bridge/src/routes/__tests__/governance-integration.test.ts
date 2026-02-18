@@ -57,7 +57,7 @@ describe('Governance Bridge API', () => {
         .post('/governance/proposals')
         .send({
           privateKey: mockPrivateKey,
-          daoId: 'dao-123',
+          daoId: '12345678-1234-1234-1234-123456789012',
           title: 'Test Proposal',
           description: 'Test description',
           actionType: 'treasury-spend',
@@ -66,7 +66,7 @@ describe('Governance Bridge API', () => {
 
       expect(response.status).toBe(201);
       expect(response.body).toMatchObject({
-        daoId: 'dao-123',
+        daoId: '12345678-1234-1234-1234-123456789012',
         title: 'Test Proposal',
         status: 'PROPOSED',
         proposer: 'mock-address-123',
@@ -86,7 +86,7 @@ describe('Governance Bridge API', () => {
         .post('/governance/proposals')
         .send({
           privateKey: mockPrivateKey,
-          daoId: 'dao-123',
+          daoId: '12345678-1234-1234-1234-123456789012',
           title: 'Test Proposal'
         });
 
@@ -127,7 +127,7 @@ describe('Governance Bridge API', () => {
       expect(response.status).toBe(200);
       expect(response.body).toMatchObject({
         proposalId: 'proposal-123',
-        daoId: 'dao-123',
+        daoId: '12345678-1234-1234-1234-123456789012',
         status: 'DISCUSSION',
         submittedBy: 'mock-address-123',
         hash: 'mock-hash-123'
@@ -186,7 +186,7 @@ describe('Governance Bridge API', () => {
       expect(response.status).toBe(200);
       expect(response.body).toMatchObject({
         proposalId: 'proposal-123',
-        daoId: 'dao-123',
+        daoId: '12345678-1234-1234-1234-123456789012',
         voter: 'mock-address-123',
         action: 'voted For',
         weight: 5,
@@ -364,7 +364,7 @@ describe('Governance Bridge API', () => {
       expect(response.status).toBe(200);
       expect(response.body).toMatchObject({
         id: 'proposal-123',
-        daoId: 'dao-123',
+        daoId: '12345678-1234-1234-1234-123456789012',
         title: 'Test Proposal',
         description: 'Test description',
         status: 'VOTING',
@@ -438,12 +438,12 @@ describe('Governance Bridge API', () => {
 
       const response = await request(app)
         .get('/governance/voting-power/test-address')
-        .query({ daoId: 'dao-123' });
+        .query({ daoId: '12345678-1234-1234-1234-123456789012' });
 
       expect(response.status).toBe(200);
       expect(response.body).toMatchObject({
         address: 'test-address',
-        daoId: 'dao-123',
+        daoId: '12345678-1234-1234-1234-123456789012',
         directPower: 1000,
         delegatedPower: 800,
         totalPower: 1800,
@@ -465,12 +465,12 @@ describe('Governance Bridge API', () => {
 
       const response = await request(app)
         .get('/governance/voting-power/test-address')
-        .query({ daoId: 'dao-123' });
+        .query({ daoId: '12345678-1234-1234-1234-123456789012' });
 
       expect(response.status).toBe(200);
       expect(response.body).toMatchObject({
         address: 'test-address',
-        daoId: 'dao-123',
+        daoId: '12345678-1234-1234-1234-123456789012',
         directPower: 1,
         delegatedPower: 0,
         totalPower: 1
@@ -504,11 +504,11 @@ describe('Governance Bridge API', () => {
 
       const response = await request(app)
         .get('/governance/treasury')
-        .query({ daoId: 'dao-123' });
+        .query({ daoId: '12345678-1234-1234-1234-123456789012' });
 
       expect(response.status).toBe(200);
       expect(response.body).toMatchObject({
-        daoId: 'dao-123',
+        daoId: '12345678-1234-1234-1234-123456789012',
         assets: [
           {
             tokenId: 'token-123',
@@ -535,7 +535,7 @@ describe('Governance Bridge API', () => {
         .post('/governance/proposals')
         .send({
           privateKey: 'invalid-key',
-          daoId: 'dao-123',
+          daoId: '12345678-1234-1234-1234-123456789012',
           title: 'Test'
         });
 
