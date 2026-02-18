@@ -180,7 +180,7 @@ async function main() {
 
   // Test 9: Query rejections list
   await test('Query rejections list', async () => {
-    const result = await fetchJson<{ rejections: Array<{ updateHash: string }>; total: number }>(`${INDEXER_URL}/rejections`);
+    const result = await fetchJson<{ rejections: Array<{ updateHash: string }>; total: number }>(`${INDEXER_URL}/api/rejections`);
     
     if (!result.rejections.some(r => r.updateHash === testUpdateHash)) {
       throw new Error('Test rejection not found in list');
@@ -190,7 +190,7 @@ async function main() {
   // Test 10: Query rejection by hash
   await test('Query rejection by updateHash', async () => {
     const result = await fetchJson<{ updateHash: string; errors: Array<{ code: string }> }>(
-      `${INDEXER_URL}/rejections/${testUpdateHash}`
+      `${INDEXER_URL}/api/rejections/${testUpdateHash}`
     );
     
     if (result.updateHash !== testUpdateHash) {
@@ -204,7 +204,7 @@ async function main() {
   // Test 11: Query rejections by fiberId
   await test('Query rejections by fiberId', async () => {
     const result = await fetchJson<{ rejections: Array<{ fiberId: string }>; total: number }>(
-      `${INDEXER_URL}/fibers/${testFiberId}/rejections`
+      `${INDEXER_URL}/api/fibers/${testFiberId}/rejections`
     );
     
     if (result.total < 1) {
