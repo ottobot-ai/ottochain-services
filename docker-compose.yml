@@ -107,6 +107,7 @@ services:
       - "3032:3032"
     environment:
       - SERVICE=monitor
+      - MONITOR_AUTH=false
       - NODE_ENV=production
       - DATABASE_URL=${DATABASE_URL}
       - METAGRAPH_ML0_URL=${METAGRAPH_ML0_URL}
