@@ -48,6 +48,7 @@ export const CHANNELS = {
   ACTIVITY_FEED: 'activity:feed',
   AGENT_UPDATED: 'agent:updated',
   CONTRACT_UPDATED: 'contract:updated',
+  MARKET_UPDATED: 'market:updated',
 } as const;
 
 // Publish helper

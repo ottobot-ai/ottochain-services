@@ -168,6 +168,26 @@ export async function processSnapshot(notification: SnapshotNotification): Promi
       const updated = await deriveContract(fiber, notification.ordinal);
       if (updated) contractsUpdated++;
     }
+
+    // Publish market updates for Market workflows
+    if (workflowType === 'Market' || fiber.stateData?.schema === 'Market') {
+      // Publish to both the global market channel and the market-specific channel
+      const marketPayload = {
+        fiberId,
+        marketType: fiber.stateData?.marketType,
+        marketStatus: fiber.stateData?.status,
+        currentState,
+        totalCommitted: fiber.stateData?.totalCommitted,
+        ordinal: notification.ordinal,
+        updatedAt: new Date().toISOString(),
+      };
+      await publishEvent(CHANNELS.MARKET_UPDATED, marketPayload).catch((err) => {
+        console.warn(`[processor] Market pubsub publish failed for ${fiberId}:`, err.message);
+      });
+      await publishEvent(`${CHANNELS.MARKET_UPDATED}:${fiberId}`, marketPayload).catch((err) => {
+        console.warn(`[processor] Market pubsub publish failed for ${fiberId}:`, err.message);
+      });
+    }
     
     // Track Corporate Entity workflows (uses generic Fiber table + activity feed)
     if (workflowType === 'Entity' || workflowType === 'Board' || workflowType === 'Shareholders' ||
