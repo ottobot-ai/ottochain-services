@@ -1,8 +1,8 @@
 // GraphQL Resolvers
 
 import { GraphQLScalarType, Kind } from 'graphql';
-import { prisma, getBridgeClient } from '@ottochain/shared';
-import { pubsub, CHANNELS } from './pubsub.js';
+import { prisma, getBridgeClient, CHANNELS } from '@ottochain/shared';
+import { pubsub } from './pubsub.js';
 import type { Context } from './context.js';
 
 // Subscription event names
@@ -478,7 +478,6 @@ export const resolvers = {
         CREATED_DESC: { createdAt: 'desc' },
         CREATED_ASC: { createdAt: 'asc' },
         UPDATED_DESC: { updatedAt: 'desc' },
-        TOTAL_COMMITTED_DESC: { updatedAt: 'desc' }, // fallback; totalCommitted is in JSON
       };
 
       // Build JSON path filters for stateData fields
@@ -499,30 +498,62 @@ export const resolvers = {
         });
       }
 
-      const fibers = await prisma.fiber.findMany({
+      // Oracle filter requires post-processing (JSON array membership).
+      // Fetch in batches until we have enough results.
+      if (oracle) {
+        const batchSize = 100;
+        const results: any[] = [];
+        let cursor: string | undefined;
+        let skipped = 0;
+
+        while (results.length < limit) {
+          const batch = await prisma.fiber.findMany({
+            where: {
+              workflowType: 'Market',
+              AND: jsonFilters.length > 0 ? jsonFilters : undefined,
+            },
+            orderBy: orderByMap[orderBy] ?? { createdAt: 'desc' },
+            take: batchSize,
+            ...(cursor ? { skip: 1, cursor: { fiberId: cursor } } : {}),
+          });
+
+          if (batch.length === 0) break; // No more records
+
+          for (const fiber of batch) {
+            const sd = fiber.stateData as Record<string, unknown>;
+            const oracles = sd?.oracles as string[] | undefined;
+            if (Array.isArray(oracles) && oracles.includes(oracle)) {
+              if (skipped < offset) {
+                skipped++;
+              } else {
+                results.push(fiber);
+                if (results.length >= limit) break;
+              }
+            }
+          }
+
+          cursor = batch[batch.length - 1]?.fiberId;
+          if (batch.length < batchSize) break; // Last batch
+        }
+
+        return results;
+      }
+
+      // Standard query without oracle filter
+      return prisma.fiber.findMany({
         where: {
           workflowType: 'Market',
           AND: jsonFilters.length > 0 ? jsonFilters : undefined,
         },
         orderBy: orderByMap[orderBy] ?? { createdAt: 'desc' },
-        take: oracle ? limit + 100 : limit, // over-fetch if filtering by oracle (post-filter)
-        skip: oracle ? 0 : offset,
+        take: limit,
+        skip: offset,
       });
-
-      // Post-filter by oracle (oracle is inside stateData.oracles array — hard to query via Prisma JSON)
-      if (oracle) {
-        const filtered = fibers.filter((f) => {
-          const sd = f.stateData as Record<string, unknown>;
-          const oracles = sd?.oracles as string[] | undefined;
-          return Array.isArray(oracles) && oracles.includes(oracle);
-        });
-        return filtered.slice(offset, offset + limit);
-      }
-
-      return fibers;
     },
 
     marketStats: async () => {
+      // TODO: Cache this or use materialized stats table if market count grows large.
+      // Current implementation is O(n) over all markets.
       const allMarkets = await prisma.fiber.findMany({
         where: { workflowType: 'Market' },
         select: { stateData: true },

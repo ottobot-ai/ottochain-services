@@ -270,7 +270,6 @@ export const typeDefs = /* GraphQL */ `
     CREATED_DESC
     CREATED_ASC
     UPDATED_DESC
-    TOTAL_COMMITTED_DESC
   }
 
   """
