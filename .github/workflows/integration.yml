@@ -249,6 +249,10 @@ jobs:
 
       - name: Wait for metagraph healthy
         run: |
+          # Copy wait script to working directory
+          cp $GITHUB_WORKSPACE/scripts/wait-for-cluster.sh ./wait-for-cluster.sh
+          chmod +x ./wait-for-cluster.sh
+          
           echo "=== Waiting for GL0 ==="
           for i in {1..90}; do
             if curl -s http://localhost:9000/node/info | grep -q '"state":"Ready"'; then
@@ -269,24 +273,13 @@ jobs:
             if [ $i -eq 180 ]; then echo "ML0 timeout"; docker logs ml0-0 2>&1 | tail -30 || true; exit 1; fi
           done
           
-          echo "=== Waiting for ALL DL1 nodes ==="
-          for port in 9400 9410 9420; do
-            node_name="dl1-$((($port - 9400) / 10))"
-            echo "Waiting for $node_name (port $port)..."
-            for i in {1..180}; do
-              if curl -s http://localhost:$port/node/info | grep -q '"state":"Ready"'; then
-                echo "$node_name ready after ${i}s"
-                break
-              fi
-              sleep 1
-              if [ $i -eq 180 ]; then 
-                echo "$node_name timeout"
-                docker logs $node_name 2>&1 | tail -30 || true
-                exit 1
-              fi
-            done
-          done
-          echo "✓ All DL1 nodes ready"
+          echo "=== Waiting for DL1 cluster with robust join retry ==="
+          # Use the robust script which handles:
+          # 1. Wait for node to be responsive
+          # 2. Wait for node to leave SessionStarted state
+          # 3. Join cluster with retry logic (5 attempts, 5s backoff)
+          # 4. Wait for Ready state
+          ./wait-for-cluster.sh dl1 "9400 9410 9420" 9400
           
           echo "=== Waiting for first metagraph snapshot ==="
           # Use /snapshots/latest (ML0's own snapshots) NOT /global-snapshots/latest (synced from GL0)
