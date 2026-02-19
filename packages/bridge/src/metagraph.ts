@@ -9,6 +9,82 @@ import { getConfig } from '@ottochain/shared';
 import { batchSign, generateKeyPair as sdkGenerateKeyPair, keyPairFromPrivateKey as sdkKeyPairFromPrivateKey, HttpClient } from '@ottochain/sdk';
 import type { KeyPair } from '@ottochain/sdk';
 
+// ─── Optimistic Sequence Cache ────────────────────────────────────────────────
+//
+// Problem (Issue #109): When multiple transactions are submitted rapidly for
+// the same fiber (e.g., commit-A → commit-B → close), all calls to
+// getFiberSequenceNumber() return the same stale value from DL1 because DL1
+// hasn't applied the previous transaction yet.
+//
+// Fix: After each successful submission we *optimistically* advance a local
+// per-fiber counter. getFiberSequenceNumber() returns max(DL1_value, cached)
+// so the next caller always sees an incremented value without waiting for DL1.
+//
+// The cache is process-scoped (server restart resets it to DL1 state).
+// On submission error the caller may call resetFiberSequence() to force a
+// fresh read from DL1 on the next attempt.
+//
+// ⚠️  SINGLE-INSTANCE LIMITATION:
+// This cache is in-process only. Running multiple bridge instances (e.g., behind
+// a load balancer) would cause each instance to have its own cache, leading to
+// sequence conflicts. For HA deployments, replace this Map with Redis:
+//   - INCR ottochain:seq:<fiberId>
+//   - EXPIRE with TTL for automatic cleanup
+// See: https://github.com/ottobot-ai/ottochain-services/issues/109#ha-roadmap
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Maximum number of fibers to track in the sequence cache.
+ * Prevents unbounded memory growth. When limit is reached, oldest entries
+ * are evicted (FIFO via Map insertion order).
+ */
+const SEQUENCE_CACHE_MAX_SIZE = 10_000;
+
+/** Maps fiberId → next expected sequence number (optimistic high-water mark). */
+const sequenceCache = new Map<string, number>();
+
+/**
+ * Evict oldest entries if cache exceeds max size.
+ * Uses Map's insertion-order iteration for FIFO eviction.
+ */
+function evictOldestIfNeeded(): void {
+  while (sequenceCache.size >= SEQUENCE_CACHE_MAX_SIZE) {
+    const oldestKey = sequenceCache.keys().next().value;
+    if (oldestKey) {
+      sequenceCache.delete(oldestKey);
+      console.log(`[metagraph] Sequence cache: evicted ${oldestKey} (cache full)`);
+    } else {
+      break;
+    }
+  }
+}
+
+/**
+ * Advance the cached sequence for a fiber after a successful submission.
+ * nextSeq = submittedSeq + 1.
+ * Only advances — never goes backwards.
+ */
+function advanceSequenceCache(fiberId: string, submittedSeq: number): void {
+  const next = submittedSeq + 1;
+  const cached = sequenceCache.get(fiberId) ?? 0;
+  if (next > cached) {
+    // Delete and re-insert to update insertion order (for FIFO eviction)
+    sequenceCache.delete(fiberId);
+    evictOldestIfNeeded();
+    sequenceCache.set(fiberId, next);
+    console.log(`[metagraph] Sequence cache: fiber ${fiberId} advanced to ${next} (size: ${sequenceCache.size})`);
+  }
+}
+
+/**
+ * Reset the cached sequence for a fiber (e.g. after a submission error).
+ * The next call to getFiberSequenceNumber will re-read from DL1.
+ */
+export function resetFiberSequence(fiberId: string): void {
+  sequenceCache.delete(fiberId);
+  console.log(`[metagraph] Sequence cache: fiber ${fiberId} reset`);
+}
+
 // Re-export SDK core types for use by route handlers
 export type {
   StateMachineDefinition,
@@ -44,10 +120,35 @@ interface TransactionResult {
   ordinal?: number;
 }
 
+// Internal: extract fiberId and targetSequenceNumber from any OttoChain message.
+// Messages that contain a targetSequenceNumber are Transition/Archive/InvokeScript.
+// Returns null for CreateStateMachine/CreateScript (no sequence to track).
+function extractSequenceInfo(
+  message: unknown
+): { fiberId: string; targetSeq: number } | null {
+  const msg = message as Record<string, Record<string, unknown>>;
+
+  for (const key of ['TransitionStateMachine', 'ArchiveStateMachine', 'InvokeScript']) {
+    const inner = msg[key];
+    if (inner) {
+      const fiberId = inner.fiberId as string | undefined;
+      const targetSeq = inner.targetSequenceNumber as number | undefined;
+      if (fiberId && typeof targetSeq === 'number') {
+        return { fiberId, targetSeq };
+      }
+    }
+  }
+  return null;
+}
+
 /**
- * Sign and submit a transaction to the metagraph DL1
- * 
- * @param message - The OttochainMessage (CreateStateMachine, TransitionStateMachine, etc.)
+ * Sign and submit a transaction to the metagraph DL1.
+ *
+ * Automatically advances the in-process sequence cache on success so that
+ * rapid back-to-back submissions for the same fiber get monotonically
+ * increasing targetSequenceNumbers (fix for Issue #109).
+ *
+ * @param message    - The OttochainMessage (CreateStateMachine, TransitionStateMachine, etc.)
  * @param privateKey - Wallet private key in hex format
  * @returns Transaction hash and optional ordinal
  */
@@ -61,32 +162,35 @@ export async function submitTransaction(
   const signed = await batchSign(message, [privateKey], { isDataUpdate: true });
 
   // Wrap in DataTransactionRequest format expected by tessellation DL1
-  // Format: { data: Signed<DataUpdate>, fee: Option<Signed<FeeTransaction>> }
-  const payload = {
-    data: signed,
-    fee: null,
-  };
+  const payload = { data: signed, fee: null };
 
+  const msgType = Object.keys(message as object)[0];
   console.log(`[metagraph] Submitting to ${config.METAGRAPH_DL1_URL}/data`);
-  console.log(`[metagraph] Message type: ${Object.keys(message as object)[0]}`);
+  console.log(`[metagraph] Message type: ${msgType}`);
   console.log(`[metagraph] Payload (truncated): ${JSON.stringify(payload).substring(0, 300)}...`);
 
-  // Use SDK's HttpClient
   const client = new HttpClient(config.METAGRAPH_DL1_URL);
+  const seqInfo = extractSequenceInfo(message);
 
   try {
     const result = await client.post<{ hash?: string; ordinal?: number }>('/data', payload);
-
     console.log(`[metagraph] Success: ${JSON.stringify(result)}`);
 
-    return {
-      hash: result.hash ?? 'pending',
-      ordinal: result.ordinal,
-    };
+    // Advance the optimistic sequence cache so the next submission for this
+    // fiber immediately sees the incremented value (Issue #109 fix).
+    if (seqInfo) {
+      advanceSequenceCache(seqInfo.fiberId, seqInfo.targetSeq);
+    }
+
+    return { hash: result.hash ?? 'pending', ordinal: result.ordinal };
   } catch (err) {
     const error = err as Error & { response?: string };
     if (error.response) {
       console.error(`[metagraph] Error response: ${error.response}`);
+    }
+    // On error, reset the cache so the next attempt reads fresh from DL1.
+    if (seqInfo) {
+      resetFiberSequence(seqInfo.fiberId);
     }
     throw new Error(`Metagraph submission failed: ${error.message}`);
   }
@@ -208,31 +312,40 @@ export async function waitForFiber(
 }
 
 /**
- * Get the current sequence number for a fiber from DL1's onchain state.
- * 
- * This is more reliable than ML0's state for determining the next targetSequenceNumber
- * because DL1's fiberCommits is what DL1 uses for validation.
- * 
+ * Get the current sequence number for a fiber.
+ *
+ * Returns max(DL1_value, optimistic_cache) to ensure rapid back-to-back
+ * submissions always get monotonically increasing sequence numbers even
+ * before DL1 has applied the previous transaction.
+ *
+ * See: GitHub Issue #109 — Bridge sends same targetSequenceNumber for
+ * rapid successive transactions.
+ *
  * @param fiberId - The fiber ID to query
- * @returns The current sequence number, or 0 if not found
+ * @returns The sequence number to use as targetSequenceNumber for the NEXT submission
  */
 export async function getFiberSequenceNumber(fiberId: string): Promise<number> {
   const config = getConfig();
   const dl1Url = `${config.METAGRAPH_DL1_URL}/data-application/v1/onchain`;
   const client = new HttpClient(dl1Url);
-  
+
+  let dl1Seq = 0;
   try {
     const onChain = await client.get<{
       fiberCommits?: Record<string, { sequenceNumber?: number }>;
     }>('');
-    
-    const seq = onChain?.fiberCommits?.[fiberId]?.sequenceNumber ?? 0;
-    console.log(`[metagraph] Fiber ${fiberId} sequence from DL1: ${seq}`);
-    return seq;
-  } catch (err) {
-    console.log(`[metagraph] Could not get sequence for ${fiberId}, defaulting to 0`);
-    return 0;
+    dl1Seq = onChain?.fiberCommits?.[fiberId]?.sequenceNumber ?? 0;
+  } catch {
+    // DL1 unreachable — fall back to cache only
   }
+
+  const cached = sequenceCache.get(fiberId) ?? 0;
+  const seq = Math.max(dl1Seq, cached);
+
+  console.log(
+    `[metagraph] Fiber ${fiberId} sequence: DL1=${dl1Seq}, cache=${cached}, using=${seq}`
+  );
+  return seq;
 }
 
 /**

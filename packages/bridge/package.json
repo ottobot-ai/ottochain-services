@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "lint": "eslint src --ext .ts",
     "test": "node --test --experimental-strip-types test/*.test.ts",
+    "test:unit": "node --test --experimental-strip-types test/sequence-cache.test.ts",
     "test:e2e": "node --test --experimental-strip-types test/e2e.test.ts",
     "test:lifecycle": "node --test --experimental-strip-types test/lifecycle.test.ts",
     "test:coverage": "mkdir -p coverage && node --test --experimental-strip-types --experimental-test-coverage --test-reporter lcov --test-reporter-destination coverage/lcov.info test/*.test.ts || true"
