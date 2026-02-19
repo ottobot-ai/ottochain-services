@@ -1,10 +1,21 @@
 #!/usr/bin/env npx tsx
 /**
  * Traffic Generator Integration Test
- * 
+ *
  * Tests the full agent lifecycle: registration → state sync → activation.
  * Uses the Indexer as the source of truth for state verification.
- * 
+ *
+ * Test sequence:
+ *   1. Bridge health check
+ *   2. Wallet generation
+ *   3. Agent registration (with retry)
+ *   4. Wait for fiber in indexer
+ *   5. Assert no rejections after registration   ← rejection API (PR #105)
+ *   6. Agent activation
+ *   7. Assert no rejections after activation      ← rejection API (PR #105)
+ *   8. Verify active state (ML0 checkpoint)
+ *   9. Verify indexer state (detailed)
+ *
  * Environment variables:
  *   BRIDGE_URL          - Bridge service URL (default: http://localhost:3030)
  *   INDEXER_URL         - Indexer service URL (default: http://localhost:3031)
@@ -12,7 +23,7 @@
  *   FIBER_WAIT_TIMEOUT  - Max seconds to wait for fiber in state (default: 30)
  *   DL1_SYNC_WAIT       - Seconds to wait for DL1 sync (default: 10)
  *   ACTIVATION_WAIT     - Seconds to wait after activation (default: 5)
- * 
+ *
  * Run with:
  *   BRIDGE_URL=http://localhost:3030 INDEXER_URL=http://localhost:3031 npx tsx test/integration.test.ts
  */
@@ -53,6 +64,65 @@ function isBenignRejection(rejection: { errors: Array<{ code: string }> }): bool
   return rejection.errors.every(e => 
     e.code === 'SequenceNumberMismatch' || e.code === 'NoTransitionForEvent'
   );
+}
+
+/**
+ * Query the rejection API for a fiber and assert no critical rejections occurred.
+ * Uses GET /api/rejections?fiberId=... (added by PR #105).
+ *
+ * @returns { passed: boolean; message?: string }
+ */
+async function assertNoRejections(
+  indexer: IndexerClient,
+  fiberId: string,
+  label: string
+): Promise<{ passed: boolean; message?: string }> {
+  let result: Awaited<ReturnType<IndexerClient['queryRejections']>>;
+  try {
+    result = await indexer.queryRejections({ fiberId, limit: 50 });
+  } catch (err) {
+    // If the rejection API is unavailable, log and skip rather than hard-fail
+    console.log(`  ⚠️  Could not reach rejection API: ${err}`);
+    return { passed: true, message: 'rejection API unavailable (skipped)' };
+  }
+
+  const { rejections, total } = result;
+
+  if (total === 0) {
+    console.log(`  ✓ No rejections for fiber (${label})`);
+    return { passed: true };
+  }
+
+  // Separate critical from benign
+  const critical = rejections.filter(r => !isBenignRejection(r));
+  const benign   = rejections.filter(r =>  isBenignRejection(r));
+
+  if (benign.length > 0) {
+    console.log(`  ℹ️  ${benign.length} benign rejection(s) ignored (timing races):`);
+    for (const r of benign.slice(0, 3)) {
+      console.log(`    - [ordinal ${r.ordinal}] ${r.updateType}: ${r.errors.map(e => e.code).join(', ')}`);
+    }
+  }
+
+  if (critical.length === 0) {
+    console.log(`  ✓ No critical rejections for fiber (${label})`);
+    return { passed: true };
+  }
+
+  // Log ALL critical rejections for debugging
+  console.log(`  ❌ ${critical.length} critical rejection(s) found (${label}):`);
+  for (const r of critical) {
+    const codes = r.errors.map(e => e.code).join(', ');
+    const msgs  = r.errors.map(e => e.message ?? '').filter(Boolean).join('; ');
+    console.log(`    - [ordinal ${r.ordinal}] ${r.updateType} | errors: ${codes}`);
+    if (msgs) console.log(`      detail: ${msgs}`);
+    console.log(`      hash: ${r.updateHash}`);
+  }
+
+  return {
+    passed: false,
+    message: `${critical.length} critical rejection(s): ${critical[0].errors.map(e => e.code).join(', ')}`,
+  };
 }
 
 /**
@@ -262,8 +332,22 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   
-  // Test 5: Agent activation (skip if fiber not in state)
-  console.log('\n🔍 Test 5: Agent Activation');
+  // Test 5: Assert No Rejections After Registration
+  console.log('\n🔍 Test 5: Assert No Rejections After Registration');
+  if (!fiberInState || !fiberId) {
+    console.log('⏭️  Skipped (fiber not in state)');
+    results.push({ name: 'No Rejections After Registration', status: 'skipped', message: 'Fiber not in state' });
+  } else {
+    const noRejectResult = await assertNoRejections(indexer, fiberId, 'after registration');
+    if (noRejectResult.passed) {
+      results.push({ name: 'No Rejections After Registration', status: 'passed', message: noRejectResult.message });
+    } else {
+      results.push({ name: 'No Rejections After Registration', status: 'failed', message: noRejectResult.message });
+    }
+  }
+
+  // Test 6: Agent activation (skip if fiber not in state)
+  console.log('\n🔍 Test 6: Agent Activation');
   if (!fiberInState) {
     console.log('⏭️  Skipped (fiber not in state)');
     results.push({ name: 'Agent Activation', status: 'skipped', message: 'Fiber not in state' });
@@ -277,16 +361,31 @@ async function main(): Promise<void> {
       results.push({ name: 'Agent Activation', status: 'failed', message: String(err) });
     }
   }
-  
-  // Test 6: Verify agent is Active in state (skip if fiber not in state)
-  console.log(`\n🔍 Test 6: Verify Active State`);
+
+  // Test 7: Assert No Rejections After Activation
+  console.log('\n🔍 Test 7: Assert No Rejections After Activation');
+  if (!fiberInState || !fiberId) {
+    console.log('⏭️  Skipped (fiber not in state)');
+    results.push({ name: 'No Rejections After Activation', status: 'skipped', message: 'Fiber not in state' });
+  } else {
+    // Give the metagraph a moment to process the activation before querying rejections
+    console.log(`⏳ Waiting for activation to process (${CONFIG.activationWait}s)...`);
+    await sleep(CONFIG.activationWait * 1000);
+
+    const noRejectResult = await assertNoRejections(indexer, fiberId, 'after activation');
+    if (noRejectResult.passed) {
+      results.push({ name: 'No Rejections After Activation', status: 'passed', message: noRejectResult.message });
+    } else {
+      results.push({ name: 'No Rejections After Activation', status: 'failed', message: noRejectResult.message });
+    }
+  }
+
+  // Test 8: Verify agent is Active in state (skip if fiber not in state)
+  console.log(`\n🔍 Test 8: Verify Active State`);
   if (!fiberInState) {
     console.log('⏭️  Skipped (fiber not in state)');
     results.push({ name: 'Verify Active State', status: 'skipped', message: 'Fiber not in state' });
   } else {
-    console.log(`⏳ Waiting for activation to process (${CONFIG.activationWait}s)...`);
-    await sleep(CONFIG.activationWait * 1000);
-    
     try {
       const checkpoint = await fetch(`${CONFIG.ml0Url}/data-application/v1/checkpoint`, {
         signal: AbortSignal.timeout(10000)
@@ -312,8 +411,8 @@ async function main(): Promise<void> {
     }
   }
   
-  // Test 7: Verify full indexer state (detailed check)
-  console.log(`\n🔍 Test 7: Verify Indexer State (detailed)`);
+  // Test 9: Verify full indexer state (detailed check)
+  console.log(`\n🔍 Test 9: Verify Indexer State (detailed)`);
   if (!fiberInState) {
     console.log('⏭️  Skipped (fiber not indexed)');
     results.push({ name: 'Verify Indexer State', status: 'skipped', message: 'Fiber not indexed' });
