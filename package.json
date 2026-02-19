@@ -20,6 +20,7 @@
     "test:integration": "./scripts/integration-test.sh",
     "test:e2e": "tsx scripts/scenarios/multi-agent-sim.ts",
     "test:webhook": "tsx scripts/test-webhook.ts",
+    "test:rejection-api": "tsx scripts/testing/test-rejection-api.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
