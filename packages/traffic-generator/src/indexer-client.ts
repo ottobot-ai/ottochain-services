@@ -51,6 +51,23 @@ export interface RejectedTransaction {
   createdAt: string;
 }
 
+export interface RejectionQueryParams {
+  fiberId?: string;
+  updateType?: string;
+  signer?: string;
+  errorCode?: string;
+  fromOrdinal?: number;
+  toOrdinal?: number;
+  limit?: number;
+  offset?: number;
+}
+
+export interface RejectionQueryResult {
+  rejections: RejectedTransaction[];
+  total: number;
+  hasMore: boolean;
+}
+
 export interface FiberVerification {
   found: boolean;
   fiber: IndexedFiber | null;
@@ -122,13 +139,36 @@ export class IndexerClient {
 
   async getFiberRejections(fiberId: string, limit: number = 10): Promise<RejectedTransaction[]> {
     try {
+      // Endpoint is under /api — see packages/indexer/src/routes/index.ts
       const res = await this.get<{ rejections: RejectedTransaction[] }>(
-        `/fibers/${fiberId}/rejections?limit=${limit}`
+        `/api/fibers/${fiberId}/rejections?limit=${limit}`
       );
       return res.rejections ?? [];
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Query the rejection API (GET /api/rejections) with full filter support.
+   * Added by PR #105 — supports fiberId, updateType, signer, errorCode, ordinal range.
+   */
+  async queryRejections(params: RejectionQueryParams = {}): Promise<RejectionQueryResult> {
+    const qs = new URLSearchParams();
+    if (params.fiberId     !== undefined) qs.set('fiberId',     params.fiberId);
+    if (params.updateType  !== undefined) qs.set('updateType',  params.updateType);
+    if (params.signer      !== undefined) qs.set('signer',      params.signer);
+    if (params.errorCode   !== undefined) qs.set('errorCode',   params.errorCode);
+    if (params.fromOrdinal !== undefined) qs.set('fromOrdinal', String(params.fromOrdinal));
+    if (params.toOrdinal   !== undefined) qs.set('toOrdinal',   String(params.toOrdinal));
+    if (params.limit       !== undefined) qs.set('limit',       String(params.limit));
+    if (params.offset      !== undefined) qs.set('offset',      String(params.offset));
+
+    const query = qs.toString();
+    const res = await this.get<RejectionQueryResult>(
+      `/api/rejections${query ? `?${query}` : ''}`
+    );
+    return res;
   }
 
   async hasRecentRejection(fiberId: string, sinceOrdinal?: number): Promise<boolean> {
