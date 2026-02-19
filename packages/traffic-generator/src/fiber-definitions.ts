@@ -21,7 +21,7 @@ export interface FiberDefinition {
   type: string;
   name: string;
   /** SDK workflowType - determines which UI view shows it */
-  workflowType: 'Contract' | 'AgentIdentity' | 'Custom' | 'Market' | 'DAO' | 'Governance' | 'CorporateEntity' | 'CorporateBoard' | 'CorporateShareholders' | 'CorporateSecurities';
+  workflowType: 'Contract' | 'AgentIdentity' | 'Custom' | 'Market' | 'DAO' | 'Governance' | 'CorporateEntity' | 'CorporateBoard' | 'CorporateShareholders' | 'CorporateSecurities' | 'TokenEscrow';
   roles: string[];  // e.g., ['proposer', 'counterparty'] or ['playerX', 'playerO']
   isVariableParty: boolean;  // true for voting, multi-sig
   /** Contract states from SDK: PROPOSED → ACTIVE → COMPLETED/REJECTED/DISPUTED */
@@ -36,7 +36,7 @@ export interface FiberDefinition {
   /** Corporate type for Corporate workflows */
   corporateType?: 'entity' | 'board' | 'shareholders' | 'securities';
   /** Generate initial stateData for this fiber type */
-  generateStateData: (participants: Map<string, string>, context: FiberContext) => ContractStateData | CustomStateData | MarketStateData | DAOStateData | GovernanceStateData | CorporateEntityStateData | CorporateBoardStateData | CorporateShareholdersStateData | CorporateSecuritiesStateData;
+  generateStateData: (participants: Map<string, string>, context: FiberContext) => ContractStateData | CustomStateData | MarketStateData | DAOStateData | GovernanceStateData | CorporateEntityStateData | CorporateBoardStateData | CorporateShareholdersStateData | CorporateSecuritiesStateData | TokenEscrowStateData;
 }
 
 export interface FiberContext {
@@ -333,6 +333,29 @@ export interface CorporateSecuritiesStateData {
     transferType: string;
     pricePerShare: number | null;
   }>;
+  status: string;
+  createdAt: number;
+}
+
+export interface TokenEscrowStateData {
+  schema: 'TokenEscrow';
+  creator: string;
+  beneficiary: string;
+  tokenName: string;
+  tokenSymbol: string;
+  totalSupply: number;
+  escrowedAmount: number;
+  mintedAmount: number;
+  burnedAmount: number;
+  balances: Record<string, number>;
+  transactions: Array<{
+    txType: 'MINT' | 'TRANSFER' | 'BURN' | 'ESCROW';
+    from: string | null;
+    to: string | null;
+    amount: number;
+    timestamp: number;
+  }>;
+  releaseConditions: string;
   status: string;
   createdAt: number;
 }
@@ -1374,6 +1397,78 @@ export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
         transferHistory: [],
         status: 'AUTHORIZED',
         createdAt: now,
+      };
+    },
+  },
+
+  /**
+   * Token Escrow - Escrow-backed token lifecycle with mint/transfer/burn operations
+   *
+   * Lifecycle: PROPOSED → FUNDED → ACTIVE → COMPLETED | CANCELLED
+   *
+   * Operations while ACTIVE:
+   *   - mint: creator mints tokens to beneficiary or holder
+   *   - transfer: holder transfers tokens to another address
+   *   - burn: creator/holder destroys tokens (deflationary)
+   *   - escrow: lock tokens in escrow pending release condition
+   *
+   * Final operations:
+   *   - release: beneficiary releases escrow → COMPLETED
+   *   - cancel: creator cancels → CANCELLED (funds returned)
+   */
+  tokenEscrow: {
+    type: 'tokenEscrow',
+    name: 'Token Escrow',
+    workflowType: 'TokenEscrow' as const,
+    roles: ['creator', 'beneficiary', 'holder'],
+    isVariableParty: false,
+    states: ['PROPOSED', 'FUNDED', 'ACTIVE', 'COMPLETED', 'CANCELLED'],
+    initialState: 'PROPOSED',
+    finalStates: ['COMPLETED', 'CANCELLED'],
+    transitions: [
+      // Setup phase
+      { from: 'PROPOSED', to: 'FUNDED',    event: 'fund',     actor: 'creator'     },
+      { from: 'PROPOSED', to: 'CANCELLED', event: 'cancel',   actor: 'creator'     },
+      // Activation
+      { from: 'FUNDED',   to: 'ACTIVE',    event: 'activate', actor: 'creator'     },
+      { from: 'FUNDED',   to: 'CANCELLED', event: 'cancel',   actor: 'creator'     },
+      // Token operations (while ACTIVE)
+      { from: 'ACTIVE',   to: 'ACTIVE',    event: 'mint',     actor: 'creator'     },
+      { from: 'ACTIVE',   to: 'ACTIVE',    event: 'transfer', actor: 'holder'      },
+      { from: 'ACTIVE',   to: 'ACTIVE',    event: 'burn',     actor: 'holder'      },
+      { from: 'ACTIVE',   to: 'ACTIVE',    event: 'escrow',   actor: 'creator'     },
+      // Resolution
+      { from: 'ACTIVE',   to: 'COMPLETED', event: 'release',  actor: 'beneficiary' },
+      { from: 'ACTIVE',   to: 'CANCELLED', event: 'cancel',   actor: 'creator'     },
+    ],
+    generateStateData: (participants, ctx): TokenEscrowStateData => {
+      const creator     = participants.get('creator')!;
+      const beneficiary = participants.get('beneficiary')!;
+      const holder      = participants.get('holder') ?? beneficiary;
+
+      const TOKEN_NAMES = [
+        ['OttoToken', 'OTTO'], ['StableOtto', 'STTO'], ['GovernToken', 'GOTT'],
+        ['EscrowCoin', 'ESCR'], ['ChainToken', 'CTKN'], ['VaultToken', 'VTKN'],
+      ];
+      const [tokenName, tokenSymbol] = TOKEN_NAMES[Math.floor(Math.random() * TOKEN_NAMES.length)];
+      const totalSupply   = Math.floor(Math.random() * 1_000_000) + 10_000;
+      const escrowedAmount = Math.floor(totalSupply * (0.1 + Math.random() * 0.4)); // 10–50%
+
+      return {
+        schema: 'TokenEscrow',
+        creator,
+        beneficiary,
+        tokenName,
+        tokenSymbol,
+        totalSupply,
+        escrowedAmount,
+        mintedAmount: 0,
+        burnedAmount: 0,
+        balances: { [creator]: totalSupply - escrowedAmount },
+        transactions: [],
+        releaseConditions: `Release upon delivery confirmation by ${beneficiary.slice(0, 8)}...`,
+        status: 'PROPOSED',
+        createdAt: Date.now(),
       };
     },
   },
