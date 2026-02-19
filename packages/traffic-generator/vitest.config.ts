@@ -3,6 +3,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     // Exclude integration tests (standalone scripts meant to run against real clusters)
+    // These are run separately in CI against a live cluster, not via vitest
     exclude: [
       '**/node_modules/**',
       '**/dist/**',
