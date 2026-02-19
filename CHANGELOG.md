@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.0](https://github.com/ottobot-ai/ottochain-services/compare/v0.3.6...v0.4.0) (2026-02-19)
+
+
+### Features
+
+* add Codecov integration for test coverage reporting ([#98](https://github.com/ottobot-ai/ottochain-services/issues/98)) ([989e411](https://github.com/ottobot-ai/ottochain-services/commit/989e41114ee98b4c68c986e8f9956ad6add54e24))
+* **indexer:** rejection query API with full filter support ([#105](https://github.com/ottobot-ai/ottochain-services/issues/105)) ([e18603a](https://github.com/ottobot-ai/ottochain-services/commit/e18603a4849c09bf7b7d34c98cdfd168ab3c678e))
+* **monitor:** add traffic generator status to status page ([#104](https://github.com/ottobot-ai/ottochain-services/issues/104)) ([6477da3](https://github.com/ottobot-ai/ottochain-services/commit/6477da3ebc87d529e5062863534b0a3d4959baba))
+
+
+### Bug Fixes
+
+* **bridge:** optimistic per-fiber sequence cache (Issue [#109](https://github.com/ottobot-ai/ottochain-services/issues/109)) ([#113](https://github.com/ottobot-ai/ottochain-services/issues/113)) ([fa4590c](https://github.com/ottobot-ai/ottochain-services/commit/fa4590c7cf5a70b3e0a81074dba33f16ed580585))
+* **monitor:** disable basic auth by default ([#102](https://github.com/ottobot-ai/ottochain-services/issues/102)) ([3b6e98d](https://github.com/ottobot-ai/ottochain-services/commit/3b6e98db1f85841c211e3e3bcb2ba5e23a2301c2))
+* **tests:** add state normalization and benign rejection filtering ([#112](https://github.com/ottobot-ai/ottochain-services/issues/112)) ([19d8fc9](https://github.com/ottobot-ai/ottochain-services/commit/19d8fc9b96ef2f5a493b2c8dc6c4399db0b03943))
+
 ## [0.3.6](https://github.com/ottobot-ai/ottochain-services/compare/v0.3.5...v0.3.6) (2026-02-17)
 
 
