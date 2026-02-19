@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/ottobot-ai/ottochain-services/compare/v0.4.0...v0.4.1) (2026-02-19)
+
+
+### Bug Fixes
+
+* **ci:** add robust DL1 cluster join with retry logic ([#117](https://github.com/ottobot-ai/ottochain-services/issues/117)) ([ac2c156](https://github.com/ottobot-ai/ottochain-services/commit/ac2c1560fec2f24373bbea707aea512986aa736e))
+
 ## [0.4.0](https://github.com/ottobot-ai/ottochain-services/compare/v0.3.6...v0.4.0) (2026-02-19)
 
 
