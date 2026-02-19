@@ -11,6 +11,7 @@
     "test": "node --test --experimental-strip-types test/*.test.ts",
     "test:e2e": "node --test --experimental-strip-types test/e2e.test.ts",
     "test:lifecycle": "node --test --experimental-strip-types test/lifecycle.test.ts",
+    "test:sequence": "node --test --experimental-strip-types test/market-sequence.test.ts",
     "test:coverage": "mkdir -p coverage && node --test --experimental-strip-types --experimental-test-coverage --test-reporter lcov --test-reporter-destination coverage/lcov.info test/*.test.ts || true"
   },
   "dependencies": {

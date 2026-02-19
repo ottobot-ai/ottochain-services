@@ -5,7 +5,7 @@
 import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
-import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey, waitForFiber, getFiberSequenceNumber, getEpochProgress } from '../metagraph.js';
+import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey, waitForFiber, getFiberSequenceNumber, waitForSequence, getEpochProgress } from '../metagraph.js';
 import { MarketType, MarketState, getMarketDefinition } from '@ottochain/sdk/apps/markets';
 
 export const marketRoutes: RouterType = Router();
@@ -256,6 +256,11 @@ marketRoutes.post('/open', async (req, res) => {
     console.log(`[market/open] Opening market ${input.marketId}`);
     const result = await submitTransaction(message, input.privateKey);
 
+    // Wait for DL1 to confirm the sequence increment before returning.
+    // This ensures rapid follow-up calls (e.g., commit immediately after open)
+    // will read the updated sequence number and avoid duplicate-seq rejections.
+    await waitForSequence(input.marketId, targetSequenceNumber + 1);
+
     res.json({
       hash: result.hash,
       marketId: input.marketId,
@@ -312,6 +317,9 @@ marketRoutes.post('/commit', async (req, res) => {
     console.log(`[market/commit] ${keyPair.address} committing ${input.amount} to ${input.marketId}`);
     const result = await submitTransaction(message, input.privateKey);
 
+    // Wait for DL1 to confirm the sequence increment before returning.
+    await waitForSequence(input.marketId, targetSequenceNumber + 1);
+
     res.json({
       hash: result.hash,
       marketId: input.marketId,
@@ -363,6 +371,9 @@ marketRoutes.post('/close', async (req, res) => {
 
     console.log(`[market/close] Closing market ${input.marketId}`);
     const result = await submitTransaction(message, input.privateKey);
+
+    // Wait for DL1 to confirm the sequence increment before returning.
+    await waitForSequence(input.marketId, targetSequenceNumber + 1);
 
     res.json({
       hash: result.hash,
@@ -420,6 +431,9 @@ marketRoutes.post('/resolve', async (req, res) => {
     console.log(`[market/resolve] ${keyPair.address} resolving ${input.marketId} with outcome: ${input.outcome}`);
     const result = await submitTransaction(message, input.privateKey);
 
+    // Wait for DL1 to confirm the sequence increment before returning.
+    await waitForSequence(input.marketId, targetSequenceNumber + 1);
+
     res.json({
       hash: result.hash,
       marketId: input.marketId,
@@ -475,6 +489,9 @@ marketRoutes.post('/finalize', async (req, res) => {
 
     console.log(`[market/finalize] Finalizing market ${input.marketId}`);
     const result = await submitTransaction(message, input.privateKey);
+
+    // Wait for DL1 to confirm the sequence increment before returning.
+    await waitForSequence(input.marketId, targetSequenceNumber + 1);
 
     res.json({
       hash: result.hash,
@@ -548,6 +565,9 @@ marketRoutes.post('/claim', async (req, res) => {
     console.log(`[market/claim] ${keyPair.address} claiming from ${input.marketId}`);
     const result = await submitTransaction(message, input.privateKey);
 
+    // Wait for DL1 to confirm the sequence increment before returning.
+    await waitForSequence(input.marketId, targetSequenceNumber + 1);
+
     res.json({
       hash: result.hash,
       marketId: input.marketId,
@@ -601,6 +621,9 @@ marketRoutes.post('/refund', async (req, res) => {
 
     console.log(`[market/refund] Refunding market ${input.marketId}`);
     const result = await submitTransaction(message, input.privateKey);
+
+    // Wait for DL1 to confirm the sequence increment before returning.
+    await waitForSequence(input.marketId, targetSequenceNumber + 1);
 
     res.json({
       hash: result.hash,
@@ -656,6 +679,9 @@ marketRoutes.post('/cancel', async (req, res) => {
 
     console.log(`[market/cancel] Cancelling market ${input.marketId}`);
     const result = await submitTransaction(message, input.privateKey);
+
+    // Wait for DL1 to confirm the sequence increment before returning.
+    await waitForSequence(input.marketId, targetSequenceNumber + 1);
 
     res.json({
       hash: result.hash,
