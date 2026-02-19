@@ -23,10 +23,41 @@ import type { KeyPair } from '@ottochain/sdk';
 // The cache is process-scoped (server restart resets it to DL1 state).
 // On submission error the caller may call resetFiberSequence() to force a
 // fresh read from DL1 on the next attempt.
+//
+// ⚠️  SINGLE-INSTANCE LIMITATION:
+// This cache is in-process only. Running multiple bridge instances (e.g., behind
+// a load balancer) would cause each instance to have its own cache, leading to
+// sequence conflicts. For HA deployments, replace this Map with Redis:
+//   - INCR ottochain:seq:<fiberId>
+//   - EXPIRE with TTL for automatic cleanup
+// See: https://github.com/ottobot-ai/ottochain-services/issues/109#ha-roadmap
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Maximum number of fibers to track in the sequence cache.
+ * Prevents unbounded memory growth. When limit is reached, oldest entries
+ * are evicted (FIFO via Map insertion order).
+ */
+const SEQUENCE_CACHE_MAX_SIZE = 10_000;
 
 /** Maps fiberId → next expected sequence number (optimistic high-water mark). */
 const sequenceCache = new Map<string, number>();
+
+/**
+ * Evict oldest entries if cache exceeds max size.
+ * Uses Map's insertion-order iteration for FIFO eviction.
+ */
+function evictOldestIfNeeded(): void {
+  while (sequenceCache.size >= SEQUENCE_CACHE_MAX_SIZE) {
+    const oldestKey = sequenceCache.keys().next().value;
+    if (oldestKey) {
+      sequenceCache.delete(oldestKey);
+      console.log(`[metagraph] Sequence cache: evicted ${oldestKey} (cache full)`);
+    } else {
+      break;
+    }
+  }
+}
 
 /**
  * Advance the cached sequence for a fiber after a successful submission.
@@ -37,8 +68,11 @@ function advanceSequenceCache(fiberId: string, submittedSeq: number): void {
   const next = submittedSeq + 1;
   const cached = sequenceCache.get(fiberId) ?? 0;
   if (next > cached) {
+    // Delete and re-insert to update insertion order (for FIFO eviction)
+    sequenceCache.delete(fiberId);
+    evictOldestIfNeeded();
     sequenceCache.set(fiberId, next);
-    console.log(`[metagraph] Sequence cache: fiber ${fiberId} advanced to ${next}`);
+    console.log(`[metagraph] Sequence cache: fiber ${fiberId} advanced to ${next} (size: ${sequenceCache.size})`);
   }
 }
 

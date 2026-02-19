@@ -20,12 +20,31 @@ import assert from 'node:assert';
 // ── Inline reimplementation of the cache for isolated unit testing ────────────
 // (mirrors the logic in metagraph.ts exactly)
 
+/** Use smaller limit for testing eviction behavior */
+const TEST_CACHE_MAX_SIZE = 5;
+
 const sequenceCache = new Map<string, number>();
+
+function evictOldestIfNeeded(): void {
+  while (sequenceCache.size >= TEST_CACHE_MAX_SIZE) {
+    const oldestKey = sequenceCache.keys().next().value;
+    if (oldestKey) {
+      sequenceCache.delete(oldestKey);
+    } else {
+      break;
+    }
+  }
+}
 
 function advanceSequenceCache(fiberId: string, submittedSeq: number): void {
   const next = submittedSeq + 1;
   const cached = sequenceCache.get(fiberId) ?? 0;
-  if (next > cached) sequenceCache.set(fiberId, next);
+  if (next > cached) {
+    // Delete and re-insert to update insertion order (for FIFO eviction)
+    sequenceCache.delete(fiberId);
+    evictOldestIfNeeded();
+    sequenceCache.set(fiberId, next);
+  }
 }
 
 function resetFiberSequence(fiberId: string): void {
@@ -152,6 +171,69 @@ describe('Optimistic Sequence Cache (Issue #109 fix)', () => {
     // fiberB has no cache
     assert.strictEqual(resolveSequence(fiberA, 0), 3, 'Fiber A should be at 3');
     assert.strictEqual(resolveSequence(fiberB, 0), 0, 'Fiber B should be independent (0)');
+  });
+
+  it('evicts oldest entries when cache is full (FIFO)', () => {
+    clearCache();
+    // TEST_CACHE_MAX_SIZE = 5
+
+    // Fill cache with 5 fibers
+    advanceSequenceCache('fiber-1', 0); // cache: [1]
+    advanceSequenceCache('fiber-2', 0); // cache: [1, 2]
+    advanceSequenceCache('fiber-3', 0); // cache: [1, 2, 3]
+    advanceSequenceCache('fiber-4', 0); // cache: [1, 2, 3, 4]
+    advanceSequenceCache('fiber-5', 0); // cache: [1, 2, 3, 4, 5]
+
+    assert.strictEqual(sequenceCache.size, 5, 'Cache should have 5 entries');
+    assert.ok(sequenceCache.has('fiber-1'), 'fiber-1 should still exist');
+
+    // Add 6th fiber → should evict fiber-1 (oldest)
+    advanceSequenceCache('fiber-6', 0); // cache: [2, 3, 4, 5, 6]
+
+    assert.strictEqual(sequenceCache.size, 5, 'Cache should still have 5 entries');
+    assert.ok(!sequenceCache.has('fiber-1'), 'fiber-1 should be evicted (oldest)');
+    assert.ok(sequenceCache.has('fiber-6'), 'fiber-6 should exist');
+    assert.ok(sequenceCache.has('fiber-2'), 'fiber-2 should still exist');
+  });
+
+  it('updating existing fiber refreshes its position (LRU-style)', () => {
+    clearCache();
+    // TEST_CACHE_MAX_SIZE = 5
+
+    // Fill cache
+    advanceSequenceCache('fiber-A', 0); // oldest
+    advanceSequenceCache('fiber-B', 0);
+    advanceSequenceCache('fiber-C', 0);
+    advanceSequenceCache('fiber-D', 0);
+    advanceSequenceCache('fiber-E', 0); // newest
+
+    // Update fiber-A (should move it to end of insertion order)
+    advanceSequenceCache('fiber-A', 1); // now fiber-B is oldest
+
+    // Add new fiber — should evict fiber-B (now oldest), not fiber-A
+    advanceSequenceCache('fiber-F', 0);
+
+    assert.ok(sequenceCache.has('fiber-A'), 'fiber-A should still exist (was refreshed)');
+    assert.ok(!sequenceCache.has('fiber-B'), 'fiber-B should be evicted (oldest after A refresh)');
+    assert.ok(sequenceCache.has('fiber-F'), 'fiber-F should exist');
+  });
+
+  it('cache size limit prevents unbounded growth', () => {
+    clearCache();
+
+    // Add many more fibers than the limit
+    for (let i = 0; i < 20; i++) {
+      advanceSequenceCache(`fiber-${i}`, 0);
+    }
+
+    assert.strictEqual(sequenceCache.size, TEST_CACHE_MAX_SIZE, 
+      `Cache should be capped at ${TEST_CACHE_MAX_SIZE}`);
+    
+    // Only the last 5 should remain
+    assert.ok(!sequenceCache.has('fiber-0'), 'fiber-0 should be evicted');
+    assert.ok(!sequenceCache.has('fiber-14'), 'fiber-14 should be evicted');
+    assert.ok(sequenceCache.has('fiber-15'), 'fiber-15 should exist');
+    assert.ok(sequenceCache.has('fiber-19'), 'fiber-19 should exist');
   });
 
 });
