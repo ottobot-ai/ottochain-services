@@ -13,8 +13,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 const BRIDGE_TEST_DIR = __dirname;
 const TRAFFIC_GEN_TEST_DIR = join(__dirname, '../../../traffic-generator/test');
 
