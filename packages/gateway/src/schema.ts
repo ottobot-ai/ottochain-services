@@ -240,6 +240,118 @@ export const typeDefs = /* GraphQL */ `
     SEQUENCE_DESC
   }
 
+  # === Market Types ===
+
+  """
+  The type of prediction/commitment market.
+  Maps to the MarketType proto enum in the SDK.
+  """
+  enum MarketType {
+    PREDICTION
+    AUCTION
+    CROWDFUND
+    GROUP_BUY
+  }
+
+  """
+  Lifecycle states for a market fiber.
+  """
+  enum MarketStatus {
+    PROPOSED
+    OPEN
+    CLOSED
+    RESOLVING
+    SETTLED
+    REFUNDED
+    CANCELLED
+  }
+
+  enum MarketOrderBy {
+    CREATED_DESC
+    CREATED_ASC
+    UPDATED_DESC
+  }
+
+  """
+  A single participant commitment in a market.
+  """
+  type MarketCommitment {
+    address: String!
+    amount: Float!
+    outcome: String
+  }
+
+  """
+  A resolution submitted by an oracle.
+  """
+  type MarketResolution {
+    outcome: String!
+    resolvedBy: String!
+    resolvedAt: String
+  }
+
+  """
+  A market fiber — a specialized view over the generic Fiber record.
+  All market-specific fields are extracted from stateData JSON.
+  """
+  type Market {
+    # === Fiber base fields ===
+    fiberId: String!
+    currentState: String!
+    status: FiberStatus!
+    owners: [String!]!
+    sequenceNumber: Int!
+    createdOrdinal: BigInt!
+    updatedOrdinal: BigInt!
+    createdAt: DateTime!
+    updatedAt: DateTime!
+    transitions(limit: Int): [FiberTransition!]!
+
+    # === Market-specific fields (from stateData) ===
+    marketType: MarketType!
+    marketStatus: MarketStatus!
+    creator: String!
+    title: String!
+    description: String
+    terms: JSON
+    deadline: Float
+    threshold: Float
+    oracles: [String!]!
+    quorum: Int!
+    commitments: [MarketCommitment!]!
+    totalCommitted: Float!
+    resolutions: [MarketResolution!]!
+    claims: JSON
+  }
+
+  """
+  Aggregated statistics across all market fibers.
+  """
+  type MarketStats {
+    totalMarkets: Int!
+    byType: MarketTypeBreakdown!
+    byStatus: MarketStatusBreakdown!
+    totalCommitted: Float!
+    activeOracles: Int!
+  }
+
+  type MarketTypeBreakdown {
+    prediction: Int!
+    auction: Int!
+    crowdfund: Int!
+    groupBuy: Int!
+  }
+
+  type MarketStatusBreakdown {
+    proposed: Int!
+    open: Int!
+    closed: Int!
+    resolving: Int!
+    settled: Int!
+    refunded: Int!
+    cancelled: Int!
+  }
+
   # === Queries ===
 
   type Query {
@@ -291,6 +403,35 @@ export const typeDefs = /* GraphQL */ `
     # Indexer status
     recentSnapshots(limit: Int = 20): [IndexedSnapshot!]!
     snapshot(ordinal: BigInt!): IndexedSnapshot
+
+    # === Market Queries ===
+
+    """
+    Fetch a single market by its fiber ID.
+    """
+    market(marketId: String!): Market
+
+    """
+    List markets with optional filters.
+    marketType filters by the type of market (PREDICTION, AUCTION, etc.).
+    marketStatus filters by lifecycle stage.
+    creator filters by creator DAG address.
+    oracle filters to markets that include a specific oracle address.
+    """
+    marketsByType(
+      marketType: MarketType
+      marketStatus: MarketStatus
+      creator: String
+      oracle: String
+      limit: Int = 20
+      offset: Int = 0
+      orderBy: MarketOrderBy = CREATED_DESC
+    ): [Market!]!
+
+    """
+    Aggregated statistics for all market fibers.
+    """
+    marketStats: MarketStats!
   }
 
   # === Mutations ===
@@ -397,5 +538,11 @@ export const typeDefs = /* GraphQL */ `
     contractUpdated(contractId: String): Contract!
     activityFeed: ActivityEvent!
     statsUpdated: NetworkStats!
+
+    """
+    Subscribe to updates for a specific market or all markets.
+    Pass marketId to receive updates for one market; omit for all markets.
+    """
+    marketUpdated(marketId: String): Market!
   }
 `;

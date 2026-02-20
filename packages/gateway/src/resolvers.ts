@@ -1,8 +1,8 @@
 // GraphQL Resolvers
 
 import { GraphQLScalarType, Kind } from 'graphql';
-import { prisma, getBridgeClient } from '@ottochain/shared';
-import { pubsub, CHANNELS } from './pubsub.js';
+import { prisma, getBridgeClient, CHANNELS } from '@ottochain/shared';
+import { pubsub } from './pubsub.js';
 import type { Context } from './context.js';
 
 // Subscription event names
@@ -12,6 +12,7 @@ export const EVENTS = {
   CONTRACT_UPDATED: 'CONTRACT_UPDATED',
   ACTIVITY_FEED: 'ACTIVITY_FEED',
   STATS_UPDATED: 'STATS_UPDATED',
+  MARKET_UPDATED: 'MARKET_UPDATED',
 } as const;
 
 // BigInt scalar for ordinal numbers
@@ -436,6 +437,172 @@ export const resolvers = {
         where: { ordinal },
       });
     },
+
+    // === Market Queries ===
+
+    market: async (_: unknown, { marketId }: { marketId: string }) => {
+      return prisma.fiber.findFirst({
+        where: { fiberId: marketId, workflowType: 'Market' },
+      });
+    },
+
+    marketsByType: async (
+      _: unknown,
+      {
+        marketType,
+        marketStatus,
+        creator,
+        oracle,
+        limit = 20,
+        offset = 0,
+        orderBy = 'CREATED_DESC',
+      }: {
+        marketType?: string;
+        marketStatus?: string;
+        creator?: string;
+        oracle?: string;
+        limit?: number;
+        offset?: number;
+        orderBy?: string;
+      }
+    ) => {
+      // Map GraphQL enum → stateData JSON values
+      const typeMap: Record<string, string> = {
+        PREDICTION: 'prediction',
+        AUCTION: 'auction',
+        CROWDFUND: 'crowdfund',
+        GROUP_BUY: 'group_buy',
+      };
+
+      const orderByMap: Record<string, any> = {
+        CREATED_DESC: { createdAt: 'desc' },
+        CREATED_ASC: { createdAt: 'asc' },
+        UPDATED_DESC: { updatedAt: 'desc' },
+      };
+
+      // Build JSON path filters for stateData fields
+      const jsonFilters: any[] = [];
+      if (marketType) {
+        jsonFilters.push({
+          stateData: { path: ['marketType'], equals: typeMap[marketType] ?? marketType.toLowerCase() },
+        });
+      }
+      if (marketStatus) {
+        jsonFilters.push({
+          stateData: { path: ['status'], equals: marketStatus },
+        });
+      }
+      if (creator) {
+        jsonFilters.push({
+          stateData: { path: ['creator'], equals: creator },
+        });
+      }
+
+      // Oracle filter requires post-processing (JSON array membership).
+      // Fetch in batches until we have enough results.
+      if (oracle) {
+        const batchSize = 100;
+        const results: any[] = [];
+        let cursor: string | undefined;
+        let skipped = 0;
+
+        while (results.length < limit) {
+          const batch = await prisma.fiber.findMany({
+            where: {
+              workflowType: 'Market',
+              AND: jsonFilters.length > 0 ? jsonFilters : undefined,
+            },
+            orderBy: orderByMap[orderBy] ?? { createdAt: 'desc' },
+            take: batchSize,
+            ...(cursor ? { skip: 1, cursor: { fiberId: cursor } } : {}),
+          });
+
+          if (batch.length === 0) break; // No more records
+
+          for (const fiber of batch) {
+            const sd = fiber.stateData as Record<string, unknown>;
+            const oracles = sd?.oracles as string[] | undefined;
+            if (Array.isArray(oracles) && oracles.includes(oracle)) {
+              if (skipped < offset) {
+                skipped++;
+              } else {
+                results.push(fiber);
+                if (results.length >= limit) break;
+              }
+            }
+          }
+
+          cursor = batch[batch.length - 1]?.fiberId;
+          if (batch.length < batchSize) break; // Last batch
+        }
+
+        return results;
+      }
+
+      // Standard query without oracle filter
+      return prisma.fiber.findMany({
+        where: {
+          workflowType: 'Market',
+          AND: jsonFilters.length > 0 ? jsonFilters : undefined,
+        },
+        orderBy: orderByMap[orderBy] ?? { createdAt: 'desc' },
+        take: limit,
+        skip: offset,
+      });
+    },
+
+    marketStats: async () => {
+      // TODO: Cache this or use materialized stats table if market count grows large.
+      // Current implementation is O(n) over all markets.
+      const allMarkets = await prisma.fiber.findMany({
+        where: { workflowType: 'Market' },
+        select: { stateData: true },
+      });
+
+      const byType = { prediction: 0, auction: 0, crowdfund: 0, groupBuy: 0 };
+      const byStatus = { proposed: 0, open: 0, closed: 0, resolving: 0, settled: 0, refunded: 0, cancelled: 0 };
+      let totalCommitted = 0;
+      const oracleSet = new Set<string>();
+
+      for (const { stateData } of allMarkets) {
+        const sd = stateData as Record<string, unknown>;
+        
+        // Count by type
+        const mt = (sd?.marketType as string | undefined)?.toLowerCase();
+        if (mt === 'prediction') byType.prediction++;
+        else if (mt === 'auction') byType.auction++;
+        else if (mt === 'crowdfund') byType.crowdfund++;
+        else if (mt === 'group_buy') byType.groupBuy++;
+
+        // Count by status
+        const st = (sd?.status as string | undefined)?.toUpperCase();
+        if (st === 'PROPOSED') byStatus.proposed++;
+        else if (st === 'OPEN') byStatus.open++;
+        else if (st === 'CLOSED') byStatus.closed++;
+        else if (st === 'RESOLVING') byStatus.resolving++;
+        else if (st === 'SETTLED') byStatus.settled++;
+        else if (st === 'REFUNDED') byStatus.refunded++;
+        else if (st === 'CANCELLED') byStatus.cancelled++;
+
+        // Sum totalCommitted
+        const committed = sd?.totalCommitted;
+        if (typeof committed === 'number') totalCommitted += committed;
+
+        // Collect oracle addresses
+        const oracles = sd?.oracles as string[] | undefined;
+        if (Array.isArray(oracles)) {
+          oracles.forEach((o) => oracleSet.add(o));
+        }
+      }
+
+      return {
+        totalMarkets: allMarkets.length,
+        byType,
+        byStatus,
+        totalCommitted,
+        activeOracles: oracleSet.size,
+      };
+    },
   },
 
   // === Mutations ===
@@ -683,6 +850,118 @@ export const resolvers = {
     },
   },
 
+  // === Market Field Resolvers ===
+  // Markets are stored as Fiber rows; these extract typed fields from stateData JSON.
+
+  Market: {
+    transitions: async (parent: { fiberId: string }, { limit = 20 }: { limit?: number }) => {
+      return prisma.fiberTransition.findMany({
+        where: { fiberId: parent.fiberId },
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      });
+    },
+
+    marketType: (parent: { stateData: unknown }) => {
+      const sd = parent.stateData as Record<string, unknown>;
+      const raw = (sd?.marketType as string | undefined)?.toLowerCase();
+      const typeMap: Record<string, string> = {
+        prediction: 'PREDICTION',
+        auction: 'AUCTION',
+        crowdfund: 'CROWDFUND',
+        group_buy: 'GROUP_BUY',
+      };
+      return typeMap[raw ?? ''] ?? 'PREDICTION';
+    },
+
+    marketStatus: (parent: { stateData: unknown }) => {
+      const sd = parent.stateData as Record<string, unknown>;
+      const raw = (sd?.status as string | undefined)?.toUpperCase();
+      const validStatuses = ['PROPOSED', 'OPEN', 'CLOSED', 'RESOLVING', 'SETTLED', 'REFUNDED', 'CANCELLED'];
+      return validStatuses.includes(raw ?? '') ? raw : 'PROPOSED';
+    },
+
+    creator: (parent: { stateData: unknown }) => {
+      const sd = parent.stateData as Record<string, unknown>;
+      return (sd?.creator as string | undefined) ?? '';
+    },
+
+    title: (parent: { stateData: unknown }) => {
+      const sd = parent.stateData as Record<string, unknown>;
+      return (sd?.title as string | undefined) ?? 'Untitled Market';
+    },
+
+    description: (parent: { stateData: unknown }) => {
+      const sd = parent.stateData as Record<string, unknown>;
+      return (sd?.description as string | null | undefined) ?? null;
+    },
+
+    terms: (parent: { stateData: unknown }) => {
+      const sd = parent.stateData as Record<string, unknown>;
+      return (sd?.terms ?? null) as unknown;
+    },
+
+    deadline: (parent: { stateData: unknown }) => {
+      const sd = parent.stateData as Record<string, unknown>;
+      return typeof sd?.deadline === 'number' ? sd.deadline : null;
+    },
+
+    threshold: (parent: { stateData: unknown }) => {
+      const sd = parent.stateData as Record<string, unknown>;
+      return typeof sd?.threshold === 'number' ? sd.threshold : null;
+    },
+
+    oracles: (parent: { stateData: unknown }) => {
+      const sd = parent.stateData as Record<string, unknown>;
+      const oracles = sd?.oracles;
+      return Array.isArray(oracles) ? oracles : [];
+    },
+
+    quorum: (parent: { stateData: unknown }) => {
+      const sd = parent.stateData as Record<string, unknown>;
+      return typeof sd?.quorum === 'number' ? sd.quorum : 1;
+    },
+
+    commitments: (parent: { stateData: unknown }) => {
+      const sd = parent.stateData as Record<string, unknown>;
+      const raw = sd?.commitments;
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return [];
+      // commitments is { [address]: amount } or { [address]: { amount, outcome } }
+      return Object.entries(raw as Record<string, unknown>).map(([address, value]) => {
+        if (typeof value === 'number') {
+          return { address, amount: value, outcome: null };
+        }
+        const v = value as Record<string, unknown>;
+        return {
+          address,
+          amount: typeof v?.amount === 'number' ? v.amount : 0,
+          outcome: (v?.outcome as string | null | undefined) ?? null,
+        };
+      });
+    },
+
+    totalCommitted: (parent: { stateData: unknown }) => {
+      const sd = parent.stateData as Record<string, unknown>;
+      return typeof sd?.totalCommitted === 'number' ? sd.totalCommitted : 0;
+    },
+
+    resolutions: (parent: { stateData: unknown }) => {
+      const sd = parent.stateData as Record<string, unknown>;
+      const raw = sd?.resolutions;
+      if (!Array.isArray(raw)) return [];
+      return (raw as Record<string, unknown>[]).map((r) => ({
+        outcome: (r?.outcome as string | undefined) ?? '',
+        resolvedBy: (r?.resolvedBy as string | undefined) ?? '',
+        resolvedAt: (r?.resolvedAt as string | null | undefined) ?? null,
+      }));
+    },
+
+    claims: (parent: { stateData: unknown }) => {
+      const sd = parent.stateData as Record<string, unknown>;
+      return (sd?.claims ?? null) as unknown;
+    },
+  },
+
   // === Subscriptions ===
   Subscription: {
     agentUpdated: {
@@ -699,6 +978,15 @@ export const resolvers = {
     },
     activityFeed: {
       subscribe: () => pubsub.asyncIterableIterator(CHANNELS.ACTIVITY_FEED),
+      resolve: (payload: any) => payload,
+    },
+    marketUpdated: {
+      subscribe: (_: unknown, { marketId }: { marketId?: string }) => {
+        const channel = marketId
+          ? `${CHANNELS.MARKET_UPDATED}:${marketId}`
+          : CHANNELS.MARKET_UPDATED;
+        return pubsub.asyncIterableIterator(channel);
+      },
       resolve: (payload: any) => payload,
     },
     statsUpdated: {
