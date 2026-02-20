@@ -10,8 +10,9 @@ import { FiberOrchestrator, TrafficConfig } from '../orchestrator.js';
 import { BridgeClient } from '../bridge-client.js';
 import { Agent } from '../types.js';
 
-// Mock wallet pool
-const mockAgents: Agent[] = Array.from({ length: 10 }, (_, i) => ({
+// Mock wallet pool - 40 agents allows 20 fiber creations (2 agents each)
+// This gives enough samples for weighted distribution tests
+const mockAgents: Agent[] = Array.from({ length: 40 }, (_, i) => ({
   privateKey: `${'a'.repeat(63)}${i}`,
   publicKey: `pub${i}`,
   address: `DAG${i}${'0'.repeat(37)}`,
@@ -194,7 +195,7 @@ describe('FiberOrchestrator', () => {
     it('should respect fiber weights over many selections', async () => {
       const weightedConfig: TrafficConfig = {
         ...defaultConfig,
-        targetActiveFibers: 100,
+        targetActiveFibers: 20,  // Match available agents (40 agents / 2 per fiber)
         fiberWeights: {
           escrow: 50,      // Should be ~50%
           ticTacToe: 50,   // Should be ~50%
@@ -202,10 +203,9 @@ describe('FiberOrchestrator', () => {
       };
       orchestrator = new FiberOrchestrator(weightedConfig, bridge as BridgeClient, () => mockAgents);
       
-      // Run many ticks to get distribution
-      for (let i = 0; i < 20; i++) {
-        await orchestrator.tick();
-      }
+      // Single tick creates up to 20 fibers (40 agents / 2 each)
+      // With 50/50 weights over 20 samples, probability of all same type is ~0.0002%
+      await orchestrator.tick();
       
       const proposeCount = (bridge.proposeContract as ReturnType<typeof vi.fn>).mock.calls.length;
       const createCount = (bridge.createFiber as ReturnType<typeof vi.fn>).mock.calls.length;
@@ -213,6 +213,8 @@ describe('FiberOrchestrator', () => {
       // Both should have been called (rough 50/50 split)
       expect(proposeCount).toBeGreaterThan(0);
       expect(createCount).toBeGreaterThan(0);
+      // Combined should equal 20 (all available agent pairs used)
+      expect(proposeCount + createCount).toBe(20);
     });
   });
 });
