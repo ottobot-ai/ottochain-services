@@ -6,7 +6,8 @@ export default defineConfig({
     exclude: [
       '**/node_modules/**',
       '**/dist/**',
-      '**/integration.test.ts',
+      // Exclude standalone integration test scripts (run with npx tsx, not vitest)
+      'test/**',
     ],
     coverage: {
       provider: 'v8',
