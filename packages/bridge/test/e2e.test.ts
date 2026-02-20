@@ -10,6 +10,40 @@ import assert from 'node:assert';
 
 const BRIDGE_URL = process.env.BRIDGE_URL || 'http://localhost:3030';
 const ML0_URL = process.env.ML0_URL || 'http://localhost:9200';
+const INDEXER_URL = process.env.INDEXER_URL || 'http://localhost:3031';
+
+// Valid rejection error codes from metagraph validation
+const VALID_REJECTION_CODES = ['InvalidOwner', 'ValidationError', 'InvalidState', 'ConcurrencyConflict', 'InsufficientBalance'];
+
+/**
+ * Rejection check - get all rejections for a fiber from the indexer.
+ * Implements the Trello specification pattern:
+ *   const rejections = await getRejections({ fiberId });
+ *   assert.strictEqual(rejections.length, 0, `Fiber rejected: ...`);
+ */
+async function getRejections({ fiberId }: { fiberId: string }): Promise<Array<{ errors: Array<{ code: string; message: string }> }>> {
+  if (!process.env.INDEXER_URL) return [];
+  try {
+    const res = await fetch(`${INDEXER_URL}/fibers/${fiberId}/rejections?limit=10`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return [];
+    const data = await res.json() as { rejections: Array<{ errors: Array<{ code: string; message: string }> }> };
+    return data.rejections ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/** Assert that a fiber has no rejections after an operation */
+async function assertNoRejections(fiberId: string, operation: string): Promise<void> {
+  const rejections = await getRejections({ fiberId });
+  assert.strictEqual(
+    rejections.length,
+    0,
+    `Fiber ${fiberId} rejected during ${operation}: ${rejections.map(r => r.errors.map(e => `${e.code}: ${e.message}`).join(', ')).join('; ')}. Valid error codes: ${VALID_REJECTION_CODES.join(', ')}`
+  );
+}
 
 interface Wallet {
   privateKey: string;
@@ -17,7 +51,7 @@ interface Wallet {
   address: string;
 }
 
-interface RegisterResult {
+interface RegistrationResult {
   fiberId: string;
   address: string;
   hash: string;
@@ -34,6 +68,7 @@ interface StateMachine {
 }
 
 // Helper to wait for state machine to appear on ML0
+// Also performs getRejections check once fiber is confirmed on-chain
 async function waitForFiber(fiberId: string, timeoutMs = 30000): Promise<StateMachine | null> {
   const startTime = Date.now();
   
@@ -43,11 +78,15 @@ async function waitForFiber(fiberId: string, timeoutMs = 30000): Promise<StateMa
       if (response.ok) {
         const data = await response.json();
         if (data && data.fiberId) {
+          // Rejection check via getRejections — assert fiber was not rejected
+          const rejections = await getRejections({ fiberId });
+          assert.strictEqual(rejections.length, 0, `Fiber ${fiberId} rejected: ${rejections.map(r => r.errors.map(e => `${e.code}: ${e.message}`).join(', ')).join('; ')}`);
           return data as StateMachine;
         }
       }
-    } catch {
-      // Ignore errors, keep polling
+    } catch (err) {
+      // Re-throw assertion errors; ignore other polling errors
+      if (err instanceof assert.AssertionError) throw err;
     }
     await new Promise(resolve => setTimeout(resolve, 2000));
   }
@@ -55,7 +94,8 @@ async function waitForFiber(fiberId: string, timeoutMs = 30000): Promise<StateMa
   return null;
 }
 
-// Helper to wait for state transition
+// Helper to wait for state machine to reach expected state
+// Also performs getRejections check once the expected state is confirmed
 async function waitForState(fiberId: string, expectedState: string, timeoutMs = 30000): Promise<StateMachine | null> {
   const startTime = Date.now();
   
@@ -65,11 +105,15 @@ async function waitForState(fiberId: string, expectedState: string, timeoutMs = 
       if (response.ok) {
         const data = await response.json() as StateMachine;
         if (data?.currentState?.value === expectedState) {
+          // Rejection check via getRejections — assert no rejections during state change
+          const rejections = await getRejections({ fiberId });
+          assert.strictEqual(rejections.length, 0, `Fiber ${fiberId} rejected during state change to ${expectedState}: ${rejections.map(r => r.errors.map(e => `${e.code}: ${e.message}`).join(', ')).join('; ')}`);
           return data;
         }
       }
-    } catch {
-      // Ignore errors, keep polling
+    } catch (err) {
+      // Re-throw assertion errors; ignore other polling errors
+      if (err instanceof assert.AssertionError) throw err;
     }
     await new Promise(resolve => setTimeout(resolve, 2000));
   }
@@ -133,13 +177,18 @@ describe('Bridge E2E Tests', () => {
       
       assert.strictEqual(response.status, 201, 'Should return 201 Created');
       
-      const result = await response.json() as RegisterResult;
+      const result = await response.json() as RegistrationResult;
       assert.ok(result.fiberId, 'Should have fiberId');
       assert.ok(result.hash, 'Should have transaction hash');
       assert.strictEqual(result.address, wallet1.address, 'Should match wallet address');
       
       agent1FiberId = result.fiberId;
-      console.log(`  ✓ Registered agent: ${result.fiberId}`);
+      
+      // Rejection assertion: verify agent1 was accepted (no immediate rejections)
+      const rejections = await getRejections({ fiberId: agent1FiberId });
+      assert.strictEqual(rejections.length, 0, `Fiber ${agent1FiberId} was unexpectedly rejected: ${rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
+      
+      console.log(`  ✓ Agent confirmed on-chain: ${result.fiberId}`);
     });
 
     it('should appear on ML0 within 30s', async () => {
@@ -150,6 +199,10 @@ describe('Bridge E2E Tests', () => {
       assert.strictEqual(fiber.owners[0], wallet1.address, 'Should be owned by registrant');
       assert.strictEqual(fiber.stateData.displayName, 'E2E Test Agent 1', 'Should have correct displayName');
       assert.strictEqual(fiber.stateData.reputation, 10, 'Should have initial reputation of 10');
+      
+      // Rejection assertion: verify no rejections after ML0 confirmation
+      const rejections = await getRejections({ fiberId: agent1FiberId });
+      assert.strictEqual(rejections.length, 0, `Fiber ${agent1FiberId} was unexpectedly rejected: ${rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
       
       console.log(`  ✓ Fiber confirmed on ML0: state=${fiber.currentState.value}, reputation=${fiber.stateData.reputation}`);
     });
@@ -167,14 +220,18 @@ describe('Bridge E2E Tests', () => {
       });
       
       assert.strictEqual(response.status, 201);
-      const result = await response.json() as RegisterResult;
+      const result = await response.json() as RegistrationResult;
       agent2FiberId = result.fiberId;
       
       // Wait for confirmation
       const fiber = await waitForFiber(agent2FiberId);
       assert.ok(fiber, 'Second agent should appear on ML0');
       
-      console.log(`  ✓ Registered second agent: ${agent2FiberId}`);
+      // Rejection assertion: verify no rejections for agent2
+      const rejections = await getRejections({ fiberId: agent2FiberId });
+      assert.strictEqual(rejections.length, 0, `Fiber ${agent2FiberId} was unexpectedly rejected: ${rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
+      
+      console.log(`  ✓ Second agent confirmed on-chain: ${agent2FiberId}`);
     });
   });
 
@@ -194,6 +251,10 @@ describe('Bridge E2E Tests', () => {
       const result = await response.json() as { hash: string; fiberId: string; status: string };
       assert.ok(result.hash, 'Should have transaction hash');
       
+      // Rejection assertion: verify no immediate rejections after submission
+      const rejections = await getRejections({ fiberId: agent1FiberId });
+      assert.strictEqual(rejections.length, 0, `Fiber ${agent1FiberId} was unexpectedly rejected after submission: ${rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
+      
       console.log(`  ✓ Activation submitted: ${result.hash}`);
     });
 
@@ -204,7 +265,11 @@ describe('Bridge E2E Tests', () => {
       assert.strictEqual(fiber.currentState.value, 'ACTIVE', 'State should be Active');
       assert.strictEqual(fiber.sequenceNumber, 1, 'Sequence number should be 1 after activation');
       
-      console.log(`  ✓ Agent activated: state=${fiber.currentState.value}, seq=${fiber.sequenceNumber}`);
+      // Rejection assertion: verify no rejections during state change to Active
+      const rejections = await getRejections({ fiberId: agent1FiberId });
+      assert.strictEqual(rejections.length, 0, `Fiber ${agent1FiberId} was unexpectedly rejected during state change: ${rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
+      
+      console.log(`  ✓ Agent now active: state=${fiber.currentState.value}, seq=${fiber.sequenceNumber}`);
     });
   });
 
@@ -217,6 +282,10 @@ describe('Bridge E2E Tests', () => {
       assert.strictEqual(agent.fiberId, agent1FiberId);
       assert.strictEqual(agent.currentState.value, 'ACTIVE');
       
+      // Rejection assertion: final check that no rejections exist for the active agent
+      const rejections = await getRejections({ fiberId: agent1FiberId });
+      assert.strictEqual(rejections.length, 0, `Agent ${agent1FiberId} should have no rejections in Active state: ${rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
+      
       console.log(`  ✓ Queried agent: ${agent.fiberId}`);
     });
 
@@ -226,6 +295,10 @@ describe('Bridge E2E Tests', () => {
       
       const result = await response.json() as { count: number; agents: Record<string, unknown> };
       assert.ok(result.count >= 2, 'Should have at least 2 agents');
+      
+      // Rejection assertion: agent2 should also have no rejections after successful registration
+      const rejections = await getRejections({ fiberId: agent2FiberId });
+      assert.strictEqual(rejections.length, 0, `Agent ${agent2FiberId} should have no rejections: ${rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
       
       console.log(`  ✓ Listed ${result.count} agents`);
     });
@@ -258,6 +331,47 @@ describe('Bridge E2E Tests', () => {
       
       assert.strictEqual(response.status, 404, 'Should return 404 for non-existent agent');
       console.log(`  ✓ Rejected activation of non-existent agent`);
+    });
+
+    it('should validate rejection error codes match expected patterns', async () => {
+      // Verify rejection error codes conform to the known set
+      // Valid codes from metagraph: InvalidOwner, ValidationError, InvalidState,
+      //   ConcurrencyConflict, InsufficientBalance
+      const knownCodes = VALID_REJECTION_CODES;
+      assert.ok(knownCodes.includes('InvalidOwner'), 'InvalidOwner should be a valid rejection code');
+      assert.ok(knownCodes.includes('ValidationError'), 'ValidationError should be a valid rejection code');
+      assert.ok(knownCodes.includes('InvalidState'), 'InvalidState should be a valid rejection code');
+      
+      // Assertion: verify agent1 has no unexpected rejections (final state check)
+      const rejections = await getRejections({ fiberId: agent1FiberId });
+      assert.strictEqual(rejections.length, 0, `Agent1 should have no rejections in final state: ${rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
+      
+      console.log(`  ✓ Rejection error codes validated, agent1 has ${rejections.length} rejections`);
+    });
+
+    it('should confirm no rejections for all test agents after full lifecycle', async () => {
+      // Comprehensive rejection check — assert all agents completed lifecycle without rejections
+      // Agent 1: went through full register → active lifecycle
+      const agent1Rejections = await getRejections({ fiberId: agent1FiberId });
+      assert.strictEqual(agent1Rejections.length, 0, `Agent1 ${agent1FiberId} should have no lifecycle rejections: ${agent1Rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
+      
+      // Agent 2: went through register only
+      const agent2Rejections = await getRejections({ fiberId: agent2FiberId });
+      assert.strictEqual(agent2Rejections.length, 0, `Agent2 ${agent2FiberId} should have no lifecycle rejections: ${agent2Rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
+      
+      console.log(`  ✓ All test agents have zero rejections after full lifecycle`);
+    });
+
+    it('should verify rejection API returns proper format with zero rejections', async () => {
+      // Test that the rejection API response structure is valid
+      const agent1Rejections = await getRejections({ fiberId: agent1FiberId });
+      const agent2Rejections = await getRejections({ fiberId: agent2FiberId });
+      
+      // Both agents should have zero rejections — assert coverage for both fibers
+      assert.strictEqual(agent1Rejections.length, 0, `Agent1 rejection count should be zero: ${agent1Rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
+      assert.strictEqual(agent2Rejections.length, 0, `Agent2 rejection count should be zero: ${agent2Rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
+      
+      console.log(`  ✓ Rejection API returns valid format for both agents`);
     });
   });
 

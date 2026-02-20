@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const BRIDGE_TEST_DIR = __dirname;
-const TRAFFIC_GEN_TEST_DIR = join(__dirname, '../../../traffic-generator/test');
+const TRAFFIC_GEN_TEST_DIR = join(__dirname, '../../traffic-generator/test');
 
 /**
  * Read and analyze test file content to check for proper rejection assertions

@@ -38,6 +38,7 @@ function parseIntegrationTestStructure() {
     const match = content.match(section.pattern);
     return {
       name: section.name,
+      pattern: section.pattern,  // Preserve pattern for section boundary detection
       found: !!match,
       hasRejectionAssertion: false,
       sectionContent: ''

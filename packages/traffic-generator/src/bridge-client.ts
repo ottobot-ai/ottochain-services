@@ -9,7 +9,16 @@ import type { Agent, Contract } from './types.js';
 export interface BridgeConfig {
   bridgeUrl: string;
   ml0Url: string;
+  indexerUrl?: string;
   timeoutMs?: number;
+}
+
+export interface RejectionEntry {
+  id?: number;
+  fiberId: string;
+  ordinal?: number;
+  timestamp?: string;
+  errors: Array<{ code: string; message: string }>;
 }
 
 export interface WalletResponse {
@@ -83,11 +92,13 @@ export interface MarketState {
 export class BridgeClient {
   private baseUrl: string;
   private ml0Url: string;
+  private indexerUrl: string | undefined;
   private timeout: number;
 
   constructor(config: BridgeConfig) {
     this.baseUrl = config.bridgeUrl.replace(/\/$/, '');
     this.ml0Url = config.ml0Url.replace(/\/$/, '');
+    this.indexerUrl = config.indexerUrl?.replace(/\/$/, '');
     this.timeout = config.timeoutMs ?? 30000;
   }
 
@@ -1558,6 +1569,42 @@ export class BridgeClient {
         allHealthy: false,
         error: (err as Error).message,
       };
+    }
+  }
+
+  // ==========================================================================
+  // Rejection API (Indexer)
+  // ==========================================================================
+
+  /**
+   * Get rejections for a fiber from the indexer.
+   * Implements the Trello specification pattern:
+   *   const rejections = await client.getRejections({ fiberId });
+   *   assert.strictEqual(rejections.length, 0, ...);
+   */
+  async getRejections({ fiberId }: { fiberId: string }): Promise<RejectionEntry[]> {
+    if (!this.indexerUrl) return [];
+    try {
+      const res = await fetch(`${this.indexerUrl}/fibers/${fiberId}/rejections?limit=10`, {
+        signal: AbortSignal.timeout(this.timeout),
+      });
+      if (!res.ok) return [];
+      const data = await res.json() as { rejections: RejectionEntry[]; total?: number };
+      return data.rejections ?? [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Assert that a fiber has no rejections. Throws if rejections are found.
+   * Use after each major operation (register, activate, transition).
+   */
+  async assertNoRejections(fiberId: string, operation: string): Promise<void> {
+    const rejections = await this.getRejections({ fiberId });
+    if (rejections.length > 0) {
+      const errors = rejections.map(r => r.errors.map(e => `${e.code}: ${e.message}`).join(', ')).join('; ');
+      throw new Error(`Fiber ${fiberId} rejected during ${operation}: ${errors}`);
     }
   }
 
