@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.5.0](https://github.com/ottobot-ai/ottochain-services/compare/v0.4.1...v0.5.0) (2026-02-21)
+
+
+### Features
+
+* add rejection API assertions to integration tests ([#131](https://github.com/ottobot-ai/ottochain-services/issues/131)) ([4dff0f0](https://github.com/ottobot-ai/ottochain-services/commit/4dff0f07a69e6de9c63a7126b7bf8e163e5b4f77))
+* **gateway:** add Market types to GraphQL schema ([#120](https://github.com/ottobot-ai/ottochain-services/issues/120)) ([4fff1b0](https://github.com/ottobot-ai/ottochain-services/commit/4fff1b0789066dcd115121ef2de668516794c97b))
+* **traffic-gen:** add TokenEscrow fiber type ([#115](https://github.com/ottobot-ai/ottochain-services/issues/115)) ([4be8932](https://github.com/ottobot-ai/ottochain-services/commit/4be8932cd1b810bc55b995b83f5d22cd72fb34a2))
+
+
+### Bug Fixes
+
+* **traffic-gen:** exclude integration tests from vitest ([#128](https://github.com/ottobot-ai/ottochain-services/issues/128)) ([6ca0b0c](https://github.com/ottobot-ai/ottochain-services/commit/6ca0b0cda7e435f873a205473df09a7fd0e68b6b))
+* use npm @ottochain/sdk instead of GitHub refs ([#130](https://github.com/ottobot-ai/ottochain-services/issues/130)) ([32b1390](https://github.com/ottobot-ai/ottochain-services/commit/32b1390bcb050bd95e6ef6663d448232b5e8fefe))
+
 ## [0.4.1](https://github.com/ottobot-ai/ottochain-services/compare/v0.4.0...v0.4.1) (2026-02-19)
 
 
