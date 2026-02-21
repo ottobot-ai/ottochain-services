@@ -4,6 +4,27 @@
 #
 # Usage: wait-for-cluster.sh <layer> <ports> [join_target_port]
 # Example: wait-for-cluster.sh dl1 "9400 9410 9420" 9400
+#
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ IMPORTANT: Docker Auto-Join Timing                                       ║
+# ╠══════════════════════════════════════════════════════════════════════════╣
+# ║ Tessellation containers are configured with CL_DOCKER_JOIN=true which    ║
+# ║ makes the Docker entrypoint handle cluster joining automatically:        ║
+# ║                                                                          ║
+# ║   - CL_DOCKER_JOIN_INITIAL_DELAY: 30s (wait before first join attempt)   ║
+# ║   - CL_DOCKER_JOIN_RETRIES: 10 (max retry attempts)                      ║
+# ║   - CL_DOCKER_JOIN_DELAY: 10s (delay between retries)                    ║
+# ║                                                                          ║
+# ║ Total worst-case time: 30 + (10 × 10) = 130 seconds                      ║
+# ║                                                                          ║
+# ║ During auto-join, nodes stay in "SessionStarted" state. This script      ║
+# ║ detects this and waits for Ready directly instead of timing out.         ║
+# ║                                                                          ║
+# ║ If CI fails with "still in SessionStarted" errors:                       ║
+# ║   1. Check if MAX_READY_WAIT (currently 180s) is sufficient              ║
+# ║   2. Check tessellation docker-compose.metagraph.yaml for join settings  ║
+# ║   3. DL1 nodes may need longer if ML0 is slow to produce snapshots       ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
 
 set -euo pipefail
 
@@ -15,7 +36,7 @@ MAX_RESPONSIVE_WAIT=120
 MAX_JOINABLE_WAIT=60
 MAX_JOIN_ATTEMPTS=5
 JOIN_RETRY_DELAY=5
-MAX_READY_WAIT=90
+MAX_READY_WAIT=180  # Increased: auto-join can take 30s delay + 10 retries * 10s = 130s
 
 log() { echo "[$(date '+%H:%M:%S')] $*"; }
 error() { echo "[$(date '+%H:%M:%S')] ERROR: $*" >&2; }
@@ -35,19 +56,36 @@ wait_responsive() {
     return 1
 }
 
-wait_joinable() {
+wait_joinable_or_ready() {
     local port=$1
     local name=$2
-    log "Waiting for $name to leave SessionStarted state..."
+    log "Waiting for $name to be joinable or reach Ready..."
     for i in $(seq 1 $MAX_JOINABLE_WAIT); do
         local state=$(curl -sf "http://localhost:$port/node/info" | jq -r '.state // "unknown"' 2>/dev/null || echo "error")
-        if [ "$state" != "SessionStarted" ] && [ "$state" != "error" ] && [ "$state" != "unknown" ]; then
-            log "$name in state '$state', ready to join"
-            return 0
-        fi
+        case "$state" in
+            Ready)
+                log "$name already Ready"
+                echo "ready"
+                return 0
+                ;;
+            ReadyToJoin|Initial)
+                log "$name in state '$state', can join manually"
+                echo "joinable"
+                return 0
+                ;;
+            SessionStarted)
+                # Auto-join in progress (Docker entrypoint handling it)
+                # Just wait briefly then skip to wait_ready
+                if [ $i -ge 10 ]; then
+                    log "$name in SessionStarted (auto-join in progress), will wait for Ready directly"
+                    echo "auto-joining"
+                    return 0
+                fi
+                ;;
+        esac
         sleep 2
     done
-    error "$name still in SessionStarted after ${MAX_JOINABLE_WAIT}s"
+    error "$name stuck in unknown state after ${MAX_JOINABLE_WAIT}s"
     return 1
 }
 
@@ -130,19 +168,33 @@ for port in $PORTS; do
     # Step 1: Wait for node to be responsive
     wait_responsive "$port" "$node_name" || exit 1
     
-    # Step 2: Wait for node to be joinable
-    wait_joinable "$port" "$node_name" || exit 1
+    # Step 2: Check node state - it might already be joining via Docker entrypoint
+    join_state=$(wait_joinable_or_ready "$port" "$node_name") || exit 1
     
-    # Step 3: Join cluster (skip first node - it's genesis/initial)
-    if [ -n "$FIRST_PORT" ] && [ -n "$JOIN_TARGET_PORT" ]; then
-        join_cluster "$cli_port" "$JOIN_TARGET_PORT" "$node_name" || exit 1
-    else
-        FIRST_PORT="$port"
-        log "$node_name is initial node, skipping join"
-    fi
+    # Step 3: Handle based on state
+    case "$join_state" in
+        ready)
+            # Already ready, nothing to do
+            ;;
+        joinable)
+            # Node is waiting for manual join
+            if [ -n "$FIRST_PORT" ] && [ -n "$JOIN_TARGET_PORT" ]; then
+                join_cluster "$cli_port" "$JOIN_TARGET_PORT" "$node_name" || exit 1
+            else
+                FIRST_PORT="$port"
+                log "$node_name is initial node, skipping join"
+            fi
+            # Wait for Ready state
+            wait_ready "$port" "$node_name" || exit 1
+            ;;
+        auto-joining)
+            # Docker entrypoint is handling join, just wait for Ready
+            log "$node_name: Docker auto-join in progress, waiting for Ready..."
+            wait_ready "$port" "$node_name" || exit 1
+            ;;
+    esac
     
-    # Step 4: Wait for Ready state
-    wait_ready "$port" "$node_name" || exit 1
+    [ -z "$FIRST_PORT" ] && FIRST_PORT="$port"
 done
 
 log "✓ All $LAYER nodes ready"
