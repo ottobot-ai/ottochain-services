@@ -17,24 +17,40 @@ import {
 } from '../metagraph.js';
 import { getContractDefinition } from '@ottochain/sdk/apps/contracts';
 
-// Strip fields that metagraph doesn't support yet
-// TODO: Remove this workaround once SDK and metagraph are aligned
-function stripUnsupportedFields(def: unknown): StateMachineDefinition {
+// Move documentation-only fields into metadata instead of stripping them
+// The metagraph schema doesn't have crossReferences/emits at top level,
+// but metadata accepts arbitrary JSON, so we preserve them there.
+function moveDocsToMetadata(def: unknown): StateMachineDefinition {
   const raw = def as Record<string, unknown>;
-  const { crossReferences, ...rest } = raw;
+  const { crossReferences, metadata: existingMetadata, ...rest } = raw;
   
-  // Also strip 'emits' from transitions - not yet supported by metagraph
+  // Collect emits from transitions to preserve in metadata
+  const transitionEmits: Record<string, unknown> = {};
   if (Array.isArray(rest.transitions)) {
-    rest.transitions = rest.transitions.map((t: Record<string, unknown>) => {
+    rest.transitions = rest.transitions.map((t: Record<string, unknown>, idx: number) => {
       const { emits, ...transition } = t;
+      if (emits) {
+        const key = `${transition.from}_${transition.eventName ?? 'event'}_${transition.to}`;
+        transitionEmits[key] = emits;
+      }
       return transition;
     });
   }
   
-  return rest as unknown as StateMachineDefinition;
+  // Build metadata with preserved documentation fields
+  const metadata = {
+    ...(existingMetadata as Record<string, unknown> ?? {}),
+    ...(crossReferences ? { crossReferences } : {}),
+    ...(Object.keys(transitionEmits).length > 0 ? { transitionEmits } : {}),
+  };
+  
+  return {
+    ...rest,
+    metadata,
+  } as unknown as StateMachineDefinition;
 }
 
-const CONTRACT_DEFINITION = stripUnsupportedFields(getContractDefinition());
+const CONTRACT_DEFINITION = moveDocsToMetadata(getContractDefinition());
 
 export const contractRoutes: RouterType = Router();
 
