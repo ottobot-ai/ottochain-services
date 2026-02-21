@@ -4,6 +4,27 @@
 #
 # Usage: wait-for-cluster.sh <layer> <ports> [join_target_port]
 # Example: wait-for-cluster.sh dl1 "9400 9410 9420" 9400
+#
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ IMPORTANT: Docker Auto-Join Timing                                       ║
+# ╠══════════════════════════════════════════════════════════════════════════╣
+# ║ Tessellation containers are configured with CL_DOCKER_JOIN=true which    ║
+# ║ makes the Docker entrypoint handle cluster joining automatically:        ║
+# ║                                                                          ║
+# ║   - CL_DOCKER_JOIN_INITIAL_DELAY: 30s (wait before first join attempt)   ║
+# ║   - CL_DOCKER_JOIN_RETRIES: 10 (max retry attempts)                      ║
+# ║   - CL_DOCKER_JOIN_DELAY: 10s (delay between retries)                    ║
+# ║                                                                          ║
+# ║ Total worst-case time: 30 + (10 × 10) = 130 seconds                      ║
+# ║                                                                          ║
+# ║ During auto-join, nodes stay in "SessionStarted" state. This script      ║
+# ║ detects this and waits for Ready directly instead of timing out.         ║
+# ║                                                                          ║
+# ║ If CI fails with "still in SessionStarted" errors:                       ║
+# ║   1. Check if MAX_READY_WAIT (currently 180s) is sufficient              ║
+# ║   2. Check tessellation docker-compose.metagraph.yaml for join settings  ║
+# ║   3. DL1 nodes may need longer if ML0 is slow to produce snapshots       ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
 
 set -euo pipefail
 
