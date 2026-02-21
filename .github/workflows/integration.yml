@@ -413,6 +413,15 @@ jobs:
           HOST_IP: indexer
         run: npx tsx scripts/test-webhook.ts
 
+      - name: Run rejection notification E2E test
+        env:
+          BRIDGE_URL: http://localhost:3030
+          ML0_URL: http://localhost:9200
+          INDEXER_URL: http://localhost:3031
+          DL1_URL: http://localhost:9400
+          POLL_TIMEOUT: '90'
+        run: npx tsx scripts/testing/test-rejection-notification-e2e.ts
+
       - name: Run traffic generator integration test
         env:
           BRIDGE_URL: http://localhost:3030
