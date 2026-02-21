@@ -439,6 +439,35 @@ jobs:
           echo "❌ All $MAX_RETRIES attempts failed"
           exit 1
 
+      - name: Run contract fiber integration test
+        env:
+          BRIDGE_URL: http://localhost:3030
+          ML0_URL: http://localhost:9200
+          INDEXER_URL: http://localhost:3031
+          FIBER_WAIT_TIMEOUT: '90'
+          STATE_WAIT_TIMEOUT: '90'
+          DL1_SYNC_WAIT: '15'
+          TRANSITION_WAIT: '10'
+          MAX_RETRIES: '3'
+        run: |
+          # Tests Contract fiber three paths:
+          #   Suite A: propose → accept → complete → finalize
+          #   Suite B: propose → reject
+          #   Suite C: propose → accept → dispute
+          for attempt in $(seq 1 $MAX_RETRIES); do
+            echo "=== Attempt $attempt of $MAX_RETRIES ==="
+            if npx tsx packages/traffic-generator/test/contract-integration.test.ts; then
+              echo "✓ Contract integration test passed on attempt $attempt"
+              exit 0
+            fi
+            if [ $attempt -lt $MAX_RETRIES ]; then
+              echo "⚠️ Test failed, waiting 15s before retry..."
+              sleep 15
+            fi
+          done
+          echo "❌ All $MAX_RETRIES attempts failed"
+          exit 1
+
       - name: Collect logs on failure
         if: failure()
         run: |
