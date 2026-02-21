@@ -116,6 +116,36 @@ TARGET_TPS=15 \
 pnpm dev -- --high-throughput
 ```
 
+## Integration Tests
+
+Standalone end-to-end tests that exercise fiber lifecycles against a real cluster.
+Each test creates its own wallets and fibers, uses the Indexer as source of truth,
+and asserts no critical rejections after every transition.
+
+| Test file | Fiber type | States covered |
+|-----------|-----------|----------------|
+| `test/integration.test.ts` | AgentIdentity | REGISTERED → ACTIVE |
+| `test/contract-integration.test.ts` | Contract | PROPOSED → ACTIVE → COMPLETED / REJECTED |
+| `test/voting-integration.test.ts` | Voting | PROPOSED → VOTING → PASSED |
+| `test/token-escrow.integration.test.ts` | TokenEscrow | PROPOSED → FUNDED → ACTIVE → COMPLETED / CANCELLED |
+
+```bash
+# Run a specific integration test (requires a running cluster)
+BRIDGE_URL=http://localhost:3030 INDEXER_URL=http://localhost:3031 \
+  npx tsx test/token-escrow.integration.test.ts
+
+# Environment variables
+FIBER_WAIT_TIMEOUT=30   # Max seconds waiting for indexer to confirm each state
+DL1_SYNC_WAIT=10        # Seconds to wait after fiber creation for DL1 sync
+TRANSITION_WAIT=5       # Seconds to wait between transitions
+```
+
+The TokenEscrow test covers four suites:
+- **Suite A** – Happy path: PROPOSED → FUNDED → ACTIVE → (mint/transfer/burn) → COMPLETED
+- **Suite B** – Cancel from PROPOSED
+- **Suite C** – Cancel from FUNDED
+- **Suite D** – Cancel from ACTIVE
+
 ## Workflow Types
 
 The high-throughput mode supports 7 workflow types:
