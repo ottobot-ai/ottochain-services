@@ -17,7 +17,24 @@ import {
 } from '../metagraph.js';
 import { getContractDefinition } from '@ottochain/sdk/apps/contracts';
 
-const CONTRACT_DEFINITION = getContractDefinition() as StateMachineDefinition;
+// Strip fields that metagraph doesn't support yet
+// TODO: Remove this workaround once SDK and metagraph are aligned
+function stripUnsupportedFields(def: unknown): StateMachineDefinition {
+  const raw = def as Record<string, unknown>;
+  const { crossReferences, ...rest } = raw;
+  
+  // Also strip 'emits' from transitions - not yet supported by metagraph
+  if (Array.isArray(rest.transitions)) {
+    rest.transitions = rest.transitions.map((t: Record<string, unknown>) => {
+      const { emits, ...transition } = t;
+      return transition;
+    });
+  }
+  
+  return rest as unknown as StateMachineDefinition;
+}
+
+const CONTRACT_DEFINITION = stripUnsupportedFields(getContractDefinition());
 
 export const contractRoutes: RouterType = Router();
 
