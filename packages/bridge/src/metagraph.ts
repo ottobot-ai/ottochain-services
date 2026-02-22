@@ -169,12 +169,43 @@ export async function submitTransaction(
   console.log(`[metagraph] Message type: ${msgType}`);
   console.log(`[metagraph] Payload (truncated): ${JSON.stringify(payload).substring(0, 300)}...`);
 
-  const client = new HttpClient(config.METAGRAPH_DL1_URL);
+  // Multi-node submission: send to ALL DL1 nodes to prevent single-node fork.
+  // Falls back to single METAGRAPH_DL1_URL if DL1_URLS not configured.
+  const dl1Urls = config.DL1_URLS
+    ? config.DL1_URLS.split(',').map(u => u.trim()).filter(Boolean)
+    : [config.METAGRAPH_DL1_URL];
+
   const seqInfo = extractSequenceInfo(message);
 
-  try {
-    const result = await client.post<{ hash?: string; ordinal?: number }>('/data', payload);
-    console.log(`[metagraph] Success: ${JSON.stringify(result)}`);
+  console.log(`[metagraph] Submitting to ${dl1Urls.length} DL1 node(s)`);
+
+  const results = await Promise.allSettled(
+    dl1Urls.map(async (url) => {
+      const client = new HttpClient(url);
+      const result = await client.post<{ hash?: string; ordinal?: number }>('/data', payload);
+      console.log(`[metagraph] ✓ ${url}: ${JSON.stringify(result)}`);
+      return result;
+    })
+  );
+
+  // Collect successes and failures
+  const successes = results
+    .filter((r): r is PromiseFulfilledResult<{ hash?: string; ordinal?: number }> =>
+      r.status === 'fulfilled')
+    .map(r => r.value);
+
+  const failures = results
+    .map((r, i) => ({ url: dl1Urls[i], result: r }))
+    .filter(r => r.result.status === 'rejected')
+    .map(r => {
+      const err = (r.result as PromiseRejectedResult).reason;
+      console.log(`[metagraph] ✗ ${r.url}: ${err?.message ?? err}`);
+      return r;
+    });
+
+  if (successes.length > 0) {
+    const first = successes[0];
+    console.log(`[metagraph] Success (${successes.length}/${dl1Urls.length} nodes)`);
 
     // Advance the optimistic sequence cache so the next submission for this
     // fiber immediately sees the incremented value (Issue #109 fix).
@@ -182,18 +213,21 @@ export async function submitTransaction(
       advanceSequenceCache(seqInfo.fiberId, seqInfo.targetSeq);
     }
 
-    return { hash: result.hash ?? 'pending', ordinal: result.ordinal };
-  } catch (err) {
-    const error = err as Error & { response?: string };
-    if (error.response) {
-      console.error(`[metagraph] Error response: ${error.response}`);
-    }
-    // On error, reset the cache so the next attempt reads fresh from DL1.
-    if (seqInfo) {
-      resetFiberSequence(seqInfo.fiberId);
-    }
-    throw new Error(`Metagraph submission failed: ${error.message}`);
+    return { hash: first.hash ?? 'pending', ordinal: first.ordinal };
   }
+
+  // All nodes failed
+  const errorMessages = failures.map(f => {
+    const err = (f.result as PromiseRejectedResult).reason;
+    return `${f.url}: ${err?.message ?? err}`;
+  });
+
+  // On error, reset the cache so the next attempt reads fresh from DL1.
+  if (seqInfo) {
+    resetFiberSequence(seqInfo.fiberId);
+  }
+
+  throw new Error(`Metagraph submission failed on all ${dl1Urls.length} nodes: ${errorMessages.join('; ')}`);
 }
 
 /**
