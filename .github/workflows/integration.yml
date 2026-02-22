@@ -87,6 +87,7 @@ jobs:
       # ── Download pre-built JARs instead of building from source ────────
       - name: Download pre-built JARs
         env:
+          GH_TOKEN: ${{ github.token }}
           TESS_VER: ${{ steps.versions.outputs.tessellation_version }}
           OTTO_VER: ${{ steps.versions.outputs.ottochain_version }}
         run: |
