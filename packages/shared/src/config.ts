@@ -31,6 +31,11 @@ const ConfigSchema = z.object({
   // Metagraph endpoints
   METAGRAPH_ML0_URL: z.string().url().default('http://localhost:9200'),
   METAGRAPH_DL1_URL: z.string().url().default('http://localhost:9400'),
+  // Comma-separated list of DL1 node URLs for multi-node submission.
+  // When set, submitTransaction fans out to ALL nodes in parallel (first success wins).
+  // Example: "http://n1:9400,http://n2:9400,http://n3:9400"
+  // Falls back to METAGRAPH_DL1_URL when not set.
+  METAGRAPH_DL1_URLS: z.string().optional(),
   
   // Service ports
   GATEWAY_PORT: z.coerce.number().default(4000),
