@@ -11,15 +11,8 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-// ── Inline helpers (mirror getDl1Urls logic for isolation) ────────────────────
-
-function parseDl1Urls(dl1UrlsEnv: string | undefined, dl1UrlFallback: string): string[] {
-  if (dl1UrlsEnv) {
-    const urls = dl1UrlsEnv.split(',').map((u) => u.trim()).filter(Boolean);
-    if (urls.length > 0) return [...new Set(urls)];
-  }
-  return [dl1UrlFallback];
-}
+// Import the real parseDl1Urls from metagraph.ts
+import { parseDl1Urls } from '../src/metagraph.ts';
 
 // ─────────────────────────────────────────────────────────────────────────────
 

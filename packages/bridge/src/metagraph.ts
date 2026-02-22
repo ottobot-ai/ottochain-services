@@ -123,20 +123,24 @@ interface TransactionResult {
 }
 
 /**
- * Parse the list of DL1 URLs from config.
+ * Parse comma-separated DL1 URLs into an array.
+ * Exported for testing. Application code should use getDl1Urls().
+ */
+export function parseDl1Urls(dl1UrlsEnv: string | undefined, fallback: string): string[] {
+  if (dl1UrlsEnv) {
+    const urls = dl1UrlsEnv.split(',').map((u) => u.trim()).filter(Boolean);
+    if (urls.length > 0) return [...new Set(urls)];
+  }
+  return [fallback];
+}
+
+/**
+ * Get the list of DL1 URLs from config.
  * Uses METAGRAPH_DL1_URLS (comma-separated) when set; falls back to METAGRAPH_DL1_URL.
- * Deduplicates and trims whitespace.
  */
 export function getDl1Urls(): string[] {
   const config = getConfig();
-  if (config.METAGRAPH_DL1_URLS) {
-    const urls = config.METAGRAPH_DL1_URLS
-      .split(',')
-      .map((u) => u.trim())
-      .filter(Boolean);
-    if (urls.length > 0) return [...new Set(urls)];
-  }
-  return [config.METAGRAPH_DL1_URL];
+  return parseDl1Urls(config.METAGRAPH_DL1_URLS, config.METAGRAPH_DL1_URL);
 }
 
 // Internal: extract fiberId and targetSequenceNumber from any OttoChain message.
@@ -319,23 +323,29 @@ export async function waitForFiber(
   const dl1Urls = getDl1Urls();
   console.log(`[metagraph] Waiting for fiber ${fiberId} to sync to any of ${dl1Urls.length} DL1 node(s) (max ${maxAttempts}s)...`);
 
-  const checkOne = async (baseUrl: string): Promise<boolean> => {
-    try {
-      const client = new HttpClient(`${baseUrl}/data-application/v1/onchain`);
-      const onChain = await client.get<{
-        fiberCommits?: Record<string, { sequenceNumber?: number }>;
-      }>('');
-      return !!onChain?.fiberCommits?.[fiberId];
-    } catch {
-      return false;
+  /**
+   * Check a single node for fiber presence.
+   * Throws if not found (so Promise.any can filter).
+   */
+  const checkOne = async (baseUrl: string): Promise<string> => {
+    const client = new HttpClient(`${baseUrl}/data-application/v1/onchain`);
+    const onChain = await client.get<{
+      fiberCommits?: Record<string, { sequenceNumber?: number }>;
+    }>('');
+    if (!onChain?.fiberCommits?.[fiberId]) {
+      throw new Error(`Fiber not found on ${baseUrl}`);
     }
+    return baseUrl; // Return which node found it
   };
 
   for (let i = 0; i < maxAttempts; i++) {
-    const results = await Promise.all(dl1Urls.map(checkOne));
-    if (results.some(Boolean)) {
-      console.log(`[metagraph] Fiber ${fiberId} found in DL1 onchain state (attempt ${i + 1})`);
+    try {
+      // Promise.any returns on FIRST success — no waiting for slow nodes
+      const foundOn = await Promise.any(dl1Urls.map(checkOne));
+      console.log(`[metagraph] Fiber ${fiberId} found on ${foundOn} (attempt ${i + 1})`);
       return true;
+    } catch {
+      // All nodes returned not-found or errored — continue polling
     }
     await new Promise(resolve => setTimeout(resolve, intervalMs));
   }
@@ -365,22 +375,31 @@ export async function getFiberSequenceNumber(fiberId: string): Promise<number> {
    * number across all reachable nodes. This prevents us from using a stale
    * value from a minority-fork node.
    */
-  const queryOne = async (baseUrl: string): Promise<number> => {
+  const queryOne = async (baseUrl: string): Promise<{ url: string; seq: number; error?: boolean }> => {
     const url = `${baseUrl}/data-application/v1/onchain`;
     const client = new HttpClient(url);
     try {
       const onChain = await client.get<{
         fiberCommits?: Record<string, { sequenceNumber?: number }>;
       }>('');
-      return onChain?.fiberCommits?.[fiberId]?.sequenceNumber ?? 0;
+      const seq = onChain?.fiberCommits?.[fiberId]?.sequenceNumber ?? 0;
+      return { url: baseUrl, seq };
     } catch {
-      return 0; // unreachable node — treat as 0
+      return { url: baseUrl, seq: 0, error: true };
     }
   };
 
   const results = await Promise.all(dl1Urls.map(queryOne));
-  const dl1Seq = Math.max(0, ...results);
+  
+  // Log warnings for nodes returning seq=0 (may indicate fork or missing fiber)
+  const maxSeq = Math.max(...results.map(r => r.seq));
+  for (const r of results) {
+    if (!r.error && r.seq === 0 && maxSeq > 0) {
+      console.warn(`[metagraph] Node ${r.url} returned seq=0 for fiber ${fiberId} (max across nodes is ${maxSeq}) — may be forked`);
+    }
+  }
 
+  const dl1Seq = Math.max(0, ...results.map(r => r.seq));
   const cached = sequenceCache.get(fiberId) ?? 0;
   const seq = Math.max(dl1Seq, cached);
 
