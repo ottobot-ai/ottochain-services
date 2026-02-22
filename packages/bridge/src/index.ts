@@ -13,13 +13,33 @@ import { governanceRoutes } from './routes/governance.js';
 import { marketRoutes } from './routes/market.js';
 import { oracleRoutes } from './routes/oracle.js';
 import { corporateRoutes } from './routes/corporate.js';
+import { responseTimeTracker } from './lib/response-time-tracker.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' })); // Larger limit for state machine definitions
 
-// Health check
+// ── Response-time tracking middleware ─────────────────────────────────────────
+// Records duration of every request EXCEPT /health (to avoid self-measurement).
+app.use((req, res, next) => {
+  if (req.path === '/health') {
+    next();
+    return;
+  }
+  const start = Date.now();
+  res.on('finish', () => {
+    responseTimeTracker.record(Date.now() - start);
+  });
+  next();
+});
+
+// Health check — includes p50/p95/p99 response time metrics
 app.get('/health', (_, res) => {
-  res.json({ status: 'ok', service: 'bridge' });
+  const { p50, p95, p99 } = responseTimeTracker.percentiles();
+  res.json({
+    status: 'ok',
+    service: 'bridge',
+    responseTime: { p50, p95, p99 },
+  });
 });
 
 // Version info
