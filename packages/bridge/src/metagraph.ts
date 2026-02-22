@@ -118,6 +118,29 @@ export type { KeyPair };
 interface TransactionResult {
   hash: string;
   ordinal?: number;
+  /** Which DL1 node accepted the transaction (for diagnostics) */
+  acceptedBy?: string;
+}
+
+/**
+ * Parse comma-separated DL1 URLs into an array.
+ * Exported for testing. Application code should use getDl1Urls().
+ */
+export function parseDl1Urls(dl1UrlsEnv: string | undefined, fallback: string): string[] {
+  if (dl1UrlsEnv) {
+    const urls = dl1UrlsEnv.split(',').map((u) => u.trim()).filter(Boolean);
+    if (urls.length > 0) return [...new Set(urls)];
+  }
+  return [fallback];
+}
+
+/**
+ * Get the list of DL1 URLs from config.
+ * Uses METAGRAPH_DL1_URLS (comma-separated) when set; falls back to METAGRAPH_DL1_URL.
+ */
+export function getDl1Urls(): string[] {
+  const config = getConfig();
+  return parseDl1Urls(config.METAGRAPH_DL1_URLS, config.METAGRAPH_DL1_URL);
 }
 
 // Internal: extract fiberId and targetSequenceNumber from any OttoChain message.
@@ -156,8 +179,6 @@ export async function submitTransaction(
   message: unknown,
   privateKey: string
 ): Promise<TransactionResult> {
-  const config = getConfig();
-
   // Sign using SDK's batchSign (same as e2e tests)
   const signed = await batchSign(message, [privateKey], { isDataUpdate: true });
 
@@ -165,35 +186,50 @@ export async function submitTransaction(
   const payload = { data: signed, fee: null };
 
   const msgType = Object.keys(message as object)[0];
-  console.log(`[metagraph] Submitting to ${config.METAGRAPH_DL1_URL}/data`);
-  console.log(`[metagraph] Message type: ${msgType}`);
-  console.log(`[metagraph] Payload (truncated): ${JSON.stringify(payload).substring(0, 300)}...`);
-
-  const client = new HttpClient(config.METAGRAPH_DL1_URL);
+  const dl1Urls = getDl1Urls();
   const seqInfo = extractSequenceInfo(message);
 
+  console.log(`[metagraph] Submitting ${msgType} to ${dl1Urls.length} DL1 node(s): ${dl1Urls.join(', ')}`);
+  console.log(`[metagraph] Payload (truncated): ${JSON.stringify(payload).substring(0, 300)}...`);
+
+  /**
+   * Fan out to ALL DL1 nodes in parallel.
+   * Promise.any() resolves with the first success; if ALL fail it rejects
+   * with an AggregateError containing all failure reasons.
+   */
+  const tryNode = async (url: string): Promise<TransactionResult> => {
+    try {
+      const client = new HttpClient(url);
+      const result = await client.post<{ hash?: string; ordinal?: number }>('/data', payload);
+      console.log(`[metagraph] ✓ Accepted by ${url}: ${JSON.stringify(result)}`);
+      return { hash: result.hash ?? 'pending', ordinal: result.ordinal, acceptedBy: url };
+    } catch (err) {
+      const error = err as Error & { response?: string };
+      const detail = error.response ?? error.message;
+      console.warn(`[metagraph] ✗ Rejected by ${url}: ${detail}`);
+      throw error;
+    }
+  };
+
+  let result: TransactionResult;
   try {
-    const result = await client.post<{ hash?: string; ordinal?: number }>('/data', payload);
-    console.log(`[metagraph] Success: ${JSON.stringify(result)}`);
+    result = await Promise.any(dl1Urls.map(tryNode));
+  } catch (aggErr) {
+    // All nodes rejected — reset cache and surface a clear error
+    if (seqInfo) resetFiberSequence(seqInfo.fiberId);
 
-    // Advance the optimistic sequence cache so the next submission for this
-    // fiber immediately sees the incremented value (Issue #109 fix).
-    if (seqInfo) {
-      advanceSequenceCache(seqInfo.fiberId, seqInfo.targetSeq);
-    }
-
-    return { hash: result.hash ?? 'pending', ordinal: result.ordinal };
-  } catch (err) {
-    const error = err as Error & { response?: string };
-    if (error.response) {
-      console.error(`[metagraph] Error response: ${error.response}`);
-    }
-    // On error, reset the cache so the next attempt reads fresh from DL1.
-    if (seqInfo) {
-      resetFiberSequence(seqInfo.fiberId);
-    }
-    throw new Error(`Metagraph submission failed: ${error.message}`);
+    const reasons = (aggErr instanceof AggregateError)
+      ? aggErr.errors.map((e: Error) => e.message).join('; ')
+      : String(aggErr);
+    throw new Error(`Metagraph submission failed on all ${dl1Urls.length} DL1 node(s): ${reasons}`);
   }
+
+  // Advance the optimistic sequence cache on success (Issue #109 fix).
+  if (seqInfo) {
+    advanceSequenceCache(seqInfo.fiberId, seqInfo.targetSeq);
+  }
+
+  return result;
 }
 
 /**
@@ -284,30 +320,37 @@ export async function waitForFiber(
   maxAttempts: number = 60,
   intervalMs: number = 1000
 ): Promise<boolean> {
-  const config = getConfig();
-  const dl1Url = `${config.METAGRAPH_DL1_URL}/data-application/v1/onchain`;
-  const client = new HttpClient(dl1Url);
-  
-  console.log(`[metagraph] Waiting for fiber ${fiberId} to sync to DL1 (max ${maxAttempts}s)...`);
-  
+  const dl1Urls = getDl1Urls();
+  console.log(`[metagraph] Waiting for fiber ${fiberId} to sync to any of ${dl1Urls.length} DL1 node(s) (max ${maxAttempts}s)...`);
+
+  /**
+   * Check a single node for fiber presence.
+   * Throws if not found (so Promise.any can filter).
+   */
+  const checkOne = async (baseUrl: string): Promise<string> => {
+    const client = new HttpClient(`${baseUrl}/data-application/v1/onchain`);
+    const onChain = await client.get<{
+      fiberCommits?: Record<string, { sequenceNumber?: number }>;
+    }>('');
+    if (!onChain?.fiberCommits?.[fiberId]) {
+      throw new Error(`Fiber not found on ${baseUrl}`);
+    }
+    return baseUrl; // Return which node found it
+  };
+
   for (let i = 0; i < maxAttempts; i++) {
     try {
-      const onChain = await client.get<{
-        fiberCommits?: Record<string, { sequenceNumber?: number }>;
-      }>('');
-      
-      if (onChain?.fiberCommits?.[fiberId]) {
-        console.log(`[metagraph] Fiber ${fiberId} found in DL1 onchain state (attempt ${i + 1})`);
-        return true;
-      }
+      // Promise.any returns on FIRST success — no waiting for slow nodes
+      const foundOn = await Promise.any(dl1Urls.map(checkOne));
+      console.log(`[metagraph] Fiber ${fiberId} found on ${foundOn} (attempt ${i + 1})`);
+      return true;
     } catch {
-      // DL1 may not be ready yet — continue polling
+      // All nodes returned not-found or errored — continue polling
     }
-    
     await new Promise(resolve => setTimeout(resolve, intervalMs));
   }
-  
-  console.log(`[metagraph] Fiber ${fiberId} not synced to DL1 after ${maxAttempts} attempts`);
+
+  console.log(`[metagraph] Fiber ${fiberId} not synced to any DL1 after ${maxAttempts} attempts`);
   return false;
 }
 
@@ -325,25 +368,43 @@ export async function waitForFiber(
  * @returns The sequence number to use as targetSequenceNumber for the NEXT submission
  */
 export async function getFiberSequenceNumber(fiberId: string): Promise<number> {
-  const config = getConfig();
-  const dl1Url = `${config.METAGRAPH_DL1_URL}/data-application/v1/onchain`;
-  const client = new HttpClient(dl1Url);
+  const dl1Urls = getDl1Urls();
 
-  let dl1Seq = 0;
-  try {
-    const onChain = await client.get<{
-      fiberCommits?: Record<string, { sequenceNumber?: number }>;
-    }>('');
-    dl1Seq = onChain?.fiberCommits?.[fiberId]?.sequenceNumber ?? 0;
-  } catch {
-    // DL1 unreachable — fall back to cache only
+  /**
+   * Query all DL1 nodes in parallel and take the maximum committed sequence
+   * number across all reachable nodes. This prevents us from using a stale
+   * value from a minority-fork node.
+   */
+  const queryOne = async (baseUrl: string): Promise<{ url: string; seq: number; error?: boolean }> => {
+    const url = `${baseUrl}/data-application/v1/onchain`;
+    const client = new HttpClient(url);
+    try {
+      const onChain = await client.get<{
+        fiberCommits?: Record<string, { sequenceNumber?: number }>;
+      }>('');
+      const seq = onChain?.fiberCommits?.[fiberId]?.sequenceNumber ?? 0;
+      return { url: baseUrl, seq };
+    } catch {
+      return { url: baseUrl, seq: 0, error: true };
+    }
+  };
+
+  const results = await Promise.all(dl1Urls.map(queryOne));
+  
+  // Log warnings for nodes returning seq=0 (may indicate fork or missing fiber)
+  const maxSeq = Math.max(...results.map(r => r.seq));
+  for (const r of results) {
+    if (!r.error && r.seq === 0 && maxSeq > 0) {
+      console.warn(`[metagraph] Node ${r.url} returned seq=0 for fiber ${fiberId} (max across nodes is ${maxSeq}) — may be forked`);
+    }
   }
 
+  const dl1Seq = Math.max(0, ...results.map(r => r.seq));
   const cached = sequenceCache.get(fiberId) ?? 0;
   const seq = Math.max(dl1Seq, cached);
 
   console.log(
-    `[metagraph] Fiber ${fiberId} sequence: DL1=${dl1Seq}, cache=${cached}, using=${seq}`
+    `[metagraph] Fiber ${fiberId} sequence: DL1(max across ${dl1Urls.length} nodes)=${dl1Seq}, cache=${cached}, using=${seq}`
   );
   return seq;
 }
