@@ -366,7 +366,20 @@ async function main(): Promise<void> {
   });
 
   if (!firstRejection) {
-    console.log('\n⚠️  No rejection found — remaining tests will fail. Check ML0 webhook subscription.\n');
+    console.log('\n❌ No rejection found — skipping dependent tests. Check ML0 webhook subscription.\n');
+    results.push(
+      { name: 'Rejection.fiberId matches our contract', passed: false, message: 'SKIPPED: no rejection', duration: 0 },
+      { name: 'Rejection.updateType is TransitionStateMachine', passed: false, message: 'SKIPPED: no rejection', duration: 0 },
+      { name: 'Rejection has at least one error with code', passed: false, message: 'SKIPPED: no rejection', duration: 0 },
+      { name: 'Rejection has at least one signer', passed: false, message: 'SKIPPED: no rejection', duration: 0 },
+      { name: 'Single rejection lookup by updateHash works', passed: false, message: 'SKIPPED: no rejection', duration: 0 },
+      { name: 'Filter by updateType=TransitionStateMachine returns our rejection', passed: false, message: 'SKIPPED: no rejection', duration: 0 },
+      { name: 'Filter by fiberId returns only our rejections', passed: false, message: 'SKIPPED: no rejection', duration: 0 },
+      { name: 'GET /api/fibers/:id/rejections returns same data', passed: false, message: 'SKIPPED: no rejection', duration: 0 },
+      { name: 'Sending same rejection twice does not create duplicate', passed: false, message: 'SKIPPED: no rejection', duration: 0 },
+    );
+    printResults();
+    process.exit(1);
   }
 
   await test('Rejection.fiberId matches our contract', async () => {

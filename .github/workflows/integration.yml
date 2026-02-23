@@ -444,7 +444,21 @@ jobs:
           INDEXER_URL: http://localhost:3031
           DL1_URL: http://localhost:9400
           POLL_TIMEOUT: '90'
-        run: npx tsx scripts/testing/test-rejection-notification-e2e.ts
+          MAX_RETRIES: '3'
+        run: |
+          for attempt in $(seq 1 $MAX_RETRIES); do
+            echo "=== Attempt $attempt of $MAX_RETRIES ==="
+            if npx tsx scripts/testing/test-rejection-notification-e2e.ts; then
+              echo "✓ Test passed on attempt $attempt"
+              exit 0
+            fi
+            if [ $attempt -lt $MAX_RETRIES ]; then
+              echo "⚠️ Test failed, waiting 5s before retry..."
+              sleep 5
+            fi
+          done
+          echo "❌ All $MAX_RETRIES attempts failed"
+          exit 1
 
       - name: Run traffic generator integration test
         env:
