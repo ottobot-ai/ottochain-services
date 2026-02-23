@@ -175,19 +175,49 @@ function extractSequenceInfo(
  * @param privateKey - Wallet private key in hex format
  * @returns Transaction hash and optional ordinal
  */
+/**
+ * Normalize a CreateStateMachine message so the definition only contains
+ * fields the Scala StateMachineDefinition case class expects:
+ *   states, initialState, transitions, metadata
+ *
+ * Extra fields like `crossReferences` or `emits` (SDK documentation fields)
+ * cause decode failures in derevo-circe-magnolia on the metagraph side.
+ */
+function normalizeMessage(message: unknown): unknown {
+  const msg = message as Record<string, unknown>;
+  if (!msg.CreateStateMachine) return message;
+
+  const csm = msg.CreateStateMachine as Record<string, unknown>;
+  const def = csm.definition as Record<string, unknown> | undefined;
+  if (!def) return message;
+
+  // Keep only the fields Scala's StateMachineDefinition knows about
+  const { states, initialState, transitions, metadata } = def;
+  return {
+    CreateStateMachine: {
+      ...csm,
+      definition: { states, initialState, transitions, metadata: metadata ?? null },
+    },
+  };
+}
+
 export async function submitTransaction(
   message: unknown,
   privateKey: string
 ): Promise<TransactionResult> {
+  // Normalize to strip SDK-only fields (crossReferences, emits) that the
+  // metagraph's Scala decoder doesn't understand.
+  const normalizedMessage = normalizeMessage(message);
+
   // Sign using SDK's batchSign (same as e2e tests)
-  const signed = await batchSign(message, [privateKey], { isDataUpdate: true });
+  const signed = await batchSign(normalizedMessage, [privateKey], { isDataUpdate: true });
 
   // Wrap in DataTransactionRequest format expected by tessellation DL1
   const payload = { data: signed, fee: null };
 
-  const msgType = Object.keys(message as object)[0];
+  const msgType = Object.keys(normalizedMessage as object)[0];
   const dl1Urls = getDl1Urls();
-  const seqInfo = extractSequenceInfo(message);
+  const seqInfo = extractSequenceInfo(normalizedMessage);
 
   console.log(`[metagraph] Submitting ${msgType} to ${dl1Urls.length} DL1 node(s): ${dl1Urls.join(', ')}`);
   console.log(`[metagraph] Payload (truncated): ${JSON.stringify(payload).substring(0, 300)}...`);
