@@ -194,7 +194,7 @@ jobs:
           # Pre-built JARs are already in modules/*/target/ (tessellation) and
           # /tmp/metagraph-dummy/modules/*/target/ (ottochain).
           # assembly.sh finds them, skips sbt, copies to docker/jars/, builds image.
-          SKIP_METAGRAPH_ASSEMBLY=true \
+          SKIP_METAGRAPH_ASSEMBLY=true PUBLISH=false \
             ./bin/compose-runner.sh --up --skip-assembly --metagraph=/tmp/metagraph-dummy --dl1
 
       - name: Verify key distribution
