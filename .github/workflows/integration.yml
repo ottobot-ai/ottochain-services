@@ -5,18 +5,25 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      ottochain_version:
+        description: 'OttoChain metagraph version override (e.g., 0.7.6)'
+        required: false
+        type: string
+      tessellation_version:
+        description: 'Tessellation version override (e.g., v4.0.0-rc.2)'
+        required: false
+        type: string
 
 env:
-  TESSELLATION_VERSION: v4.0.0-rc.2
   NODE_VERSION: '20'
-  JAVA_VERSION: '21'
 
 jobs:
   integration-test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    
+
     services:
       postgres:
         image: postgres:16-alpine
@@ -35,42 +42,111 @@ jobs:
     steps:
       - name: Free disk space
         run: |
-          # Remove unnecessary tools to free ~6-10GB
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
-          # Clean Docker
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           docker system prune -af --volumes || true
-          # Show available space
           df -h /
 
       - name: Checkout ottochain-services
         uses: actions/checkout@v4
 
-      - name: Checkout ottochain
-        uses: actions/checkout@v4
-        with:
-          repository: scasplte2/ottochain
-          path: ottochain
-          ref: main
+      # ── Resolve versions from deploy repo's versions.yaml ──────────────
+      - name: Fetch versions.yaml
+        id: versions
+        run: |
+          echo "Fetching versions.yaml from ottochain-deploy..."
+          curl -sf -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://raw.githubusercontent.com/ottobot-ai/ottochain-deploy/main/versions.yaml" \
+            -o versions.yaml
 
+          # Parse versions (workflow_dispatch inputs override versions.yaml)
+          OTTOCHAIN_VER="${{ inputs.ottochain_version }}"
+          TESS_VER="${{ inputs.tessellation_version }}"
+
+          if [ -z "$OTTOCHAIN_VER" ]; then
+            OTTOCHAIN_VER=$(grep -A1 'ottochain:' versions.yaml | grep 'version:' | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          fi
+          if [ -z "$TESS_VER" ]; then
+            TESS_VER=$(grep -A1 'tessellation:' versions.yaml | grep 'version:' | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          fi
+
+          # Ensure tessellation version has v prefix for release tag
+          [[ "$TESS_VER" != v* ]] && TESS_VER="v${TESS_VER}"
+
+          echo "ottochain_version=${OTTOCHAIN_VER}" >> $GITHUB_OUTPUT
+          echo "tessellation_version=${TESS_VER}" >> $GITHUB_OUTPUT
+          echo "Resolved versions: OttoChain=${OTTOCHAIN_VER}, Tessellation=${TESS_VER}"
+
+      # ── Checkout tessellation (for compose infrastructure only) ────────
       - name: Checkout tessellation
         uses: actions/checkout@v4
         with:
           repository: Constellation-Labs/tessellation
           path: tessellation
-          ref: ${{ env.TESSELLATION_VERSION }}
+          ref: ${{ steps.versions.outputs.tessellation_version }}
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
-          cache: sbt
+      # ── Download pre-built JARs instead of building from source ────────
+      - name: Download pre-built JARs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TESS_VER: ${{ steps.versions.outputs.tessellation_version }}
+          OTTO_VER: ${{ steps.versions.outputs.ottochain_version }}
+        run: |
+          # Download tessellation release JARs
+          echo "Downloading tessellation ${TESS_VER} release JARs..."
+          gh release download "${TESS_VER}" \
+            --repo Constellation-Labs/tessellation \
+            --pattern "cl-node.jar" \
+            --pattern "cl-dag-l1.jar" \
+            --pattern "cl-keytool.jar" \
+            --pattern "cl-wallet.jar" \
+            --dir /tmp/tess-jars/ \
+            --clobber
 
-      - name: Setup sbt
-        uses: sbt/setup-sbt@v1
+          # Download OttoChain release JARs
+          echo "Downloading OttoChain v${OTTO_VER} release JARs..."
+          gh release download "v${OTTO_VER}" \
+            --repo scasplte2/ottochain \
+            --pattern "metagraph-l0-*.jar" \
+            --pattern "currency-l1-*.jar" \
+            --pattern "data-l1-*.jar" \
+            --dir /tmp/otto-jars/ \
+            --clobber
+
+          # Place JARs where compose-runner's assembly.sh expects them:
+          # Tessellation: modules/{module}/target/scala-2.13/tessellation-{module}-assembly-*.jar
+          # Metagraph: $METAGRAPH/modules/{path}/target/scala-2.13/*-assembly-*.jar
+          #
+          # assembly.sh checks these paths, copies to docker/jars/, then docker build uses them.
+          # By pre-populating, we skip all sbt compilation.
+
+          # Tessellation JARs → modules/*/target/scala-2.13/
+          for mod in dag-l0 dag-l1 keytool wallet; do
+            mkdir -p tessellation/modules/${mod}/target/scala-2.13
+          done
+          cp /tmp/tess-jars/cl-node.jar     tessellation/modules/dag-l0/target/scala-2.13/tessellation-dag-l0-assembly-prebuilt.jar
+          cp /tmp/tess-jars/cl-dag-l1.jar   tessellation/modules/dag-l1/target/scala-2.13/tessellation-dag-l1-assembly-prebuilt.jar
+          cp /tmp/tess-jars/cl-keytool.jar  tessellation/modules/keytool/target/scala-2.13/tessellation-keytool-assembly-prebuilt.jar
+          cp /tmp/tess-jars/cl-wallet.jar   tessellation/modules/wallet/target/scala-2.13/tessellation-wallet-assembly-prebuilt.jar
+
+          # OttoChain JARs → dummy metagraph dir (used by compose-runner --metagraph)
+          DUMMY_META=/tmp/metagraph-dummy
+          for mod in l0 l1 data_l1; do
+            mkdir -p $DUMMY_META/modules/${mod}/target/scala-2.13
+          done
+          cp /tmp/otto-jars/metagraph-l0-*.jar $DUMMY_META/modules/l0/target/scala-2.13/ottochain-currency-l0-assembly-prebuilt.jar
+          cp /tmp/otto-jars/currency-l1-*.jar  $DUMMY_META/modules/l1/target/scala-2.13/ottochain-currency-l1-assembly-prebuilt.jar
+          cp /tmp/otto-jars/data-l1-*.jar      $DUMMY_META/modules/data_l1/target/scala-2.13/ottochain-data-l1-assembly-prebuilt.jar
+
+          echo "✅ All JARs staged for compose-runner"
+          echo "Tessellation JARs:"
+          ls -lh tessellation/modules/dag-l0/target/scala-2.13/
+          echo "OttoChain JARs:"
+          ls -lh $DUMMY_META/modules/l0/target/scala-2.13/
+
+      # ── Setup for services build ──────────────────────────────────────
+      # No Java/sbt needed — using pre-built JARs from GitHub Releases.
+      # Tessellation's compose-runner uses pre-existing test keys (no keytool).
+      # Genesis runs inside Docker containers.
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -104,185 +180,74 @@ jobs:
           DATABASE_URL: postgresql://ottochain:ottochain@localhost:5432/ottochain
         run: pnpm db:push --skip-generate
 
-      - name: Cache tessellation assemblies
-        uses: actions/cache@v4
-        with:
-          path: |
-            tessellation/modules/*/target
-            tessellation/docker/jars
-          key: tessellation-${{ env.TESSELLATION_VERSION }}-${{ hashFiles('tessellation/build.sbt') }}
-          restore-keys: |
-            tessellation-${{ env.TESSELLATION_VERSION }}-
-
-      - name: Build tessellation
-        working-directory: tessellation
-        run: |
-          # Note: dataL1 doesn't exist in tessellation - it's built from the metagraph (ottochain)
-          sbt "sdk/publishLocal; keytool/assembly; wallet/assembly; shared/assembly; \
-               dagL0/assembly; dagL1/assembly; currencyL0/assembly; currencyL1/assembly"
-          mkdir -p docker/jars
-          cp modules/keytool/target/scala-2.13/tessellation-keytool-assembly*.jar docker/jars/keytool.jar
-          cp modules/wallet/target/scala-2.13/tessellation-wallet-assembly*.jar docker/jars/wallet.jar
-          cp modules/dag-l0/target/scala-2.13/tessellation-dag-l0-assembly*.jar docker/jars/gl0.jar
-          cp modules/dag-l1/target/scala-2.13/tessellation-dag-l1-assembly*.jar docker/jars/gl1.jar
-          cp modules/currency-l0/target/scala-2.13/tessellation-currency-l0-assembly*.jar docker/jars/ml0.jar
-          cp modules/currency-l1/target/scala-2.13/tessellation-currency-l1-assembly*.jar docker/jars/cl1.jar
-
-      - name: Cache ottochain assemblies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ottochain/modules/*/target
-          key: ottochain-${{ hashFiles('ottochain/build.sbt', 'ottochain/project/*.sbt', 'ottochain/project/*.scala') }}
-          restore-keys: ottochain-
-
-      - name: Build ottochain metagraph
-        working-directory: ottochain
-        run: |
-          sbt "currencyL0/assembly; dataL1/assembly"
-
-      - name: Clean up build artifacts
-        run: |
-          # Remove sbt intermediate files to free disk space
-          # Keep only the final assembly JARs (cached separately)
-          find tessellation/modules -name "*.class" -delete 2>/dev/null || true
-          find ottochain/modules -name "*.class" -delete 2>/dev/null || true
-          rm -rf ~/.sbt/boot ~/.ivy2/cache 2>/dev/null || true
-          df -h /
-
-      - name: Verify test keys exist and are different
-        working-directory: tessellation/docker
-        run: |
-          echo "=== Verifying test keys in tessellation repo ==="
-          
-          # Check that local-test-keys exist
-          if [ ! -d "config/local-test-keys/0" ]; then
-            echo "ERROR: local-test-keys not found!"
-            exit 1
-          fi
-          
-          # Verify all 3 keys exist and are different
-          PEER_IDS=()
-          for i in 0 1 2; do
-            if [ ! -f "config/local-test-keys/$i/key.p12" ]; then
-              echo "ERROR: Key $i not found!"
-              exit 1
-            fi
-            peer_id=$(cat config/local-test-keys/$i/peer_id)
-            echo "Key $i peer_id: $peer_id"
-            PEER_IDS+=("$peer_id")
-          done
-          
-          # Check all peer IDs are unique
-          unique_count=$(printf '%s\n' "${PEER_IDS[@]}" | sort -u | wc -l)
-          if [ "$unique_count" != "3" ]; then
-            echo "ERROR: Not all peer IDs are unique! Found $unique_count unique IDs"
-            exit 1
-          fi
-          
-          echo "✓ All 3 test keys verified as unique"
-
+      # ── Start metagraph cluster from pre-built JARs ───────────────────
+      # Note: compose-runner handles docker build internally from docker/jars/
       - name: Start metagraph cluster
         working-directory: tessellation/docker
         run: |
-          # Ensure scripts are executable (git checkout can lose permissions)
           chmod +x bin/*.sh
-          
-          # Enable webhook feature by adding WEBHOOK_URL to ml0 environment in compose file
-          # The actual callback URL is registered via API; this just enables the feature
+
+          # Enable webhook feature for ML0
           sed -i 's/- CL_DOCKER_ID=ml0/- WEBHOOK_URL=http:\/\/webhook-enabled\/\n      - CL_DOCKER_ID=ml0/' docker-compose.metagraph.yaml
-          
-          # Verify the change was applied
-          grep WEBHOOK_URL docker-compose.metagraph.yaml || echo "WARNING: WEBHOOK_URL not added!"
-          
-          # Use compose-runner which handles key generation, env setup, and container orchestration
-          # --skip-assembly since we already built everything in prior steps
-          ./bin/compose-runner.sh --up --metagraph=$(pwd)/../../ottochain --dl1 --skip-assembly
+
+          # Run compose-runner with --skip-assembly.
+          # Pre-built JARs are already in modules/*/target/ (tessellation) and
+          # /tmp/metagraph-dummy/modules/*/target/ (ottochain).
+          # assembly.sh finds them, skips sbt, copies to docker/jars/, builds image.
+          SKIP_METAGRAPH_ASSEMBLY=true PUBLISH=false \
+            ./bin/compose-runner.sh --up --skip-assembly --metagraph=/tmp/metagraph-dummy --dl1
 
       - name: Verify key distribution
         working-directory: tessellation
         run: |
           echo "=== Verifying keys were distributed to node directories ==="
-          
           for i in 0 1 2; do
             echo "--- Node $i ---"
-            
-            # Check key.p12 exists
             if [ ! -f "nodes/$i/key.p12" ]; then
               echo "ERROR: nodes/$i/key.p12 not found!"
               ls -la nodes/$i/ || true
               exit 1
             fi
-            
-            # Show key hash to verify they're different
             key_hash=$(md5sum nodes/$i/key.p12 | cut -d' ' -f1)
             echo "Key hash: $key_hash"
-            
-            # Show peer_id if available
-            if [ -f "nodes/$i/peer_id" ]; then
-              echo "Peer ID: $(cat nodes/$i/peer_id)"
-            fi
-            
-            # Check .env has correct settings
-            if [ -f "nodes/$i/.env" ]; then
-              echo "Container suffix: $(grep CONTAINER_NAME_SUFFIX nodes/$i/.env || echo 'not set')"
-              echo "DL1 join: $(grep CL_DOCKER_DL1_JOIN nodes/$i/.env || echo 'not set')"
-              echo "DL1 genesis: $(grep CL_DOCKER_DL1_GENESIS nodes/$i/.env || echo 'not set')"
-            fi
-            echo ""
           done
-          
-          # Verify all key hashes are unique
+
           hash0=$(md5sum nodes/0/key.p12 | cut -d' ' -f1)
           hash1=$(md5sum nodes/1/key.p12 | cut -d' ' -f1)
           hash2=$(md5sum nodes/2/key.p12 | cut -d' ' -f1)
-          
           if [ "$hash0" = "$hash1" ] || [ "$hash0" = "$hash2" ] || [ "$hash1" = "$hash2" ]; then
             echo "ERROR: Key hashes are not all unique!"
-            echo "Node 0: $hash0"
-            echo "Node 1: $hash1"
-            echo "Node 2: $hash2"
             exit 1
           fi
-          
           echo "✓ All node keys verified as unique"
 
       - name: Wait for metagraph healthy
         run: |
-          # Copy wait script to working directory
           cp $GITHUB_WORKSPACE/scripts/wait-for-cluster.sh ./wait-for-cluster.sh
           chmod +x ./wait-for-cluster.sh
-          
+
           echo "=== Waiting for GL0 ==="
           for i in {1..90}; do
             if curl -s http://localhost:9000/node/info | grep -q '"state":"Ready"'; then
-              echo "GL0 ready after ${i}s"
-              break
+              echo "GL0 ready after ${i}s"; break
             fi
             sleep 1
             if [ $i -eq 90 ]; then echo "GL0 timeout"; docker logs gl0-0 2>&1 | tail -30 || true; exit 1; fi
           done
-          
+
           echo "=== Waiting for ML0 (may take longer on CI) ==="
           for i in {1..180}; do
             if curl -s http://localhost:9200/node/info | grep -q '"state":"Ready"'; then
-              echo "ML0 ready after ${i}s"
-              break
+              echo "ML0 ready after ${i}s"; break
             fi
             sleep 1
             if [ $i -eq 180 ]; then echo "ML0 timeout"; docker logs ml0-0 2>&1 | tail -30 || true; exit 1; fi
           done
-          
+
           echo "=== Waiting for DL1 cluster with robust join retry ==="
-          # Use the robust script which handles:
-          # 1. Wait for node to be responsive
-          # 2. Wait for node to leave SessionStarted state
-          # 3. Join cluster with retry logic (5 attempts, 5s backoff)
-          # 4. Wait for Ready state
           ./wait-for-cluster.sh dl1 "9400 9410 9420" 9400
-          
+
           echo "=== Waiting for first metagraph snapshot ==="
-          # Use /snapshots/latest (ML0's own snapshots) NOT /global-snapshots/latest (synced from GL0)
           for i in {1..120}; do
             ordinal=$(curl -s http://localhost:9200/snapshots/latest | jq -r '.value.ordinal // 0' 2>/dev/null || echo "0")
             if [ "$ordinal" -gt 0 ]; then
@@ -292,78 +257,38 @@ jobs:
             sleep 1
           done
           echo "Metagraph not producing snapshots"
-          echo "=== ML0 /snapshots/latest response ==="
           curl -s http://localhost:9200/snapshots/latest | jq . || true
-          echo "=== ML0 logs ==="
           docker logs ml0-0 2>&1 | tail -50 || true
           exit 1
 
       - name: Verify DL1 cluster formation
         run: |
-          echo "=== Verifying DL1 cluster has multiple unique peers ==="
-          
-          # Get peer IDs from each DL1 node
           PEER_0=$(curl -s http://localhost:9400/node/info | jq -r '.id // "error"' 2>/dev/null || echo "unreachable")
           PEER_1=$(curl -s http://localhost:9410/node/info | jq -r '.id // "error"' 2>/dev/null || echo "unreachable")
           PEER_2=$(curl -s http://localhost:9420/node/info | jq -r '.id // "error"' 2>/dev/null || echo "unreachable")
-          
-          echo "DL1-0 (port 9400): ${PEER_0:0:32}..."
-          echo "DL1-1 (port 9410): ${PEER_1:0:32}..."
-          echo "DL1-2 (port 9420): ${PEER_2:0:32}..."
-          
-          # Check for error/empty responses first (nodes not responding)
-          if [ -z "$PEER_0" ] || [ "$PEER_0" = "error" ] || [ "$PEER_0" = "unreachable" ]; then
-            echo "❌ ERROR: DL1-0 (port 9400) not responding!"
-            docker logs dl1-0 2>&1 | tail -20 || true
-            exit 1
-          fi
-          if [ -z "$PEER_1" ] || [ "$PEER_1" = "error" ] || [ "$PEER_1" = "unreachable" ]; then
-            echo "❌ ERROR: DL1-1 (port 9410) not responding!"
-            docker logs dl1-1 2>&1 | tail -20 || true
-            exit 1
-          fi
-          if [ -z "$PEER_2" ] || [ "$PEER_2" = "error" ] || [ "$PEER_2" = "unreachable" ]; then
-            echo "❌ ERROR: DL1-2 (port 9420) not responding!"
-            docker logs dl1-2 2>&1 | tail -20 || true
-            exit 1
-          fi
-          
-          # Check if all peer IDs are unique (the core issue we're fixing)
+
+          echo "DL1-0: ${PEER_0:0:32}..."
+          echo "DL1-1: ${PEER_1:0:32}..."
+          echo "DL1-2: ${PEER_2:0:32}..."
+
+          for i in 0 1 2; do
+            VAR="PEER_$i"
+            VAL="${!VAR}"
+            if [ -z "$VAL" ] || [ "$VAL" = "error" ] || [ "$VAL" = "unreachable" ]; then
+              echo "❌ DL1-$i not responding!"
+              docker logs "dl1-$i" 2>&1 | tail -20 || true
+              exit 1
+            fi
+          done
+
           if [ "$PEER_0" = "$PEER_1" ] || [ "$PEER_0" = "$PEER_2" ] || [ "$PEER_1" = "$PEER_2" ]; then
-            echo ""
-            echo "❌ ERROR: DL1 nodes have DUPLICATE peer IDs!"
-            echo "This means all nodes are using the same key.p12 file."
-            echo ""
-            echo "=== Container volume mounts ==="
-            for c in dl1-0 dl1-1 dl1-2; do
-              echo "--- $c ---"
-              docker inspect $c --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{"\n"}}{{end}}' 2>/dev/null | grep key || echo "no key mount found"
-            done
-            echo ""
-            echo "=== Key files on disk ==="
-            for i in 0 1 2; do
-              if [ -f "tessellation/nodes/$i/key.p12" ]; then
-                echo "nodes/$i/key.p12: $(md5sum tessellation/nodes/$i/key.p12 | cut -d' ' -f1)"
-              else
-                echo "nodes/$i/key.p12: NOT FOUND"
-              fi
-            done
+            echo "❌ DL1 nodes have DUPLICATE peer IDs!"
             exit 1
           fi
-          
           echo "✓ All DL1 nodes have unique peer IDs"
-          
-          # Get cluster info from DL1
+
           cluster_size=$(curl -s http://localhost:9400/cluster/info | jq 'length' 2>/dev/null || echo "0")
           echo "DL1 cluster size: $cluster_size"
-          
-          if [ "$cluster_size" -lt 2 ]; then
-            echo "WARNING: DL1 cluster has fewer than 2 peers - nodes may not have joined"
-            echo "=== DL1-0 cluster info ==="
-            curl -s http://localhost:9400/cluster/info | jq . || true
-          else
-            echo "✓ DL1 cluster has $cluster_size peers"
-          fi
 
       - name: Start Redis
         run: |
@@ -378,21 +303,15 @@ jobs:
 
       - name: Start services containers
         run: |
-          # Start indexer and bridge as containers on tessellation_common network
-          # This allows ML0 to reach them directly without proxy hacks
           docker compose -f docker-compose.ci.yaml up -d
-          
-          # Wait for services to be healthy
+
           echo "Waiting for services to be healthy..."
           for i in {1..60}; do
             indexer_ok=$(curl -sf http://localhost:3031/health 2>/dev/null | grep -c '"status":"ok"' || echo "0")
             bridge_ok=$(curl -sf http://localhost:3030/health 2>/dev/null | grep -c '"status":"ok"' || echo "0")
-            
             if [ "$indexer_ok" = "1" ] && [ "$bridge_ok" = "1" ]; then
-              echo "✓ Both services healthy after ${i}s"
-              break
+              echo "✓ Both services healthy after ${i}s"; break
             fi
-            
             if [ $i -eq 60 ]; then
               echo "❌ Services failed to become healthy"
               docker compose -f docker-compose.ci.yaml logs
@@ -400,8 +319,7 @@ jobs:
             fi
             sleep 1
           done
-          
-          # Verify ML0 can reach indexer directly (no proxy needed!)
+
           docker exec ml0-0 curl -sf http://indexer:3031/health
           echo "✓ ML0 can reach indexer directly on tessellation_common network"
 
@@ -409,7 +327,6 @@ jobs:
         env:
           ML0_URL: http://localhost:9200
           INDEXER_URL: http://localhost:3031
-          # Use 'indexer' hostname since tests run subscription from ML0's perspective
           HOST_IP: indexer
         run: npx tsx scripts/test-webhook.ts
 
@@ -424,7 +341,6 @@ jobs:
           INDEXER_WAIT_TIMEOUT: '30000'
           MAX_RETRIES: '5'
         run: |
-          # Retry logic for flaky metagraph consensus timing
           for attempt in $(seq 1 $MAX_RETRIES); do
             echo "=== Attempt $attempt of $MAX_RETRIES ==="
             if npx tsx packages/traffic-generator/test/integration.test.ts; then
@@ -442,21 +358,13 @@ jobs:
       - name: Collect logs on failure
         if: failure()
         run: |
+          echo "=== Versions ==="
+          echo "OttoChain: ${{ steps.versions.outputs.ottochain_version }}"
+          echo "Tessellation: ${{ steps.versions.outputs.tessellation_version }}"
+
           echo "=== Container list ==="
           docker ps -a || true
-          
-          echo "=== Container volume mounts ==="
-          for container in gl0-0 ml0-0 dl1-0 dl1-1 dl1-2 cl1-0 cl1-1 cl1-2; do
-            echo "--- $container ---"
-            docker inspect $container --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{"\n"}}{{end}}' 2>/dev/null || echo "not found"
-          done
-          
-          echo "=== DL1 Peer IDs (from logs) ==="
-          for container in dl1-0 dl1-1 dl1-2; do
-            echo "--- $container ---"
-            docker logs $container 2>&1 | grep -i "Self peerId\|Majority Peer\|Join" | head -5 || true
-          done
-          
+
           echo "=== GL0 Logs ==="
           docker logs gl0-0 2>&1 | tail -100 || true
           echo "=== ML0 Logs ==="
@@ -471,16 +379,23 @@ jobs:
           docker logs indexer 2>&1 | tail -100 || true
           echo "=== Bridge Logs ==="
           docker logs bridge 2>&1 | tail -50 || true
-          echo "=== Webhook Subscribers ==="
-          curl -s http://localhost:9200/data-application/v1/webhooks/subscribers | jq . || true
 
       - name: Cleanup
         if: always()
         run: |
-          # Stop services containers
           docker compose -f docker-compose.ci.yaml down 2>/dev/null || true
           docker rm -f redis-ci 2>/dev/null || true
-          # Stop tessellation cluster
           cd tessellation/docker
           chmod +x bin/*.sh 2>/dev/null || true
           ./bin/compose-runner.sh --down || true
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Integration Test Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Version | Source |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|---------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| OttoChain | ${{ steps.versions.outputs.ottochain_version }} | GitHub Release JAR |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tessellation | ${{ steps.versions.outputs.tessellation_version }} | GitHub Release JAR |" >> $GITHUB_STEP_SUMMARY
+          echo "| Services | $(git rev-parse --short HEAD) | Built from source |" >> $GITHUB_STEP_SUMMARY
