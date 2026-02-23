@@ -337,7 +337,7 @@ async function main(): Promise<void> {
     const response = await fetch(`${DL1_URL}/data`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(signed),
+      body: JSON.stringify({ data: signed, fee: null }),
     });
     const text = await response.text();
     const body = JSON.parse(text) as { hash?: string };
