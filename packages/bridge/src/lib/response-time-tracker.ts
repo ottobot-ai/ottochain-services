@@ -11,8 +11,8 @@
  *  - Zero runtime dependencies (Node.js stdlib only)
  */
 
-const MAX_SAMPLES = 1000;           // Upper bound on stored samples
-const WINDOW_MS  = 5 * 60 * 1000;  // 5-minute sliding window
+const DEFAULT_MAX_SAMPLES = 1000;           // Upper bound on stored samples
+const DEFAULT_WINDOW_MS  = 5 * 60 * 1000;  // 5-minute sliding window
 
 interface Sample {
   ts: number;     // timestamp (Date.now())
@@ -25,16 +25,34 @@ export interface PercentileResult {
   p99: number | null;
 }
 
+export interface TrackerOptions {
+  /** Maximum number of samples to retain. Default: 1000 */
+  maxSamples?: number;
+  /** Sliding window duration in ms. Default: 300000 (5 min) */
+  windowMs?: number;
+  /** Clock function for timestamps. Default: Date.now. Inject for testing. */
+  now?: () => number;
+}
+
 export class ResponseTimeTracker {
   private readonly samples: Sample[] = [];
+  private readonly maxSamples: number;
+  private readonly windowMs: number;
+  private readonly now: () => number;
+
+  constructor(options: TrackerOptions = {}) {
+    this.maxSamples = options.maxSamples ?? DEFAULT_MAX_SAMPLES;
+    this.windowMs = options.windowMs ?? DEFAULT_WINDOW_MS;
+    this.now = options.now ?? Date.now;
+  }
 
   /** Record a completed request's duration in milliseconds. */
   record(durationMs: number): void {
-    if (this.samples.length >= MAX_SAMPLES) {
+    if (this.samples.length >= this.maxSamples) {
       // Evict oldest entry (FIFO)
       this.samples.shift();
     }
-    this.samples.push({ ts: Date.now(), durationMs });
+    this.samples.push({ ts: this.now(), durationMs });
   }
 
   /**
@@ -42,7 +60,7 @@ export class ResponseTimeTracker {
    * Returns null values when the window is empty (cold start or no recent traffic).
    */
   percentiles(): PercentileResult {
-    const cutoff  = Date.now() - WINDOW_MS;
+    const cutoff  = this.now() - this.windowMs;
     const recent  = this.samples
       .filter(s => s.ts >= cutoff)
       .map(s => s.durationMs)
@@ -59,7 +77,12 @@ export class ResponseTimeTracker {
     };
   }
 
-  /** Number of samples currently in the buffer (including expired ones). */
+  /**
+   * Number of samples currently in the buffer.
+   * Note: includes expired samples that haven't been evicted yet.
+   * These are filtered out by `percentiles()` but remain in the buffer
+   * until displaced by new `record()` calls.
+   */
   get size(): number {
     return this.samples.length;
   }

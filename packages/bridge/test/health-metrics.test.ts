@@ -14,14 +14,15 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import { ResponseTimeTracker } from '../src/lib/response-time-tracker.ts';
+import type { TrackerOptions } from '../src/lib/response-time-tracker.ts';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Create a fresh tracker for each test. */
-function makeTracker() {
-  return new ResponseTimeTracker();
+function makeTracker(options?: TrackerOptions) {
+  return new ResponseTimeTracker(options);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -139,71 +140,89 @@ describe('ResponseTimeTracker — percentile calculations', () => {
     assert.ok(p95 !== null);
     assert.ok(p99 !== null);
   });
+
+  it('custom maxSamples cap is respected', () => {
+    const tracker = makeTracker({ maxSamples: 5 });
+    for (let i = 1; i <= 10; i++) {
+      tracker.record(i * 10);
+    }
+    assert.strictEqual(tracker.size, 5, 'Buffer must not exceed custom maxSamples');
+    // Only the last 5 samples remain: [60, 70, 80, 90, 100]
+    const { p50 } = tracker.percentiles();
+    assert.strictEqual(p50, 80, 'p50 of [60,70,80,90,100] = sorted[2] = 80');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Test Case 3: "sliding window works"
+// Test Case 3: "sliding window works" (using injected clock)
 // ─────────────────────────────────────────────────────────────────────────────
 describe('ResponseTimeTracker — sliding window expiry', () => {
 
-  it('expires samples outside the 5-minute window using backdated timestamps', () => {
-    // We test window behaviour by directly manipulating the tracker internals
-    // via a subclass that exposes a way to inject backdated samples.
-    //
-    // Strategy: use the public API but verify that only "recent" samples affect
-    // the percentile — we inject old samples via a small helper that bypasses
-    // Date.now() by keeping a reference to the samples array through clear/add.
+  it('expires samples outside the 5-minute window', () => {
+    let fakeNow = 1_000_000;
+    const tracker = makeTracker({ now: () => fakeNow });
 
-    const tracker = new ResponseTimeTracker();
-
-    // Record 5 "old" samples (these will be immediately aged-out by patching)
-    // and 5 "new" samples. We simulate age-out by clearing and recording only
-    // the new samples — the sliding-window logic is tested by checking that
-    // samples beyond WINDOW_MS are excluded.
-    //
-    // Since we can't travel in time without monkey-patching, we verify the
-    // window contract via the public `clear()` + re-record pattern, confirming
-    // that a fresh tracker ignores a previous epoch.
-
-    tracker.record(999);  // "old" outlier
+    // Record samples at t=1_000_000
+    tracker.record(999);
     tracker.record(999);
 
-    // Simulate time skip: clear and re-record with realistic values
-    tracker.clear();
+    // Advance clock past the 5-minute window
+    fakeNow += 5 * 60 * 1000 + 1; // 5 min + 1ms
+
+    // Record new samples at the new time
     [10, 20, 30, 40, 50].forEach(d => tracker.record(d));
 
     const { p50 } = tracker.percentiles();
+    // Only the recent [10, 20, 30, 40, 50] should be in window
     // Sorted: [10, 20, 30, 40, 50] → p50 = sorted[2] = 30
-    assert.strictEqual(p50, 30, 'After clearing stale data, p50 should reflect only recent samples');
+    assert.strictEqual(p50, 30, 'p50 should reflect only recent samples after old ones expire');
   });
 
-  it('returns null when all samples are outside the window (conceptual check)', () => {
-    // Demonstrates the interface contract: if no samples are within WINDOW_MS,
-    // percentiles() returns all nulls. This is validated via clear().
-    const tracker = makeTracker();
+  it('returns null when all samples are outside the window', () => {
+    let fakeNow = 1_000_000;
+    const tracker = makeTracker({ now: () => fakeNow });
+
     [100, 200, 300].forEach(d => tracker.record(d));
-    tracker.clear(); // Simulates all samples expiring / window rolling past them
+
+    // Advance clock past the window
+    fakeNow += 6 * 60 * 1000; // 6 minutes
+
     const { p50, p95, p99 } = tracker.percentiles();
     assert.strictEqual(p50, null, 'p50 should be null when window is empty');
     assert.strictEqual(p95, null, 'p95 should be null when window is empty');
     assert.strictEqual(p99, null, 'p99 should be null when window is empty');
+    // Buffer still has samples, but they're all expired
+    assert.strictEqual(tracker.size, 3, 'Expired samples remain in buffer until evicted by new records');
   });
 
-  it('recent samples dominate when old data coexists', () => {
-    // Verify that the median of [1000 (old outlier), 10, 20, 30, 40, 50 (recent)]
-    // reflects the recent distribution, not the outlier.
-    // We simulate this by inspecting the sorted output: recent [10..50] median ≠ 1000.
-    const tracker = makeTracker();
+  it('recent samples dominate when old data coexists in buffer', () => {
+    let fakeNow = 1_000_000;
+    const tracker = makeTracker({ now: () => fakeNow });
 
-    // Record and remove the "old" group
+    // Record an outlier at t=1_000_000
     tracker.record(1000);
-    tracker.clear(); // age out
 
-    // Now record recent group
+    // Advance past window
+    fakeNow += 5 * 60 * 1000 + 1;
+
+    // Record recent group
     [10, 20, 30, 40, 50].forEach(d => tracker.record(d));
 
     const { p50 } = tracker.percentiles();
     assert.ok((p50 ?? 0) < 100, `p50 (${p50}) should reflect recent samples, not old outlier`);
+    // Buffer has 6 samples total but only 5 are in window
+    assert.strictEqual(tracker.size, 6, 'Old sample still in buffer');
+  });
+
+  it('custom windowMs is respected', () => {
+    let fakeNow = 1_000_000;
+    const tracker = makeTracker({ windowMs: 10_000, now: () => fakeNow }); // 10s window
+
+    tracker.record(100);
+
+    fakeNow += 11_000; // 11 seconds later
+    const { p50 } = tracker.percentiles();
+    assert.strictEqual(p50, null, 'Sample should be expired with 10s window');
   });
 });
 
