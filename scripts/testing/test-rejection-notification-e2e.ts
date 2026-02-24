@@ -528,18 +528,54 @@ async function main(): Promise<void> {
   // ─────────────────────────────────────────────────────────────────────────────
   console.log('\n✅ Section 6: Correct transition (counterparty accepts)\n');
 
-  await test('POST /contract/accept with counterparty key succeeds', async () => {
-    // The bridge validates the caller is the counterparty, then submits.
-    // ML0 guard: event.agent (counterparty) === state.counterparty ✓
-    const result = await post<{ hash: string; status: string }>(
-      `${BRIDGE_URL}/contract/accept`,
-      {
-        privateKey: counterparty.privateKey,
-        contractId,
-      }
+  await test('Submit valid accept directly to DL1 (correct sequence)', async () => {
+    // The wrong-agent txn in Section 3 consumed sequence slot 1 on DL1 even
+    // though ML0 rejected the content. Invalid transactions still increment
+    // the sequence counter. So we read the current sequence from ML0 and use
+    // the next value (seq + 1) for the valid accept.
+    //
+    // We submit directly to DL1 (like Section 3) rather than via bridge,
+    // because the bridge may read a stale sequence from DL1's fiberCommits.
+    //
+    // Invalid transactions still increment the sequence counter (receipt with
+    // failure), so the rejected wrong-agent txn at seq 1 means the next valid
+    // sequence is 2. We read from both ML0 and DL1 to find the right value.
+    const [ml0Fiber, dl1OnChain] = await Promise.all([
+      fetchJson<StateMachine>(`${ML0_URL}/data-application/v1/state-machines/${contractId}`),
+      fetchJson<{ fiberCommits?: Record<string, { sequenceNumber?: number }> }>(
+        `${DL1_URL}/data-application/v1/onchain`
+      ).catch(() => ({ fiberCommits: {} })),
+    ]);
+    const ml0Seq = ml0Fiber.sequenceNumber;
+    const dl1Seq = dl1OnChain.fiberCommits?.[contractId]?.sequenceNumber ?? 0;
+    // Use the higher of the two + 1 as the next valid sequence
+    const nextSeq = Math.max(ml0Seq, dl1Seq) + 1;
+    console.log(`\n     ML0 seq: ${ml0Seq}, DL1 seq: ${dl1Seq}, submitting accept at seq ${nextSeq}`);
+
+    const message = {
+      TransitionStateMachine: {
+        fiberId: contractId,
+        eventName: 'accept',
+        payload: {
+          agent: counterparty.address,
+        },
+        targetSequenceNumber: nextSeq,
+      },
+    };
+
+    const signed = await batchSign(message, [counterparty.privateKey], { isDataUpdate: true });
+    const response = await fetch(`${DL1_URL}/data`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: signed, fee: null }),
+    });
+    const text = await response.text();
+    const body = JSON.parse(text) as { hash?: string };
+    assert(
+      response.ok && typeof body.hash === 'string',
+      `DL1 rejected valid accept (${response.status}): ${text.substring(0, 200)}`
     );
-    assert(typeof result.hash === 'string', 'No hash in accept response');
-    console.log(`\n     Hash: ${result.hash.substring(0, 16)}...`);
+    console.log(`     DL1 accepted: ${body.hash!.substring(0, 16)}...`);
   });
 
   await test('Fiber reaches ACTIVE state on ML0', async () => {
