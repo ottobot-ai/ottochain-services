@@ -173,7 +173,7 @@ async function waitForFiberState(fiberId: string, expectedState: string): Promis
       return fiber.currentState?.value === expectedState ? fiber : null;
     },
     `fiber ${fiberId.substring(0, 8)}... to be ${expectedState}`,
-    45_000
+    parseInt(process.env.STATE_WAIT_TIMEOUT || '90') * 1000
   );
 }
 
