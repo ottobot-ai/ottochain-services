@@ -524,75 +524,45 @@ async function main(): Promise<void> {
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Section 6: Correct transition succeeds (fresh fiber)
+  // Section 6: Correct transition succeeds
   // ─────────────────────────────────────────────────────────────────────────────
-  // The wrong-agent transaction submitted directly to DL1 in Section 3 consumed
-  // the sequence slot (targetSequenceNumber=1) on the original fiber. Even though
-  // ML0 rejected the content, DL1 won't accept another txn at the same sequence.
-  // So we create a fresh fiber to prove that correct transitions still work and
-  // that the rejection history from the first fiber is preserved alongside it.
-  console.log('\n✅ Section 6: Correct transition on fresh fiber\n');
+  console.log('\n✅ Section 6: Correct transition (counterparty accepts)\n');
 
-  let freshContractId: string | null = null;
-
-  await test('Create fresh contract fiber', async () => {
-    const result = await post<{ contractId: string; hash: string }>(
-      `${BRIDGE_URL}/contract/propose`,
+  await test('POST /contract/accept with counterparty key succeeds', async () => {
+    // The bridge validates the caller is the counterparty, then submits.
+    // ML0 guard: event.agent (counterparty) === state.counterparty ✓
+    const result = await post<{ hash: string; status: string }>(
+      `${BRIDGE_URL}/contract/accept`,
       {
-        privateKey: proposer.privateKey,
-        counterparty: counterparty.address,
-        terms: {
-          description: `Rejection E2E fresh fiber ${Date.now().toString(36)}`,
-          value: 50, currency: 'OTTO',
-          deadline: new Date(Date.now() + 7 * 86_400_000).toISOString(),
-        },
+        privateKey: counterparty.privateKey,
+        contractId,
       }
     );
-    assert(typeof result.contractId === 'string', 'No contractId');
-    freshContractId = result.contractId;
-    console.log(`\n     Fresh contract ID: ${freshContractId}`);
+    assert(typeof result.hash === 'string', 'No hash in accept response');
+    console.log(`\n     Hash: ${result.hash.substring(0, 16)}...`);
   });
 
-  if (freshContractId) {
-    await test('Fresh fiber appears on ML0 in PROPOSED state', async () => {
-      const fiber = await waitForFiberOnML0(freshContractId!);
-      assert(fiber.currentState.value === 'PROPOSED', `Expected PROPOSED, got ${fiber.currentState.value}`);
-    });
-
-    await test('POST /contract/accept on fresh fiber succeeds', async () => {
-      const result = await post<{ hash: string; status: string }>(
-        `${BRIDGE_URL}/contract/accept`,
-        {
-          privateKey: counterparty.privateKey,
-          contractId: freshContractId!,
-        }
-      );
-      assert(typeof result.hash === 'string', 'No hash in accept response');
-      console.log(`\n     Hash: ${result.hash.substring(0, 16)}...`);
-    });
-
-    await test('Fresh fiber reaches ACTIVE state on ML0', async () => {
-      const fiber = await waitForFiberState(freshContractId!, 'ACTIVE');
-      console.log(`\n     State: ${fiber.currentState.value}, seq: ${fiber.sequenceNumber}`);
-      assert(fiber.currentState.value === 'ACTIVE', `Expected ACTIVE, got ${fiber.currentState.value}`);
-    });
-  }
+  await test('Fiber reaches ACTIVE state on ML0', async () => {
+    const fiber = await waitForFiberState(contractId, 'ACTIVE');
+    console.log(`\n     State: ${fiber.currentState.value}, seq: ${fiber.sequenceNumber}`);
+    assert(fiber.currentState.value === 'ACTIVE', `Expected ACTIVE, got ${fiber.currentState.value}`);
+  });
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Section 7: Rejection history preserved (original fiber)
+  // Section 7: Rejection history preserved
   // ─────────────────────────────────────────────────────────────────────────────
-  console.log('\n📚 Section 7: Rejection history preserved after other activity\n');
+  console.log('\n📚 Section 7: Rejection history preserved after success\n');
 
-  await test('Original fiber rejection history still intact', async () => {
-    // Give indexer a moment to process latest snapshots
+  await test('Rejection history not wiped by successful transition', async () => {
+    // Give indexer a moment to process the new snapshot
     await sleep(3_000);
 
     const data = await fetchJson<RejectionListResponse>(
       `${INDEXER_URL}/api/fibers/${contractId}/rejections`
     );
-    assert(data.total >= 1, 'Rejection history was erased');
+    assert(data.total >= 1, 'Rejection history was erased after successful transition');
     const found = data.rejections.some(r => r.updateHash === firstRejectionHash);
-    assert(found, 'First rejection not found in history');
+    assert(found, 'First rejection not found in history after successful transition');
     console.log(`\n     ✓ ${data.total} rejection(s) preserved in history`);
   });
 
