@@ -27,6 +27,10 @@ services:
       - INDEXER_PORT=3031
       # ML0 can reach us directly at http://indexer:3031
       - INDEXER_CALLBACK_URL=http://indexer:3031/webhook/snapshot
+      # Faster polling for CI (default 60s is too slow for tests)
+      - ML0_POLL_INTERVAL=5000
+      # Use ML0 container as the poller peer (not hardcoded Hetzner IPs)
+      - ML0_PEER_URLS=http://ml0-0:9200
     ports:
       - "3031:3031"
     networks:
