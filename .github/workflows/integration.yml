@@ -444,6 +444,7 @@ jobs:
           INDEXER_URL: http://localhost:3031
           DL1_URL: http://localhost:9400
           POLL_TIMEOUT: '90'
+          DL1_SYNC_TIMEOUT: '60'
           MAX_RETRIES: '3'
         run: |
           for attempt in $(seq 1 $MAX_RETRIES); do

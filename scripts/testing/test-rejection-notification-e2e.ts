@@ -315,6 +315,44 @@ async function main(): Promise<void> {
   console.log('   Guard requires: event.agent === state.counterparty');
   console.log('   DL1 accepts (valid signature), ML0 rejects (guard fails).\n');
 
+  // Wait for DL1 to sync the fiber from ML0 snapshot before submitting.
+  // Without this, DL1 returns CidNotFound because the fiber hasn't propagated yet.
+  await test('DL1 recognizes fiber (sync wait)', async () => {
+    const DL1_SYNC_TIMEOUT = parseInt(process.env.DL1_SYNC_TIMEOUT || '60') * 1000;
+    const deadline = Date.now() + DL1_SYNC_TIMEOUT;
+    let lastStatus = 0;
+    process.stdout.write(`  ⏳ Waiting for DL1 to sync fiber ${contractId.substring(0, 8)}...`);
+    while (Date.now() < deadline) {
+      // Try a dummy fetch — if DL1 knows the CID, any transition attempt
+      // will fail with a business error (not CidNotFound)
+      const probe = {
+        TransitionStateMachine: {
+          fiberId: contractId,
+          eventName: '__probe__',
+          payload: {},
+          targetSequenceNumber: 0,
+        },
+      };
+      const signed = await batchSign(probe, [proposer.privateKey], { isDataUpdate: true });
+      const resp = await fetch(`${DL1_URL}/data`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: signed, fee: null }),
+      });
+      lastStatus = resp.status;
+      const text = await resp.text();
+      // CidNotFound means DL1 hasn't synced yet — keep waiting
+      if (!text.includes('CidNotFound')) {
+        process.stdout.write(' ✓\n');
+        console.log(`\n     DL1 knows about fiber (response: ${resp.status})`);
+        return;
+      }
+      process.stdout.write('.');
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    throw new Error(`DL1 still returns CidNotFound after ${DL1_SYNC_TIMEOUT / 1000}s`);
+  });
+
   await test('Submit wrong-agent transition directly to DL1', async () => {
     // We bypass the bridge because it validates caller address before submitting.
     // Submit via SDK directly to DL1 — signed by proposer's key, but with
