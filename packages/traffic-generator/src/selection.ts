@@ -227,75 +227,74 @@ export function softmaxSelect(
  *  - Current market conditions
  *  - Small mutation chance for exploration
  */
+/**
+ * Compute transition weights for an agent.
+ * Returns a weight map for all known events (keyed by event name).
+ * New callers use this signature; simulator uses computeTransitionChoices.
+ */
 export function computeTransitionWeights(
   agent: Agent,
-  availableEvents: string[],
   context: SimulationContext
-): TransitionChoice[] {
-  const choices: TransitionChoice[] = [];
-  
-  for (const event of availableEvents) {
-    const { weight, payload, isMutation } = getTransitionWeight(
-      event,
-      agent,
-      context
-    );
-    choices.push({ event, weight, payload, isMutation });
-  }
-  
-  return choices;
-}
-
-/**
- * Get weight and payload for a specific transition event.
- */
-function getTransitionWeight(
-  event: string,
-  agent: Agent,
-  context: SimulationContext
-): { weight: number; payload: Record<string, unknown>; isMutation: boolean } {
-  const { marketHealth, mutationRate } = context;
+): Record<string, number> {
   const { riskTolerance } = agent.meta;
-  
-  // Check for mutation (random unexpected choice)
-  const isMutation = Math.random() < mutationRate;
-  
-  // Base weights for different events
+  const marketHealth = context.marketHealth ?? 0.8;
+  const mutationRate = context.mutationRate ?? 0.05;
+
   const baseWeights: Record<string, number> = {
-    // Agent identity events
+    // Agent identity events (new event names)
     activate: 1.0,
-    submit_attestation: 0.7,
-    submit_violation: 0.1 + riskTolerance * 0.3, // Risky agents more likely to violate
-    file_challenge: 0.05 + riskTolerance * 0.2,
-    withdraw: 0.02 * (1 - agent.fitness.total), // Low fitness -> more likely to withdraw
-    
+    receive_vouch: 0.7,
+    receive_completion: 0.6,
+    receive_violation: 0.1 + riskTolerance * 0.3,
+    challenge: 0.05 + riskTolerance * 0.2,
+    withdraw: 0.02 * (1 - agent.fitness.total),
+
     // Contract events
     accept: 0.8 * marketHealth,
     reject: 0.2 + (1 - marketHealth) * 0.3,
     complete: 0.9,
     dispute: 0.05 + riskTolerance * 0.15,
-    
+
     // Market events
-    open: 0.9, // Usually open quickly after creation
-    cancel: 0.1, // Rarely cancel
-    commit: 0.5 + riskTolerance * 0.3, // Risk-tolerant agents commit more
-    close: 0.6, // Close when appropriate
-    submit_resolution: 0.8, // Oracles usually resolve
-    finalize: 0.9, // Finalize when quorum met
-    refund: 0.2, // Refund is fallback
-    claim: 1.0, // Always claim winnings
+    open: 0.9,
+    cancel: 0.1,
+    commit: 0.5 + riskTolerance * 0.3,
+    close: 0.6,
+    submit_resolution: 0.8,
+    finalize: 0.9,
+    refund: 0.2,
+    claim: 1.0,
   };
-  
-  const baseWeight = baseWeights[event] ?? 0.5;
-  
-  // Apply mutation: flip weight for unexpected behavior
-  const weight = isMutation ? 1 - baseWeight : baseWeight;
-  
-  // Generate appropriate payload
-  const payload = generatePayload(event, agent);
-  
-  return { weight: Math.max(0.01, weight), payload, isMutation };
+
+  const isMutation = Math.random() < mutationRate;
+  return Object.fromEntries(
+    Object.entries(baseWeights).map(([event, weight]) => [
+      event,
+      Math.max(0.01, isMutation ? 1 - weight : weight),
+    ])
+  );
 }
+
+/**
+ * Compute transition choices for a set of available events (used by simulator).
+ */
+export function computeTransitionChoices(
+  agent: Agent,
+  availableEvents: string[],
+  context: SimulationContext
+): TransitionChoice[] {
+  const weights = computeTransitionWeights(agent, context);
+  const isMutation = Math.random() < (context.mutationRate ?? 0.05);
+
+  return availableEvents.map((event) => ({
+    event,
+    weight: weights[event] ?? 0.5,
+    payload: generatePayload(event, agent),
+    isMutation,
+  }));
+}
+
+
 
 /**
  * Generate payload for a transition event.
@@ -310,25 +309,32 @@ function generatePayload(
     case 'activate':
       return { timestamp };
       
-    case 'submit_attestation':
-      const types = ['BEHAVIORAL', 'COMPLETION', 'VOUCH'];
+    case 'receive_vouch':
       return {
         timestamp,
-        attestationType: types[Math.floor(Math.random() * types.length)],
+        from: agent.address,
         platformId: agent.meta.platform,
       };
-      
-    case 'submit_violation':
+
+    case 'receive_completion':
       return {
         timestamp,
+        proof: `sim-proof-${timestamp}`,
+        platformId: agent.meta.platform,
+      };
+
+    case 'receive_violation':
+      return {
+        timestamp,
+        reporter: agent.address,
         platformId: agent.meta.platform,
         reason: 'Simulated violation event',
       };
-      
-    case 'file_challenge':
+
+    case 'challenge':
       return {
         timestamp,
-        challengerId: agent.address,
+        challenger: agent.address,
         challengerStake: 100,
         reason: 'Simulated challenge',
         evidenceHash: `sim-evidence-${timestamp}`,
@@ -398,6 +404,24 @@ function generatePayload(
     default:
       return { timestamp };
   }
+}
+
+/**
+ * Generate event data for a given event name.
+ * Throws for deprecated (old) event names.
+ * Use this as the public API; generatePayload is internal.
+ */
+export function generateEventData(
+  agent: Agent,
+  event: string
+): Record<string, unknown> {
+  const DEPRECATED_EVENTS = ['submit_attestation', 'submit_violation', 'file_challenge'];
+  if (DEPRECATED_EVENTS.includes(event)) {
+    throw new Error(
+      `Event '${event}' is deprecated. Use receive_vouch, receive_completion, receive_violation, or challenge instead.`
+    );
+  }
+  return generatePayload(event, agent);
 }
 
 // ============================================================================
