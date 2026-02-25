@@ -99,10 +99,10 @@ importers:
         version: 16.13.0
       graphql-redis-subscriptions:
         specifier: ^2.7.0
-        version: 2.7.0(graphql-subscriptions@2.0.0(graphql@16.13.0))
+        version: 2.7.0(graphql-subscriptions@3.0.0(graphql@16.13.0))
       graphql-subscriptions:
-        specifier: ^2.0.0
-        version: 2.0.0(graphql@16.13.0)
+        specifier: ^3.0.0
+        version: 3.0.0(graphql@16.13.0)
       graphql-ws:
         specifier: ^5.14.0
         version: 5.16.2(graphql@16.13.0)
@@ -1299,8 +1299,8 @@ packages:
     peerDependencies:
       graphql-subscriptions: ^1.0.0 || ^2.0.0 || ^3.0.0
 
-  graphql-subscriptions@2.0.0:
-    resolution: {integrity: sha512-s6k2b8mmt9gF9pEfkxsaO1lTxaySfKoEJzEfmwguBbQ//Oq23hIXCfR1hm4kdh5hnR20RdwB+s3BCb+0duHSZA==}
+  graphql-subscriptions@3.0.0:
+    resolution: {integrity: sha512-kZCdevgmzDjGAOqH7GlDmQXYAkuHoKpMlJrqF40HMPhUhM5ZWSFSxCwD/nSi6AkaijmMfsFhoJRGJ27UseCvRA==}
     peerDependencies:
       graphql: ^15.7.2 || ^16.0.0
 
@@ -1423,9 +1423,6 @@ packages:
   istanbul-reports@3.2.0:
     resolution: {integrity: sha512-HGYWWS/ehqTV3xN10i23tkPkpH46MLCIMFNCaaKNavAXTF1RkqxawEPtnjnGZ6XKSInBKkiOA5BKS+aZiY3AvA==}
     engines: {node: '>=8'}
-
-  iterall@1.3.0:
-    resolution: {integrity: sha512-QZ9qOMdF+QLHxy1QIpUHUU1D5pS2CG2P69LF6L6CPjPYA/XMOmKV3PZpawHoAjHNyB0swdVTRxdYT4tbBbxqwg==}
 
   js-sha256@0.11.1:
     resolution: {integrity: sha512-o6WSo/LUvY2uC4j7mO50a2ms7E/EAdbP0swigLV+nzHKTTaYnaLIWJ02VdXrsJX0vGedDESQnLsOekr94ryfjg==}
@@ -3282,18 +3279,17 @@ snapshots:
 
   gopd@1.2.0: {}
 
-  graphql-redis-subscriptions@2.7.0(graphql-subscriptions@2.0.0(graphql@16.13.0)):
+  graphql-redis-subscriptions@2.7.0(graphql-subscriptions@3.0.0(graphql@16.13.0)):
     dependencies:
-      graphql-subscriptions: 2.0.0(graphql@16.13.0)
+      graphql-subscriptions: 3.0.0(graphql@16.13.0)
     optionalDependencies:
       ioredis: 5.9.2
     transitivePeerDependencies:
       - supports-color
 
-  graphql-subscriptions@2.0.0(graphql@16.13.0):
+  graphql-subscriptions@3.0.0(graphql@16.13.0):
     dependencies:
       graphql: 16.13.0
-      iterall: 1.3.0
 
   graphql-ws@5.16.2(graphql@16.13.0):
     dependencies:
@@ -3419,8 +3415,6 @@ snapshots:
     dependencies:
       html-escaper: 2.0.2
       istanbul-lib-report: 3.0.1
-
-  iterall@1.3.0: {}
 
   js-sha256@0.11.1: {}
 
