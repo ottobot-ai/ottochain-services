@@ -39,6 +39,6 @@
   },
   "dependencies": {
     "@prisma/client": "^5.9.0",
-    "ioredis": "^5.9.2"
+    "ioredis": "^5.9.3"
   }
 }
