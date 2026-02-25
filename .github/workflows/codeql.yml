@@ -32,7 +32,7 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
-          build-mode: autobuild
+          build-mode: none
           # advisory mode — findings surface in Security tab but do NOT block merge
 
       - name: Perform CodeQL Analysis
