@@ -13,7 +13,7 @@
     "@apollo/server": "^4.10.0",
     "@graphql-tools/schema": "^10.0.31",
     "@ottochain/shared": "workspace:*",
-    "@prisma/client": "^5.9.0",
+    "@prisma/client": "^7.4.1",
     "body-parser": "^2.2.2",
     "cors": "^2.8.6",
     "express": "^4.18.0",

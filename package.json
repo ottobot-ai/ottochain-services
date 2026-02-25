@@ -38,7 +38,7 @@
     "typescript": "^5.3.0"
   },
   "dependencies": {
-    "@prisma/client": "^5.9.0",
+    "@prisma/client": "^7.4.1",
     "ioredis": "^5.9.3"
   }
 }
