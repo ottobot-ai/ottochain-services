@@ -47,7 +47,7 @@ jobs:
           df -h /
 
       - name: Checkout ottochain-services
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # ── Resolve versions from deploy repo's versions.yaml ──────────────
       - name: Fetch versions.yaml
@@ -78,7 +78,7 @@ jobs:
 
       # ── Checkout tessellation (for compose infrastructure only) ────────
       - name: Checkout tessellation
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: Constellation-Labs/tessellation
           path: tessellation
