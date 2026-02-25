@@ -4,7 +4,7 @@
  * Receives events from ottochain-monitoring and queries them for the status page.
  */
 
-import { PrismaClient, MonitoringEventType, MonitoringSeverity, MonitoringScope } from '@prisma/client';
+import { PrismaClient, MonitoringEventType, MonitoringSeverity, MonitoringScope, Prisma } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -63,7 +63,7 @@ export async function storeEvent(event: MonitoringEventInput): Promise<void> {
       affectedLayers: event.affectedLayers ?? [],
       success: event.success,
       message: event.message,
-      details: event.details ?? undefined,
+      details: event.details as Prisma.InputJsonValue ?? Prisma.JsonNull,
     },
   });
 }
