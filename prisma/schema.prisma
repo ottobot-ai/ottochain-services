@@ -302,3 +302,43 @@ model StatsDelta {
   
   computedAt   DateTime @default(now())
 }
+
+/// Monitoring system events (restarts, alerts, resolutions)
+/// Written by ottochain-monitoring, read by packages/monitor for status page
+model MonitoringEvent {
+  id             Int                   @id @default(autoincrement())
+  timestamp      DateTime              @default(now())
+  eventType      MonitoringEventType
+  condition      String?               @db.VarChar(64)   // ForkedCluster, SnapshotsStopped, etc.
+  severity       MonitoringSeverity?
+  scope          MonitoringScope?
+  affectedNodes  String[]                                // IP addresses
+  affectedLayers String[]                                // gl0, ml0, cl1, dl1
+  success        Boolean?                                // For restart events
+  message        String?               @db.VarChar(512)
+  details        Json?                                   // Additional context
+
+  @@index([timestamp(sort: Desc)])
+  @@index([eventType])
+  @@index([condition])
+}
+
+enum MonitoringEventType {
+  RESTART           // Automated restart triggered
+  ALERT             // Alert condition detected
+  RESOLVED          // Alert condition resolved
+  MONITORING_START  // Monitoring service started
+  MONITORING_STOP   // Monitoring service stopped
+}
+
+enum MonitoringSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum MonitoringScope {
+  INDIVIDUAL_NODE
+  FULL_LAYER
+  FULL_METAGRAPH
+}

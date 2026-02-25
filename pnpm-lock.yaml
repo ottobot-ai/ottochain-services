@@ -171,6 +171,9 @@ importers:
       '@ottochain/shared':
         specifier: workspace:*
         version: link:../shared
+      '@prisma/client':
+        specifier: ^5.22.0
+        version: 5.22.0(prisma@5.22.0)
       express:
         specifier: ^4.21.2
         version: 4.22.1

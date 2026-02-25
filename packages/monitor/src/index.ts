@@ -15,6 +15,7 @@ import type { StackHealth, ServiceStatus, MonitorConfig } from './types.js';
 import { HealthCollector } from './collector.js';
 import { MonitorCache } from './cache.js';
 import { CacheRefresher } from './refresher.js';
+import { storeEvent, getMonitoringActivity, getRestartHistory, closeEvents } from './events.js';
 
 // =============================================================================
 // Alerting (Telegram + Webhook)
@@ -492,6 +493,48 @@ async function main(): Promise<void> {
     }
   });
   
+  // =========================================================================
+  // Monitoring Events API
+  // =========================================================================
+
+  // Receive events from ottochain-monitoring
+  app.post('/api/monitoring/events', async (req, res) => {
+    try {
+      const event = req.body;
+      if (!event.eventType) {
+        return res.status(400).json({ error: 'eventType is required' });
+      }
+      await storeEvent(event);
+      res.status(201).json({ ok: true });
+    } catch (err) {
+      console.error('Failed to store monitoring event:', err);
+      res.status(500).json({ error: 'Failed to store event' });
+    }
+  });
+
+  // Get monitoring activity summary
+  app.get('/api/monitoring/activity', async (_, res) => {
+    try {
+      const activity = await getMonitoringActivity();
+      res.json(activity);
+    } catch (err) {
+      console.error('Failed to get monitoring activity:', err);
+      res.status(500).json({ error: 'Failed to get activity' });
+    }
+  });
+
+  // Get restart history
+  app.get('/api/monitoring/restarts', async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string, 10) || 50;
+      const history = await getRestartHistory(Math.min(limit, 100));
+      res.json(history);
+    } catch (err) {
+      console.error('Failed to get restart history:', err);
+      res.status(500).json({ error: 'Failed to get restart history' });
+    }
+  });
+
   // HTTP server
   const server = createServer(app);
   
@@ -632,6 +675,7 @@ async function main(): Promise<void> {
     console.log('\n🛑 Shutting down...');
     refresher?.stop();
     await cache?.close();
+    await closeEvents();
     process.exit(0);
   });
   
@@ -639,6 +683,7 @@ async function main(): Promise<void> {
     console.log('\n🛑 Shutting down...');
     refresher?.stop();
     await cache?.close();
+    await closeEvents();
     process.exit(0);
   });
 }
