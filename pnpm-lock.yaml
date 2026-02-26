@@ -55,8 +55,8 @@ importers:
         specifier: ^1.0.3
         version: 1.0.3
       zod:
-        specifier: ^3.22.0
-        version: 3.25.76
+        specifier: ^4.3.6
+        version: 4.3.6
     devDependencies:
       '@types/express':
         specifier: ^4.17.21
@@ -113,8 +113,8 @@ importers:
         specifier: ^8.16.0
         version: 8.19.0
       zod:
-        specifier: ^3.22.0
-        version: 3.25.76
+        specifier: ^4.3.6
+        version: 4.3.6
     devDependencies:
       '@types/body-parser':
         specifier: ^1.19.6
@@ -150,8 +150,8 @@ importers:
         specifier: ^4.18.0
         version: 4.22.1
       zod:
-        specifier: ^3.22.0
-        version: 3.25.76
+        specifier: ^4.3.6
+        version: 4.3.6
     devDependencies:
       '@types/express':
         specifier: ^4.17.21
@@ -206,8 +206,8 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
       zod:
-        specifier: ^3.22.0
-        version: 3.25.76
+        specifier: ^4.3.6
+        version: 4.3.6
     devDependencies:
       '@types/node':
         specifier: ^25.3.0
@@ -2129,6 +2129,9 @@ packages:
 
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+
+  zod@4.3.6:
+    resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
 
 snapshots:
 
@@ -4111,3 +4114,5 @@ snapshots:
   xtend@4.0.2: {}
 
   zod@3.25.76: {}
+
+  zod@4.3.6: {}
