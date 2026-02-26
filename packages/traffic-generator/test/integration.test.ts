@@ -440,10 +440,8 @@ async function main(): Promise<void> {
         console.log(`  ⚠️ Rejection check: ${err}`);
       }
     } else {
-      // ML0 does not deliver snapshot webhooks in all environments (known limitation).
-      // Treat indexer timeout as a soft failure so core metagraph tests still gate CI.
-      console.warn(`⚠️ Fiber not found in indexer after ${indexerWaitTimeout / 1000}s (ML0 may not support snapshot webhooks)`);
-      results.push({ name: 'Verify Indexer State', status: 'skipped', message: 'Indexer timeout (snapshot webhooks unavailable)' });
+      console.error(`❌ Fiber not found in indexer after ${indexerWaitTimeout / 1000}s`);
+      results.push({ name: 'Verify Indexer State', status: 'failed', message: 'Timeout waiting for indexer' });
     }
   }
   
