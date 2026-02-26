@@ -23,6 +23,7 @@ services:
       # Connect to metagraph via container names on tessellation_common
       - METAGRAPH_ML0_URL=http://ml0-0:9200
       - METAGRAPH_DL1_URL=http://dl1-0:9400
+      - METAGRAPH_DL1_URLS=http://dl1-0:9400,http://dl1-1:9410,http://dl1-2:9420
       - INDEXER_PORT=3031
       # ML0 can reach us directly at http://indexer:3031
       - INDEXER_CALLBACK_URL=http://indexer:3031/webhook/snapshot
@@ -52,6 +53,7 @@ services:
       # Connect to metagraph via container names on tessellation_common
       - METAGRAPH_ML0_URL=http://ml0-0:9200
       - METAGRAPH_DL1_URL=http://dl1-0:9400
+      - METAGRAPH_DL1_URLS=http://dl1-0:9400,http://dl1-1:9410,http://dl1-2:9420
       - BRIDGE_PORT=3030
     ports:
       - "3030:3030"
