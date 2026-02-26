@@ -454,8 +454,10 @@ jobs:
           exit 1
 
       - name: Collect logs on failure
-        if: failure()
+        if: failure() || cancelled()
         run: |
+          mkdir -p /tmp/ci-logs
+
           echo "=== Build Mode ==="
           echo "From source: ${{ steps.mode.outputs.from_source }}"
           if [ "${{ steps.mode.outputs.from_source }}" = "true" ]; then
@@ -468,16 +470,20 @@ jobs:
           fi
 
           echo "=== Container list ==="
-          docker ps -a || true
+          docker ps -a | tee /tmp/ci-logs/containers.txt || true
 
-          for c in gl0-0 ml0-0 dl1-0 dl1-1 dl1-2; do
+          for c in gl0-0 ml0-0 dl1-0 dl1-1 dl1-2 indexer bridge; do
             echo "=== $c Logs ==="
-            docker logs "$c" 2>&1 | tail -100 || true
+            docker logs "$c" 2>&1 | tee /tmp/ci-logs/${c}.log | tail -100 || true
           done
-          echo "=== Indexer Logs ==="
-          docker logs indexer 2>&1 | tail -100 || true
-          echo "=== Bridge Logs ==="
-          docker logs bridge 2>&1 | tail -50 || true
+
+      - name: Upload node logs
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-logs-${{ github.run_number }}
+          path: /tmp/ci-logs/
+          retention-days: 14
 
       - name: Cleanup
         if: always()
