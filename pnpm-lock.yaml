@@ -34,8 +34,8 @@ importers:
   packages/bridge:
     dependencies:
       '@ottochain/sdk':
-        specifier: 1.1.0
-        version: 1.1.0(@stardust-collective/dag4@2.8.1)
+        specifier: 1.1.1
+        version: 1.1.1(@stardust-collective/dag4@2.8.1)
       '@ottochain/shared':
         specifier: workspace:*
         version: link:../shared
@@ -197,8 +197,8 @@ importers:
   packages/shared:
     dependencies:
       '@ottochain/sdk':
-        specifier: 1.1.0
-        version: 1.1.0(@stardust-collective/dag4@2.8.1)
+        specifier: 1.1.1
+        version: 1.1.1(@stardust-collective/dag4@2.8.1)
       '@prisma/client':
         specifier: ^5.9.0
         version: 5.22.0(prisma@5.22.0)
@@ -569,8 +569,8 @@ packages:
   '@noble/secp256k1@1.7.2':
     resolution: {integrity: sha512-/qzwYl5eFLH8OWIecQWM31qld2g1NfjgylK+TNhqtaUKP37Nm+Y+z30Fjhw0Ct8p9yCQEm2N3W/AckdIb3SMcQ==}
 
-  '@ottochain/sdk@1.1.0':
-    resolution: {integrity: sha512-YFJvInQNuh9FhLw6ffqf5hz9JO7UerSdTn58Ef/w04ispyjquSFwS1hhTbcuKMZJ4qX6p5E/gzdUSwcXmKnucQ==}
+  '@ottochain/sdk@1.1.1':
+    resolution: {integrity: sha512-RGKqYEPo5sEnJKeccx8DoNw20IM05yQX+7kzScpYrcSOJIlZV4+QNMtVZuzdlC101B4ViwMGIt8TmRXbB+IXIw==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       '@stardust-collective/dag4': ^2.6.0
@@ -2399,7 +2399,7 @@ snapshots:
 
   '@noble/secp256k1@1.7.2': {}
 
-  '@ottochain/sdk@1.1.0(@stardust-collective/dag4@2.8.1)':
+  '@ottochain/sdk@1.1.1(@stardust-collective/dag4@2.8.1)':
     dependencies:
       '@bufbuild/protobuf': 2.11.0
       '@stardust-collective/dag4': 2.8.1
