@@ -66,14 +66,31 @@ jobs:
       # ── Resolve ottochain source ───────────────────────────────────────
       - name: Resolve ottochain ref
         id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if [ -n "${{ inputs.ottochain_ref }}" ]; then
-            echo "ottochain_ref=${{ inputs.ottochain_ref }}" >> $GITHUB_OUTPUT
-            echo "ottochain_repo=${{ inputs.ottochain_repo }}" >> $GITHUB_OUTPUT
-          else
-            echo "ottochain_ref=main" >> $GITHUB_OUTPUT
-            echo "ottochain_repo=ottobot-ai/ottochain" >> $GITHUB_OUTPUT
+          REPO="${{ inputs.ottochain_repo || 'ottobot-ai/ottochain' }}"
+          REF="${{ inputs.ottochain_ref }}"
+
+          if [ -z "$REF" ]; then
+            # For PRs: try matching branch name on ottochain, fall back to main
+            PR_BRANCH="${{ github.head_ref }}"
+            if [ -n "$PR_BRANCH" ]; then
+              if gh api "repos/${REPO}/branches/${PR_BRANCH}" --jq '.name' >/dev/null 2>&1; then
+                REF="$PR_BRANCH"
+                echo "Using matching branch: ${REPO}@${REF}"
+              else
+                REF="main"
+                echo "No matching branch '${PR_BRANCH}' on ${REPO}, using main"
+              fi
+            else
+              REF="main"
+            fi
           fi
+
+          echo "ottochain_ref=${REF}" >> $GITHUB_OUTPUT
+          echo "ottochain_repo=${REPO}" >> $GITHUB_OUTPUT
+          echo "Building ottochain from ${REPO}@${REF}"
 
       - name: Checkout ottochain
         uses: actions/checkout@v6
