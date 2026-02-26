@@ -13,6 +13,7 @@ import { governanceRoutes } from './routes/governance.js';
 import { marketRoutes } from './routes/market.js';
 import { oracleRoutes } from './routes/oracle.js';
 import { corporateRoutes } from './routes/corporate.js';
+import { tokenRoutes } from './routes/token.js';
 import { responseTimeTracker } from './lib/response-time-tracker.js';
 
 const app = express();
@@ -64,6 +65,7 @@ app.use('/governance', governanceRoutes); // DAO/Governance API
 app.use('/market', marketRoutes);         // Market API (predictions, auctions, crowdfunding)
 app.use('/oracle', oracleRoutes);         // Oracle API (registration, attestation, staking)
 app.use('/corporate', corporateRoutes);   // Corporate governance API (entities, board, shareholders)
+app.use('/token', tokenRoutes);           // Token API (create, transfer, split, merge, burn, expire)
 
 // Start server
 const config = getConfig();
@@ -127,4 +129,12 @@ app.listen(port, () => {
   console.log(`             POST http://localhost:${port}/corporate/:entityId/compliance/file`);
   console.log(`             GET  http://localhost:${port}/corporate/:entityId/compliance`);
   console.log(`             GET  http://localhost:${port}/corporate`);
+  console.log(`   Token:    POST http://localhost:${port}/token/create`);
+  console.log(`             POST http://localhost:${port}/token/transfer`);
+  console.log(`             POST http://localhost:${port}/token/split`);
+  console.log(`             POST http://localhost:${port}/token/merge`);
+  console.log(`             POST http://localhost:${port}/token/burn`);
+  console.log(`             POST http://localhost:${port}/token/expire`);
+  console.log(`             GET  http://localhost:${port}/token/:tokenId`);
+  console.log(`             GET  http://localhost:${port}/token`);
 });
