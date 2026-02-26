@@ -89,18 +89,6 @@ jobs:
       # PATH A: Build from source
       # ══════════════════════════════════════════════════════════════════
 
-      - name: Set up Java
-        if: steps.mode.outputs.from_source == 'true'
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '21'
-          cache: 'sbt'
-
-      - name: Set up sbt
-        if: steps.mode.outputs.from_source == 'true'
-        uses: sbt/setup-sbt@v1
-
       - name: Resolve ottochain ref
         if: steps.mode.outputs.from_source == 'true'
         id: resolve
@@ -137,6 +125,18 @@ jobs:
           repository: ${{ steps.resolve.outputs.ottochain_repo }}
           ref: ${{ steps.resolve.outputs.ottochain_ref }}
           path: ottochain
+
+      - name: Set up Java
+        if: steps.mode.outputs.from_source == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'sbt'
+
+      - name: Set up sbt
+        if: steps.mode.outputs.from_source == 'true'
+        uses: sbt/setup-sbt@v1
 
       - name: Resolve tessellation version (from source)
         if: steps.mode.outputs.from_source == 'true'
