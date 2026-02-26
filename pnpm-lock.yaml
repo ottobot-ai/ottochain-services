@@ -104,8 +104,8 @@ importers:
         specifier: ^3.0.0
         version: 3.0.0(graphql@16.13.0)
       graphql-ws:
-        specifier: ^5.14.0
-        version: 5.16.2(graphql@16.13.0)
+        specifier: ^6.0.7
+        version: 6.0.7(graphql@16.13.0)(ws@8.19.0)
       ioredis:
         specifier: ^5.9.3
         version: 5.9.3
@@ -1304,11 +1304,21 @@ packages:
     peerDependencies:
       graphql: ^15.7.2 || ^16.0.0
 
-  graphql-ws@5.16.2:
-    resolution: {integrity: sha512-E1uccsZxt/96jH/OwmLPuXMACILs76pKF2i3W861LpKBCYtGIyPQGtWLuBLkND4ox1KHns70e83PS4te50nvPQ==}
-    engines: {node: '>=10'}
+  graphql-ws@6.0.7:
+    resolution: {integrity: sha512-yoLRW+KRlDmnnROdAu7sX77VNLC0bsFoZyGQJLy1cF+X/SkLg/fWkRGrEEYQK8o2cafJ2wmEaMqMEZB3U3DYDg==}
+    engines: {node: '>=20'}
     peerDependencies:
-      graphql: '>=0.11 <=16'
+      '@fastify/websocket': ^10 || ^11
+      crossws: ~0.3
+      graphql: ^15.10.1 || ^16
+      ws: ^8
+    peerDependenciesMeta:
+      '@fastify/websocket':
+        optional: true
+      crossws:
+        optional: true
+      ws:
+        optional: true
 
   graphql@16.13.0:
     resolution: {integrity: sha512-uSisMYERbaB9bkA9M4/4dnqyktaEkf1kMHNKq/7DHyxVeWqHQ2mBmVqm5u6/FVHwF3iCNalKcg82Zfl+tffWoA==}
@@ -3291,9 +3301,11 @@ snapshots:
     dependencies:
       graphql: 16.13.0
 
-  graphql-ws@5.16.2(graphql@16.13.0):
+  graphql-ws@6.0.7(graphql@16.13.0)(ws@8.19.0):
     dependencies:
       graphql: 16.13.0
+    optionalDependencies:
+      ws: 8.19.0
 
   graphql@16.13.0: {}
 
