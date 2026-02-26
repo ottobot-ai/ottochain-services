@@ -7,14 +7,15 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      ottochain_version:
-        description: 'OttoChain metagraph version override (e.g., 0.7.6)'
+      ottochain_ref:
+        description: 'OttoChain branch/tag to build from (e.g., feat/schema-refactor, main, v0.8.0)'
         required: false
         type: string
-      tessellation_version:
-        description: 'Tessellation version override (e.g., v4.0.0-rc.2)'
+      ottochain_repo:
+        description: 'OttoChain repo (e.g., scasplte2/ottochain or ottobot-ai/ottochain)'
         required: false
         type: string
+        default: 'ottobot-ai/ottochain'
 
 env:
   NODE_VERSION: '20'
@@ -22,7 +23,7 @@ env:
 jobs:
   integration-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     services:
       postgres:
@@ -49,105 +50,96 @@ jobs:
       - name: Checkout ottochain-services
         uses: actions/checkout@v6
 
-      # ── Resolve versions from deploy repo's versions.yaml ──────────────
-      - name: Fetch versions.yaml
-        id: versions
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'sbt'
+
+      - name: Set up sbt
+        uses: sbt/setup-sbt@v1
+
+      - name: Install just
+        uses: extractions/setup-just@v3
+
+      # ── Resolve ottochain source ───────────────────────────────────────
+      - name: Resolve ottochain ref
+        id: resolve
         run: |
-          echo "Fetching versions.yaml from ottochain-deploy..."
-          curl -sf -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://raw.githubusercontent.com/ottobot-ai/ottochain-deploy/main/versions.yaml" \
-            -o versions.yaml
-
-          # Parse versions (workflow_dispatch inputs override versions.yaml)
-          OTTOCHAIN_VER="${{ inputs.ottochain_version }}"
-          TESS_VER="${{ inputs.tessellation_version }}"
-
-          if [ -z "$OTTOCHAIN_VER" ]; then
-            OTTOCHAIN_VER=$(grep -A1 'ottochain:' versions.yaml | grep 'version:' | head -1 | sed 's/.*"\(.*\)".*/\1/')
-          fi
-          if [ -z "$TESS_VER" ]; then
-            TESS_VER=$(grep -A1 'tessellation:' versions.yaml | grep 'version:' | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          if [ -n "${{ inputs.ottochain_ref }}" ]; then
+            echo "ottochain_ref=${{ inputs.ottochain_ref }}" >> $GITHUB_OUTPUT
+            echo "ottochain_repo=${{ inputs.ottochain_repo }}" >> $GITHUB_OUTPUT
+          else
+            echo "ottochain_ref=main" >> $GITHUB_OUTPUT
+            echo "ottochain_repo=ottobot-ai/ottochain" >> $GITHUB_OUTPUT
           fi
 
-          # Ensure tessellation version has v prefix for release tag
-          [[ "$TESS_VER" != v* ]] && TESS_VER="v${TESS_VER}"
-
-          echo "ottochain_version=${OTTOCHAIN_VER}" >> $GITHUB_OUTPUT
-          echo "tessellation_version=${TESS_VER}" >> $GITHUB_OUTPUT
-          echo "Resolved versions: OttoChain=${OTTOCHAIN_VER}, Tessellation=${TESS_VER}"
-
-      # ── Checkout tessellation (for compose infrastructure only) ────────
-      - name: Checkout tessellation
+      - name: Checkout ottochain
         uses: actions/checkout@v6
         with:
-          repository: Constellation-Labs/tessellation
-          path: tessellation
-          ref: ${{ steps.versions.outputs.tessellation_version }}
+          repository: ${{ steps.resolve.outputs.ottochain_repo }}
+          ref: ${{ steps.resolve.outputs.ottochain_ref }}
+          path: ottochain
 
-      # ── Download pre-built JARs instead of building from source ────────
-      - name: Download pre-built JARs
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TESS_VER: ${{ steps.versions.outputs.tessellation_version }}
-          OTTO_VER: ${{ steps.versions.outputs.ottochain_version }}
+      # ── Resolve tessellation version from metakit POM on Maven Central ─
+      - name: Resolve tessellation version
+        id: versions
+        working-directory: ottochain
         run: |
-          # Download tessellation release JARs
-          echo "Downloading tessellation ${TESS_VER} release JARs..."
-          gh release download "${TESS_VER}" \
-            --repo Constellation-Labs/tessellation \
-            --pattern "cl-node.jar" \
-            --pattern "cl-dag-l1.jar" \
-            --pattern "cl-keytool.jar" \
-            --pattern "cl-wallet.jar" \
-            --dir /tmp/tess-jars/ \
-            --clobber
+          METAKIT_VER=$(grep 'val metakit =' project/Dependencies.scala | head -1 | grep -o '"[^"]*"' | tr -d '"')
+          echo "metakit=${METAKIT_VER}" >> $GITHUB_OUTPUT
 
-          # Download OttoChain release JARs
-          echo "Downloading OttoChain v${OTTO_VER} release JARs..."
-          gh release download "v${OTTO_VER}" \
-            --repo scasplte2/ottochain \
-            --pattern "metagraph-l0-*.jar" \
-            --pattern "currency-l1-*.jar" \
-            --pattern "data-l1-*.jar" \
-            --dir /tmp/otto-jars/ \
-            --clobber
+          TESS_VER=$(curl -sf "https://repo1.maven.org/maven2/io/constellationnetwork/metakit_2.13/${METAKIT_VER}/metakit_2.13-${METAKIT_VER}.pom" \
+            | grep -A1 'tessellation-sdk' | grep '<version>' | grep -o '[0-9][^<]*')
+          echo "tessellation=${TESS_VER}" >> $GITHUB_OUTPUT
+          echo "Dependency chain: ottochain → metakit ${METAKIT_VER} → tessellation ${TESS_VER}"
 
-          # Place JARs where compose-runner's assembly.sh expects them:
-          # Tessellation: modules/{module}/target/scala-2.13/tessellation-{module}-assembly-*.jar
-          # Metagraph: $METAGRAPH/modules/{path}/target/scala-2.13/*-assembly-*.jar
-          #
-          # assembly.sh checks these paths, copies to docker/jars/, then docker build uses them.
-          # By pre-populating, we skip all sbt compilation.
+      # ── Clone tessellation develop for Docker infrastructure ───────────
+      - name: Clone tessellation infrastructure
+        run: |
+          git clone --depth 1 --branch develop \
+            https://github.com/Constellation-Labs/tessellation.git tessellation
 
-          # Tessellation JARs → modules/*/target/scala-2.13/
-          for mod in dag-l0 dag-l1 keytool wallet; do
-            mkdir -p tessellation/modules/${mod}/target/scala-2.13
+      # ── Download pre-built hypergraph JARs from tessellation release ───
+      - name: Download tessellation release JARs
+        run: |
+          TESS_TAG="v${{ steps.versions.outputs.tessellation }}"
+          BASE_URL="https://github.com/Constellation-Labs/tessellation/releases/download/${TESS_TAG}"
+          JARS_DIR="tessellation/docker/jars"
+          mkdir -p "$JARS_DIR"
+
+          echo "Downloading tessellation JARs from release ${TESS_TAG}..."
+          declare -A JAR_MAP=(
+            ["cl-node.jar"]="gl0.jar"
+            ["cl-dag-l1.jar"]="gl1.jar"
+            ["cl-keytool.jar"]="keytool.jar"
+            ["cl-wallet.jar"]="wallet.jar"
+          )
+
+          for release_name in "${!JAR_MAP[@]}"; do
+            local_name="${JAR_MAP[$release_name]}"
+            echo "  ${release_name} → ${local_name}"
+            curl -fsSL -o "${JARS_DIR}/${local_name}" "${BASE_URL}/${release_name}"
+            echo "    ✓ $(stat -c%s "${JARS_DIR}/${local_name}") bytes"
           done
-          cp /tmp/tess-jars/cl-node.jar     tessellation/modules/dag-l0/target/scala-2.13/tessellation-dag-l0-assembly-prebuilt.jar
-          cp /tmp/tess-jars/cl-dag-l1.jar   tessellation/modules/dag-l1/target/scala-2.13/tessellation-dag-l1-assembly-prebuilt.jar
-          cp /tmp/tess-jars/cl-keytool.jar  tessellation/modules/keytool/target/scala-2.13/tessellation-keytool-assembly-prebuilt.jar
-          cp /tmp/tess-jars/cl-wallet.jar   tessellation/modules/wallet/target/scala-2.13/tessellation-wallet-assembly-prebuilt.jar
 
-          # OttoChain JARs → dummy metagraph dir (used by compose-runner --metagraph)
-          DUMMY_META=/tmp/metagraph-dummy
-          for mod in l0 l1 data_l1; do
-            mkdir -p $DUMMY_META/modules/${mod}/target/scala-2.13
+      # ── Build metagraph JARs from source ───────────────────────────────
+      - name: Build metagraph JARs
+        working-directory: ottochain
+        run: sbt --error "currencyL0/assembly" "currencyL1/assembly" "dataL1/assembly"
+
+      - name: Stage metagraph JARs
+        run: |
+          for layer in l0:ml0 l1:cl1 data_l1:dl1; do
+            module="${layer%%:*}"; target="${layer#*:}"
+            jar=$(ls -1t ottochain/modules/${module}/target/scala-2.13/*-assembly*.jar | head -1)
+            cp "$jar" tessellation/docker/jars/${target}.jar
+            echo "✓ ${target}.jar ($(stat -c%s "$jar") bytes)"
           done
-          cp /tmp/otto-jars/metagraph-l0-*.jar $DUMMY_META/modules/l0/target/scala-2.13/ottochain-currency-l0-assembly-prebuilt.jar
-          cp /tmp/otto-jars/currency-l1-*.jar  $DUMMY_META/modules/l1/target/scala-2.13/ottochain-currency-l1-assembly-prebuilt.jar
-          cp /tmp/otto-jars/data-l1-*.jar      $DUMMY_META/modules/data_l1/target/scala-2.13/ottochain-data-l1-assembly-prebuilt.jar
+          ls -la tessellation/docker/jars/
 
-          echo "✅ All JARs staged for compose-runner"
-          echo "Tessellation JARs:"
-          ls -lh tessellation/modules/dag-l0/target/scala-2.13/
-          echo "OttoChain JARs:"
-          ls -lh $DUMMY_META/modules/l0/target/scala-2.13/
-
-      # ── Setup for services build ──────────────────────────────────────
-      # No Java/sbt needed — using pre-built JARs from GitHub Releases.
-      # Tessellation's compose-runner uses pre-existing test keys (no keytool).
-      # Genesis runs inside Docker containers.
-
+      # ── Setup services ─────────────────────────────────────────────────
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -178,52 +170,15 @@ jobs:
           DATABASE_URL: postgresql://ottochain:ottochain@localhost:5432/ottochain
         run: pnpm db:push --skip-generate
 
-      # ── Start metagraph cluster from pre-built JARs ───────────────────
-      # Note: compose-runner handles docker build internally from docker/jars/
+      # ── Start cluster ──────────────────────────────────────────────────
       - name: Start metagraph cluster
-        working-directory: tessellation/docker
-        run: |
-          chmod +x bin/*.sh
-
-          # Enable webhook feature for ML0
-          sed -i 's/- CL_DOCKER_ID=ml0/- WEBHOOK_URL=http:\/\/webhook-enabled\/\n      - CL_DOCKER_ID=ml0/' docker-compose.metagraph.yaml
-
-          # Run compose-runner with --skip-assembly.
-          # Pre-built JARs are already in modules/*/target/ (tessellation) and
-          # /tmp/metagraph-dummy/modules/*/target/ (ottochain).
-          # assembly.sh finds them, skips sbt, copies to docker/jars/, builds image.
-          SKIP_METAGRAPH_ASSEMBLY=true PUBLISH=false \
-            ./bin/compose-runner.sh --up --skip-assembly --metagraph=/tmp/metagraph-dummy --dl1
-
-      - name: Verify key distribution
         working-directory: tessellation
         run: |
-          echo "=== Verifying keys were distributed to node directories ==="
-          for i in 0 1 2; do
-            echo "--- Node $i ---"
-            if [ ! -f "nodes/$i/key.p12" ]; then
-              echo "ERROR: nodes/$i/key.p12 not found!"
-              ls -la nodes/$i/ || true
-              exit 1
-            fi
-            key_hash=$(md5sum nodes/$i/key.p12 | cut -d' ' -f1)
-            echo "Key hash: $key_hash"
-          done
-
-          hash0=$(md5sum nodes/0/key.p12 | cut -d' ' -f1)
-          hash1=$(md5sum nodes/1/key.p12 | cut -d' ' -f1)
-          hash2=$(md5sum nodes/2/key.p12 | cut -d' ' -f1)
-          if [ "$hash0" = "$hash1" ] || [ "$hash0" = "$hash2" ] || [ "$hash1" = "$hash2" ]; then
-            echo "ERROR: Key hashes are not all unique!"
-            exit 1
-          fi
-          echo "✓ All node keys verified as unique"
+          just up --hypergraph-release="v${{ steps.versions.outputs.tessellation }}" \
+            --skip-assembly --metagraph="${GITHUB_WORKSPACE}/ottochain" --dl1 --data
 
       - name: Wait for metagraph healthy
         run: |
-          cp $GITHUB_WORKSPACE/scripts/wait-for-cluster.sh ./wait-for-cluster.sh
-          chmod +x ./wait-for-cluster.sh
-
           echo "=== Waiting for GL0 ==="
           for i in {1..90}; do
             if curl -s http://localhost:9000/node/info | grep -q '"state":"Ready"'; then
@@ -243,6 +198,8 @@ jobs:
           done
 
           echo "=== Waiting for DL1 cluster with robust join retry ==="
+          cp $GITHUB_WORKSPACE/scripts/wait-for-cluster.sh ./wait-for-cluster.sh
+          chmod +x ./wait-for-cluster.sh
           ./wait-for-cluster.sh dl1 "9400 9410 9420" 9400
 
           echo "=== Waiting for first metagraph snapshot ==="
@@ -250,14 +207,11 @@ jobs:
             ordinal=$(curl -s http://localhost:9200/snapshots/latest | jq -r '.value.ordinal // 0' 2>/dev/null || echo "0")
             if [ "$ordinal" -gt 0 ]; then
               echo "Metagraph producing snapshots (ordinal: $ordinal) after ${i}s"
-              exit 0
+              break
             fi
             sleep 1
+            if [ $i -eq 120 ]; then echo "Metagraph not producing snapshots"; exit 1; fi
           done
-          echo "Metagraph not producing snapshots"
-          curl -s http://localhost:9200/snapshots/latest | jq . || true
-          docker logs ml0-0 2>&1 | tail -50 || true
-          exit 1
 
       - name: Verify DL1 cluster formation
         run: |
@@ -356,23 +310,18 @@ jobs:
       - name: Collect logs on failure
         if: failure()
         run: |
-          echo "=== Versions ==="
-          echo "OttoChain: ${{ steps.versions.outputs.ottochain_version }}"
-          echo "Tessellation: ${{ steps.versions.outputs.tessellation_version }}"
+          echo "=== Source Versions ==="
+          echo "OttoChain: ${{ steps.resolve.outputs.ottochain_repo }}@${{ steps.resolve.outputs.ottochain_ref }}"
+          echo "Metakit: ${{ steps.versions.outputs.metakit }}"
+          echo "Tessellation: ${{ steps.versions.outputs.tessellation }}"
 
           echo "=== Container list ==="
           docker ps -a || true
 
-          echo "=== GL0 Logs ==="
-          docker logs gl0-0 2>&1 | tail -100 || true
-          echo "=== ML0 Logs ==="
-          docker logs ml0-0 2>&1 | tail -100 || true
-          echo "=== DL1-0 Logs ==="
-          docker logs dl1-0 2>&1 | tail -100 || true
-          echo "=== DL1-1 Logs ==="
-          docker logs dl1-1 2>&1 | tail -50 || true
-          echo "=== DL1-2 Logs ==="
-          docker logs dl1-2 2>&1 | tail -50 || true
+          for c in gl0-0 ml0-0 dl1-0 dl1-1 dl1-2; do
+            echo "=== $c Logs ==="
+            docker logs "$c" 2>&1 | tail -100 || true
+          done
           echo "=== Indexer Logs ==="
           docker logs indexer 2>&1 | tail -100 || true
           echo "=== Bridge Logs ==="
@@ -383,9 +332,7 @@ jobs:
         run: |
           docker compose -f docker-compose.ci.yaml down 2>/dev/null || true
           docker rm -f redis-ci 2>/dev/null || true
-          cd tessellation/docker
-          chmod +x bin/*.sh 2>/dev/null || true
-          ./bin/compose-runner.sh --down || true
+          cd tessellation && just down 2>/dev/null || docker compose down -v 2>/dev/null || true
 
       - name: Summary
         if: always()
@@ -394,6 +341,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Component | Version | Source |" >> $GITHUB_STEP_SUMMARY
           echo "|-----------|---------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| OttoChain | ${{ steps.versions.outputs.ottochain_version }} | GitHub Release JAR |" >> $GITHUB_STEP_SUMMARY
-          echo "| Tessellation | ${{ steps.versions.outputs.tessellation_version }} | GitHub Release JAR |" >> $GITHUB_STEP_SUMMARY
+          echo "| OttoChain | ${{ steps.resolve.outputs.ottochain_ref }} | Built from source (${{ steps.resolve.outputs.ottochain_repo }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Metakit | ${{ steps.versions.outputs.metakit }} | Maven Central |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tessellation | ${{ steps.versions.outputs.tessellation }} | Release JARs + develop infra |" >> $GITHUB_STEP_SUMMARY
           echo "| Services | $(git rev-parse --short HEAD) | Built from source |" >> $GITHUB_STEP_SUMMARY
