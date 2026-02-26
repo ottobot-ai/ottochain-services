@@ -494,17 +494,17 @@ corporateRoutes.post('/amend-charter', async (req, res) => {
 
     const state = await getStateMachine(input.entityId) as {
       sequenceNumber?: number;
-      currentState?: { value: string };
+      currentState?: string;
     } | null;
 
     if (!state) {
       return res.status(404).json({ error: 'Corporate entity not found' });
     }
 
-    if (state.currentState?.value !== 'ACTIVE') {
+    if (state.currentState !== 'ACTIVE') {
       return res.status(400).json({
         error: 'Entity must be in ACTIVE state to amend charter',
-        currentState: state.currentState?.value,
+        currentState: state.currentState,
       });
     }
 
@@ -598,7 +598,7 @@ corporateRoutes.post('/:entityId/board/elect', async (req, res) => {
 
     const boardState = await getStateMachine(boardId) as {
       sequenceNumber?: number;
-      currentState?: { value: string };
+      currentState?: string;
     } | null;
 
     if (!boardState) {
@@ -676,7 +676,7 @@ corporateRoutes.post('/:entityId/board/meeting', async (req, res) => {
 
     const boardState = await getStateMachine(boardId) as {
       sequenceNumber?: number;
-      currentState?: { value: string };
+      currentState?: string;
     } | null;
 
     if (!boardState) {
@@ -849,7 +849,7 @@ corporateRoutes.post('/:entityId/board/consent', async (req, res) => {
 
     const resolutionState = await getStateMachine(input.resolutionId) as {
       sequenceNumber?: number;
-      currentState?: { value: string };
+      currentState?: string;
     } | null;
 
     if (!resolutionState) {
@@ -982,17 +982,17 @@ corporateRoutes.post('/:entityId/shareholders/vote', async (req, res) => {
 
     const meetingState = await getStateMachine(input.meetingId) as {
       sequenceNumber?: number;
-      currentState?: { value: string };
+      currentState?: string;
     } | null;
 
     if (!meetingState) {
       return res.status(404).json({ error: 'Meeting not found' });
     }
 
-    if (meetingState.currentState?.value !== 'VOTING') {
+    if (meetingState.currentState !== 'VOTING') {
       return res.status(400).json({
         error: 'Polls are not open',
-        currentState: meetingState.currentState?.value,
+        currentState: meetingState.currentState,
       });
     }
 
@@ -1108,7 +1108,7 @@ corporateRoutes.post('/:entityId/shareholders/proxy', async (req, res) => {
 
     const proxyState = await getStateMachine(input.proxyId) as {
       sequenceNumber?: number;
-      currentState?: { value: string };
+      currentState?: string;
     } | null;
 
     if (!proxyState) {
@@ -1315,7 +1315,7 @@ corporateRoutes.post('/:entityId/securities/issue', async (req, res) => {
 
     // Verify entity exists and is active
     const entityState = await getStateMachine(input.entityId) as {
-      currentState?: { value: string };
+      currentState?: string;
       stateData?: { shareStructure?: { classes?: Array<{ classId: string; className: string; parValue: number }> } };
     } | null;
 
@@ -1323,10 +1323,10 @@ corporateRoutes.post('/:entityId/securities/issue', async (req, res) => {
       return res.status(404).json({ error: 'Corporate entity not found' });
     }
 
-    if (entityState.currentState?.value !== 'ACTIVE') {
+    if (entityState.currentState !== 'ACTIVE') {
       return res.status(400).json({
         error: 'Entity must be in ACTIVE state to issue shares',
-        currentState: entityState.currentState?.value,
+        currentState: entityState.currentState,
       });
     }
 
@@ -1431,7 +1431,7 @@ corporateRoutes.post('/:entityId/securities/transfer', async (req, res) => {
 
     const securityState = await getStateMachine(input.securityId) as {
       sequenceNumber?: number;
-      currentState?: { value: string };
+      currentState?: string;
       stateData?: { holder?: { holderId?: string } };
     } | null;
 
@@ -1439,10 +1439,10 @@ corporateRoutes.post('/:entityId/securities/transfer', async (req, res) => {
       return res.status(404).json({ error: 'Security not found' });
     }
 
-    if (securityState.currentState?.value !== 'ISSUED') {
+    if (securityState.currentState !== 'ISSUED') {
       return res.status(400).json({
         error: 'Security must be in ISSUED state to transfer',
-        currentState: securityState.currentState?.value,
+        currentState: securityState.currentState,
       });
     }
 

@@ -32,7 +32,7 @@ const CreateSMSchema = z.object({
       version: z.string().optional(),
     }),
     states: z.record(z.any()),
-    initialState: z.object({ value: z.string() }),
+    initialState: z.string(),
     transitions: z.array(z.any()),
   }),
   initialData: z.record(z.any()),
@@ -121,7 +121,7 @@ smRoutes.post('/transition', async (req, res) => {
 
     const state = await getStateMachine(input.fiberId) as {
       sequenceNumber?: number;
-      currentState?: { value: string };
+      currentState?: string;
       definition?: { metadata?: { name?: string } };
     } | null;
 
@@ -149,14 +149,14 @@ smRoutes.post('/transition', async (req, res) => {
     const smName = state.definition?.metadata?.name ?? 'SM';
     console.log(`[sm/transition] ${smName} ${input.fiberId}: ${input.eventName}`);
     console.log(`  Agent: ${callerAddress}`);
-    console.log(`  Current state: ${state.currentState?.value}`);
+    console.log(`  Current state: ${state.currentState}`);
 
     const result = await submitTransaction(message, input.privateKey);
 
     res.json({
       fiberId: input.fiberId,
       eventName: input.eventName,
-      previousState: state.currentState?.value,
+      previousState: state.currentState,
       hash: result.hash,
     });
   } catch (err) {
@@ -206,7 +206,7 @@ smRoutes.get('/', async (req, res) => {
       state: {
         stateMachines?: Record<string, {
           stateData?: Record<string, unknown>;
-          currentState?: { value: string };
+          currentState?: string;
           definition?: { metadata?: { name?: string } };
         }>;
       };
@@ -224,7 +224,7 @@ smRoutes.get('/', async (req, res) => {
     if (query.status) {
       results = results.filter(([_, sm]) => 
         sm.stateData?.status === query.status ||
-        sm.currentState?.value === query.status
+        sm.currentState === query.status
       );
     }
     if (query.creator) {
@@ -273,17 +273,17 @@ smRoutes.post('/:fiberId/commit', async (req, res) => {
 
     const state = await getStateMachine(req.params.fiberId) as {
       sequenceNumber?: number;
-      currentState?: { value: string };
+      currentState?: string;
     } | null;
 
     if (!state) {
       return res.status(404).json({ error: 'State machine not found' });
     }
 
-    if (state.currentState?.value !== 'OPEN') {
+    if (state.currentState !== 'OPEN') {
       return res.status(400).json({ 
         error: 'Market is not open for commitments',
-        currentState: state.currentState?.value,
+        currentState: state.currentState,
       });
     }
 

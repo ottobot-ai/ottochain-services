@@ -26,26 +26,26 @@ interface MetagraphState {
 interface StateMachineFiber {
   fiberId: string;
   status: string;
-  currentState: { value: string };
+  currentState: string;
   stateData: Record<string, unknown>;
   definition: {
     states: Record<string, unknown>;
-    initialState: { value: string };
+    initialState: string;
     transitions: Array<{
-      from: { value: string };
-      to: { value: string };
+      from: string;
+      to: string;
       eventName: string;
     }>;
     metadata?: { name?: string; description?: string };
   };
   owners: string[];
   sequenceNumber: number;
-  creationOrdinal: { value: number };
-  latestUpdateOrdinal: { value: number };
+  creationOrdinal: number;
+  latestUpdateOrdinal: number;
   lastReceipt?: {
     eventName: string;
-    fromState: { value: string };
-    toState: { value: string };
+    fromState: string;
+    toState: string;
     success: boolean;
     gasUsed: number;
   };
@@ -91,7 +91,7 @@ export async function processSnapshot(notification: SnapshotNotification): Promi
   for (const [fiberId, fiber] of Object.entries(stateMachines || {})) {
     const workflowType = fiber.definition?.metadata?.name || 'Unknown';
     const workflowDesc = fiber.definition?.metadata?.description || null;
-    const currentState = fiber.currentState?.value || 'unknown';
+    const currentState = fiber.currentState || 'unknown';
     const status = mapFiberStatus(fiber.status);
     
     const existingFiber = await prisma.fiber.findUnique({ where: { fiberId } });
@@ -109,7 +109,7 @@ export async function processSnapshot(notification: SnapshotNotification): Promi
         stateData: (fiber.stateData || {}) as any,
         definition: (fiber.definition || {}) as any,
         sequenceNumber: fiber.sequenceNumber || 0,
-        createdOrdinal: BigInt(fiber.creationOrdinal?.value || notification.ordinal),
+        createdOrdinal: BigInt(fiber.creationOrdinal || notification.ordinal),
         updatedOrdinal: BigInt(notification.ordinal),
       },
       update: {
@@ -138,8 +138,8 @@ export async function processSnapshot(notification: SnapshotNotification): Promi
           data: {
             fiberId,
             eventName: fiber.lastReceipt.eventName,
-            fromState: fiber.lastReceipt.fromState.value,
-            toState: fiber.lastReceipt.toState.value,
+            fromState: fiber.lastReceipt.fromState,
+            toState: fiber.lastReceipt.toState,
             success: fiber.lastReceipt.success,
             gasUsed: fiber.lastReceipt.gasUsed || 0,
             snapshotOrdinal: BigInt(notification.ordinal),
@@ -152,7 +152,7 @@ export async function processSnapshot(notification: SnapshotNotification): Promi
           timestamp: new Date().toISOString(),
           fiberId,
           workflowType,
-          action: `${fiber.lastReceipt.eventName}: ${fiber.lastReceipt.fromState.value} → ${fiber.lastReceipt.toState.value}`,
+          action: `${fiber.lastReceipt.eventName}: ${fiber.lastReceipt.fromState} → ${fiber.lastReceipt.toState}`,
         });
       }
     }
@@ -235,7 +235,7 @@ async function deriveAgent(fiber: StateMachineFiber, ordinal: number): Promise<b
   const stateData = fiber.stateData || {};
   const displayName = (stateData.displayName as string) || `Agent ${address.slice(3, 11)}`;
   const reputation = (stateData.reputation as number) ?? 10;
-  const agentState = mapAgentState(stateData.status as string, fiber.currentState?.value);
+  const agentState = mapAgentState(stateData.status as string, fiber.currentState);
   
   const existing = await prisma.agent.findUnique({ where: { address } });
   
@@ -352,7 +352,7 @@ async function deriveContract(fiber: StateMachineFiber, ordinal: number): Promis
   
   if (!proposerAgent || !counterpartyAgent) return false;
   
-  const contractState = mapContractState(fiber.currentState?.value, fiber.status);
+  const contractState = mapContractState(fiber.currentState, fiber.status);
   
   await prisma.contract.upsert({
     where: { contractId: fiber.fiberId },
@@ -403,7 +403,7 @@ async function trackCorporateActivity(
 ): Promise<void> {
   const stateData = fiber.stateData || {};
   const workflowType = fiber.definition?.metadata?.name || 'Unknown';
-  const currentState = fiber.currentState?.value || 'unknown';
+  const currentState = fiber.currentState || 'unknown';
   const entityId = (stateData.entityId as string) || fiber.fiberId;
   const legalName = (stateData.legalName as string) || (stateData.name as string) || entityId;
   

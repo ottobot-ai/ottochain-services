@@ -44,14 +44,14 @@ interface CommitResult {
 
 interface StateMachine {
   fiberId: string;
-  currentState: { value: string };
+  currentState: string;
   stateData: Record<string, unknown>;
   owners: string[];
   sequenceNumber: number;
   definition: {
     metadata: { name: string; version?: string };
     states: Record<string, unknown>;
-    initialState: { value: string };
+    initialState: string;
     transitions: unknown[];
   };
 }
@@ -75,19 +75,19 @@ const MarketDefinition = {
     version: '1.0.0',
   },
   states: {
-    PROPOSED: { id: { value: 'PROPOSED' }, isFinal: false },
-    OPEN: { id: { value: 'OPEN' }, isFinal: false },
-    CLOSED: { id: { value: 'CLOSED' }, isFinal: false },
-    RESOLVING: { id: { value: 'RESOLVING' }, isFinal: false },
-    SETTLED: { id: { value: 'SETTLED' }, isFinal: true },
-    REFUNDED: { id: { value: 'REFUNDED' }, isFinal: true },
-    CANCELLED: { id: { value: 'CANCELLED' }, isFinal: true },
+    PROPOSED: { id: 'PROPOSED', isFinal: false },
+    OPEN: { id: 'OPEN', isFinal: false },
+    CLOSED: { id: 'CLOSED', isFinal: false },
+    RESOLVING: { id: 'RESOLVING', isFinal: false },
+    SETTLED: { id: 'SETTLED', isFinal: true },
+    REFUNDED: { id: 'REFUNDED', isFinal: true },
+    CANCELLED: { id: 'CANCELLED', isFinal: true },
   },
-  initialState: { value: 'PROPOSED' },
+  initialState: 'PROPOSED',
   transitions: [
     {
-      from: { value: 'PROPOSED' },
-      to: { value: 'OPEN' },
+      from: 'PROPOSED',
+      to: 'OPEN',
       eventName: 'open',
       guard: { '===': [{ var: 'event.agent' }, { var: 'state.creator' }] },
       effect: {
@@ -98,8 +98,8 @@ const MarketDefinition = {
       },
     },
     {
-      from: { value: 'PROPOSED' },
-      to: { value: 'CANCELLED' },
+      from: 'PROPOSED',
+      to: 'CANCELLED',
       eventName: 'cancel',
       guard: { '===': [{ var: 'event.agent' }, { var: 'state.creator' }] },
       effect: {
@@ -110,8 +110,8 @@ const MarketDefinition = {
       },
     },
     {
-      from: { value: 'OPEN' },
-      to: { value: 'OPEN' },
+      from: 'OPEN',
+      to: 'OPEN',
       eventName: 'commit',
       guard: {
         and: [
@@ -155,8 +155,8 @@ const MarketDefinition = {
       },
     },
     {
-      from: { value: 'OPEN' },
-      to: { value: 'CLOSED' },
+      from: 'OPEN',
+      to: 'CLOSED',
       eventName: 'close',
       guard: {
         or: [
@@ -177,8 +177,8 @@ const MarketDefinition = {
       },
     },
     {
-      from: { value: 'CLOSED' },
-      to: { value: 'RESOLVING' },
+      from: 'CLOSED',
+      to: 'RESOLVING',
       eventName: 'submit_resolution',
       guard: {
         or: [
@@ -209,8 +209,8 @@ const MarketDefinition = {
       },
     },
     {
-      from: { value: 'RESOLVING' },
-      to: { value: 'SETTLED' },
+      from: 'RESOLVING',
+      to: 'SETTLED',
       eventName: 'finalize',
       guard: {
         or: [
@@ -276,7 +276,7 @@ async function waitForState(fiberId: string, expectedState: string, timeoutMs = 
       const response = await fetch(`${ML0_URL}/data-application/v1/state-machines/${fiberId}`);
       if (response.ok) {
         const data = (await response.json()) as StateMachine;
-        if (data?.currentState?.value === expectedState) {
+        if (data?.currentState === expectedState) {
           return data;
         }
       }
@@ -368,14 +368,14 @@ describe('State Machine E2E Tests', () => {
       const fiber = await waitForFiber(marketFiberId);
 
       assert.ok(fiber, 'Fiber should appear on ML0');
-      assert.strictEqual(fiber.currentState.value, 'PROPOSED', 'Should be in PROPOSED state');
+      assert.strictEqual(fiber.currentState, 'PROPOSED', 'Should be in PROPOSED state');
       assert.strictEqual(fiber.stateData.schema, 'Market', 'Should have Market schema');
       assert.strictEqual(fiber.stateData.creator, creatorWallet.address, 'Should be created by creator');
       assert.strictEqual(fiber.stateData.marketType, 'prediction', 'Should be prediction market');
       assert.strictEqual(fiber.stateData.status, 'PROPOSED', 'Status should be PROPOSED');
       assert.strictEqual(fiber.stateData.totalCommitted, 0, 'totalCommitted should be 0');
 
-      console.log(`  ✓ Fiber confirmed on ML0: state=${fiber.currentState.value}`);
+      console.log(`  ✓ Fiber confirmed on ML0: state=${fiber.currentState}`);
     });
 
     it('should reject invalid definition', async () => {
@@ -437,7 +437,7 @@ describe('State Machine E2E Tests', () => {
       const fiber = await waitForState(marketFiberId, 'OPEN');
 
       assert.ok(fiber, 'Fiber should transition to OPEN');
-      assert.strictEqual(fiber.currentState.value, 'OPEN', 'State should be OPEN');
+      assert.strictEqual(fiber.currentState, 'OPEN', 'State should be OPEN');
       assert.strictEqual(fiber.stateData.status, 'OPEN', 'Status should be OPEN');
       assert.ok(fiber.stateData.openedAt, 'Should have openedAt timestamp');
       assert.strictEqual(fiber.sequenceNumber, 1, 'Sequence number should be 1');
@@ -477,7 +477,7 @@ describe('State Machine E2E Tests', () => {
       assert.strictEqual(response.status, 200);
 
       const fiber = (await response.json()) as StateMachine;
-      assert.strictEqual(fiber.currentState.value, 'OPEN', 'Should still be OPEN');
+      assert.strictEqual(fiber.currentState, 'OPEN', 'Should still be OPEN');
       assert.strictEqual(fiber.stateData.totalCommitted, 100, 'totalCommitted should be 100');
 
       const commitments = fiber.stateData.commitments as Record<string, { amount: number; data: { outcome: string } }>;
@@ -537,11 +537,11 @@ describe('State Machine E2E Tests', () => {
       const fiber = await waitForState(marketFiberId, 'CLOSED');
 
       assert.ok(fiber, 'Fiber should transition to CLOSED');
-      assert.strictEqual(fiber.currentState.value, 'CLOSED', 'State should be CLOSED');
+      assert.strictEqual(fiber.currentState, 'CLOSED', 'State should be CLOSED');
       assert.strictEqual(fiber.stateData.status, 'CLOSED', 'Status should be CLOSED');
       assert.ok(fiber.stateData.closedAt, 'Should have closedAt timestamp');
 
-      console.log(`  ✓ Market closed: state=${fiber.currentState.value}`);
+      console.log(`  ✓ Market closed: state=${fiber.currentState}`);
     });
 
     it('should reject non-creator trying to open market', async () => {
@@ -586,7 +586,7 @@ describe('State Machine E2E Tests', () => {
       // Wait and verify state didn't change
       await new Promise((resolve) => setTimeout(resolve, 5000));
       const fiber = await waitForFiber(newMarket.fiberId);
-      assert.strictEqual(fiber?.currentState.value, 'PROPOSED', 'Should still be PROPOSED (guard prevented transition)');
+      assert.strictEqual(fiber?.currentState, 'PROPOSED', 'Should still be PROPOSED (guard prevented transition)');
 
       console.log(`  ✓ Guard prevented non-creator from opening market`);
     });
@@ -614,13 +614,13 @@ describe('State Machine E2E Tests', () => {
 
       const fiber = (await response.json()) as StateMachine;
       assert.strictEqual(fiber.fiberId, marketFiberId, 'Should match fiberId');
-      assert.strictEqual(fiber.currentState.value, 'CLOSED', 'Should be in CLOSED state');
+      assert.strictEqual(fiber.currentState, 'CLOSED', 'Should be in CLOSED state');
       assert.strictEqual(fiber.definition.metadata.name, 'Market', 'Definition should be Market');
       assert.ok(fiber.stateData.commitments, 'Should have commitments');
       assert.strictEqual(fiber.stateData.totalCommitted, 350, 'totalCommitted should be 350');
 
       console.log(`  ✓ Queried market: ${fiber.fiberId}`);
-      console.log(`    State: ${fiber.currentState.value}, Total: ${fiber.stateData.totalCommitted}`);
+      console.log(`    State: ${fiber.currentState}, Total: ${fiber.stateData.totalCommitted}`);
     });
 
     it('should return 404 for non-existent ID', async () => {
@@ -667,7 +667,7 @@ describe('State Machine E2E Tests', () => {
 
       // Verify all returned items are CLOSED
       for (const [id, sm] of Object.entries(result.stateMachines)) {
-        const isClosed = sm.stateData?.status === 'CLOSED' || sm.currentState?.value === 'CLOSED';
+        const isClosed = sm.stateData?.status === 'CLOSED' || sm.currentState === 'CLOSED';
         assert.ok(isClosed, `${id} should be CLOSED`);
       }
 

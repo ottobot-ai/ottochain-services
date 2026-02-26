@@ -45,7 +45,7 @@ interface TaskFiber {
 
 interface StateMachine {
   fiberId: string;
-  currentState: { value: string };
+  currentState: string;
   stateData: Record<string, unknown>;
   owners: string[];
   sequenceNumber: number;
@@ -85,7 +85,7 @@ async function waitForState(fiberId: string, expectedState: string, timeoutMs = 
       const response = await fetch(`${ML0_URL}/data-application/v1/state-machines/${fiberId}`);
       if (response.ok) {
         const data = await response.json() as StateMachine;
-        if (data?.currentState?.value === expectedState) {
+        if (data?.currentState === expectedState) {
           return data;
         }
       }
@@ -266,9 +266,9 @@ describe('Cloud Agent to OttoChain Fiber Task Completion', () => {
       for (const agent of cloudAgents) {
         const state = await waitForState(agent.fiberId, 'ACTIVE');
         assert.ok(state, `Agent ${agent.specialization} should be active`);
-        assert.strictEqual(state.currentState.value, 'ACTIVE');
+        assert.strictEqual(state.currentState, 'ACTIVE');
         
-        console.log(`  ✅ ${agent.specialization}: ${state.currentState.value} (seq: ${state.sequenceNumber})`);
+        console.log(`  ✅ ${agent.specialization}: ${state.currentState} (seq: ${state.sequenceNumber})`);
       }
       
       console.log(`\n✅ All agents verified active on OttoChain ML0`);
@@ -488,7 +488,7 @@ describe('Cloud Agent to OttoChain Fiber Task Completion', () => {
         console.log(`  📊 ${agent.specialization}:`);
         console.log(`     Reputation: ${agent.reputation} (initial: 10)`);
         console.log(`     Completed Tasks: ${agent.completedTasks}`);
-        console.log(`     On-chain State: ${onChainState.currentState.value}`);
+        console.log(`     On-chain State: ${onChainState.currentState}`);
         
         // Verify reputation increase for active agents
         if (agent.completedTasks > 0) {

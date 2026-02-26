@@ -30,7 +30,7 @@ interface Wallet {
 
 interface StateMachine {
   fiberId:        string;
-  currentState:   { value: string };
+  currentState: string;
   stateData:      Record<string, unknown>;
   owners:         string[];
   sequenceNumber: number;
@@ -72,7 +72,7 @@ async function waitForState(
       const res = await fetch(`${ML0_URL}/data-application/v1/state-machines/${fiberId}`);
       if (res.ok) {
         const fiber = await res.json() as StateMachine;
-        if (fiber.currentState?.value === expectedState) return fiber;
+        if (fiber.currentState === expectedState) return fiber;
       }
     } catch { /* still starting */ }
     await new Promise(r => setTimeout(r, 1000));
@@ -145,7 +145,7 @@ describe('Contract Lifecycle: propose → accept → complete × 2 → finalize'
   it('should appear on ML0 in PROPOSED state', async () => {
     const fiber = await waitForFiber(contractId);
     assert.ok(fiber,                      'Contract not found on ML0');
-    assert.strictEqual(fiber!.currentState.value, 'PROPOSED', `Wrong state: ${fiber!.currentState.value}`);
+    assert.strictEqual(fiber!.currentState, 'PROPOSED', `Wrong state: ${fiber!.currentState}`);
     console.log(`  ✓ Contract PROPOSED on ML0`);
   });
 
@@ -293,7 +293,7 @@ describe('Contract Lifecycle: propose → reject', () => {
 
   it('should appear on ML0 in PROPOSED state', async () => {
     const fiber = await waitForFiber(contractId);
-    assert.strictEqual(fiber!.currentState.value, 'PROPOSED');
+    assert.strictEqual(fiber!.currentState, 'PROPOSED');
   });
 
   it('should allow counterparty to reject', async () => {
@@ -353,7 +353,7 @@ describe('Agent Lifecycle: register → activate → vouch', () => {
   it('should appear on ML0 in REGISTERED state', async () => {
     const fiber = await waitForFiber(agentFiberId);
     assert.ok(fiber, 'Agent not found on ML0');
-    assert.strictEqual(fiber!.currentState.value, 'REGISTERED');
+    assert.strictEqual(fiber!.currentState, 'REGISTERED');
     console.log(`  ✓ Agent REGISTERED on ML0`);
   });
 

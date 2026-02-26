@@ -47,7 +47,7 @@ export interface AgentState {
     completedContracts?: number;
     violations?: number;
   };
-  currentState: { value: string };
+  currentState: string;
   sequenceNumber: number;
 }
 
@@ -58,7 +58,7 @@ export interface ContractState {
     status?: string;
     task?: string;
   };
-  currentState: { value: string };
+  currentState: string;
   sequenceNumber: number;
 }
 
@@ -85,7 +85,7 @@ export interface MarketState {
     deadline?: number;
     threshold?: number;
   };
-  currentState: { value: string };
+  currentState: string;
   sequenceNumber: number;
 }
 

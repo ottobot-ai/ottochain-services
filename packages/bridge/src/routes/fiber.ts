@@ -33,14 +33,14 @@ const CreateFiberRequestSchema = z.object({
   privateKey: z.string().length(64),
   definition: z.object({
     states: z.record(z.object({
-      id: z.object({ value: z.string() }),
+      id: z.string(),
       isFinal: z.boolean(),
       metadata: z.any().optional(),
     })),
-    initialState: z.object({ value: z.string() }),
+    initialState: z.string(),
     transitions: z.array(z.object({
-      from: z.object({ value: z.string() }),
-      to: z.object({ value: z.string() }),
+      from: z.string(),
+      to: z.string(),
       eventName: z.string(),
       guard: z.any(),
       effect: z.any(),
@@ -272,7 +272,7 @@ fiberRoutes.get('/', async (req, res) => {
         stateMachines: Record<string, {
           stateData?: { _schema?: string; schema?: string };
           definition?: { metadata?: { name?: string } };
-          currentState?: { value: string };
+          currentState?: string;
         }>;
       };
     };
@@ -296,7 +296,7 @@ fiberRoutes.get('/', async (req, res) => {
     const result = fibers.map(([fiberId, sm]) => ({
       fiberId,
       schema: sm.stateData?._schema || sm.stateData?.schema || sm.definition?.metadata?.name,
-      currentState: sm.currentState?.value,
+      currentState: sm.currentState,
       stateData: sm.stateData,
     }));
 

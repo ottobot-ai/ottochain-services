@@ -59,65 +59,65 @@ const CONFIG = {
 
 const TOKEN_ESCROW_DEFINITION = {
   states: {
-    Proposed:  { id: { value: 'PROPOSED'  }, isFinal: false },
-    Funded:    { id: { value: 'FUNDED'    }, isFinal: false },
-    Active:    { id: { value: 'ACTIVE'    }, isFinal: false },
-    Completed: { id: { value: 'COMPLETED' }, isFinal: true  },
-    Cancelled: { id: { value: 'CANCELLED' }, isFinal: true  },
+    Proposed:  { id: 'PROPOSED', isFinal: false },
+    Funded:    { id: 'FUNDED', isFinal: false },
+    Active:    { id: 'ACTIVE', isFinal: false },
+    Completed: { id: 'COMPLETED', isFinal: true  },
+    Cancelled: { id: 'CANCELLED', isFinal: true  },
   },
-  initialState: { value: 'PROPOSED' },
+  initialState: 'PROPOSED',
   transitions: [
     // Setup
     {
-      from: { value: 'PROPOSED' }, to: { value: 'FUNDED' }, eventName: 'fund',
+      from: 'PROPOSED', to: 'FUNDED', eventName: 'fund',
       guard: { '==': [1, 1] },
       effect: { merge: [{ var: 'state' }, { status: 'FUNDED', depositor: { var: 'event.depositor' }, fundedAt: { var: 'event.timestamp' } }] },
     },
     {
-      from: { value: 'PROPOSED' }, to: { value: 'CANCELLED' }, eventName: 'cancel',
+      from: 'PROPOSED', to: 'CANCELLED', eventName: 'cancel',
       guard: { '==': [1, 1] },
       effect: { merge: [{ var: 'state' }, { status: 'CANCELLED', cancelledAt: { var: 'event.timestamp' } }] },
     },
     // Activation
     {
-      from: { value: 'FUNDED' }, to: { value: 'ACTIVE' }, eventName: 'activate',
+      from: 'FUNDED', to: 'ACTIVE', eventName: 'activate',
       guard: { '==': [1, 1] },
       effect: { merge: [{ var: 'state' }, { status: 'ACTIVE', activatedAt: { var: 'event.timestamp' } }] },
     },
     {
-      from: { value: 'FUNDED' }, to: { value: 'CANCELLED' }, eventName: 'cancel',
+      from: 'FUNDED', to: 'CANCELLED', eventName: 'cancel',
       guard: { '==': [1, 1] },
       effect: { merge: [{ var: 'state' }, { status: 'CANCELLED', cancelledAt: { var: 'event.timestamp' } }] },
     },
     // Token operations (ACTIVE → ACTIVE)
     {
-      from: { value: 'ACTIVE' }, to: { value: 'ACTIVE' }, eventName: 'mint',
+      from: 'ACTIVE', to: 'ACTIVE', eventName: 'mint',
       guard: { '==': [1, 1] },
       effect: { merge: [{ var: 'state' }, { mintedAmount: { '+': [{ var: 'state.mintedAmount' }, { var: 'event.amount' }] } }] },
     },
     {
-      from: { value: 'ACTIVE' }, to: { value: 'ACTIVE' }, eventName: 'transfer',
+      from: 'ACTIVE', to: 'ACTIVE', eventName: 'transfer',
       guard: { '==': [1, 1] },
       effect: { merge: [{ var: 'state' }, { lastTransferAt: { var: 'event.timestamp' } }] },
     },
     {
-      from: { value: 'ACTIVE' }, to: { value: 'ACTIVE' }, eventName: 'burn',
+      from: 'ACTIVE', to: 'ACTIVE', eventName: 'burn',
       guard: { '==': [1, 1] },
       effect: { merge: [{ var: 'state' }, { burnedAmount: { '+': [{ var: 'state.burnedAmount' }, { var: 'event.amount' }] } }] },
     },
     {
-      from: { value: 'ACTIVE' }, to: { value: 'ACTIVE' }, eventName: 'escrow',
+      from: 'ACTIVE', to: 'ACTIVE', eventName: 'escrow',
       guard: { '==': [1, 1] },
       effect: { merge: [{ var: 'state' }, { escrowedAmount: { '+': [{ var: 'state.escrowedAmount' }, { var: 'event.amount' }] } }] },
     },
     // Resolution
     {
-      from: { value: 'ACTIVE' }, to: { value: 'COMPLETED' }, eventName: 'release',
+      from: 'ACTIVE', to: 'COMPLETED', eventName: 'release',
       guard: { '==': [1, 1] },
       effect: { merge: [{ var: 'state' }, { status: 'COMPLETED', releasedAt: { var: 'event.timestamp' } }] },
     },
     {
-      from: { value: 'ACTIVE' }, to: { value: 'CANCELLED' }, eventName: 'cancel',
+      from: 'ACTIVE', to: 'CANCELLED', eventName: 'cancel',
       guard: { '==': [1, 1] },
       effect: { merge: [{ var: 'state' }, { status: 'CANCELLED', cancelledAt: { var: 'event.timestamp' } }] },
     },

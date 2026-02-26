@@ -60,7 +60,7 @@ interface RegistrationResult {
 
 interface StateMachine {
   fiberId: string;
-  currentState: { value: string };
+  currentState: string;
   stateData: Record<string, unknown>;
   owners: string[];
   sequenceNumber: number;
@@ -104,7 +104,7 @@ async function waitForState(fiberId: string, expectedState: string, timeoutMs = 
       const response = await fetch(`${ML0_URL}/data-application/v1/state-machines/${fiberId}`);
       if (response.ok) {
         const data = await response.json() as StateMachine;
-        if (data?.currentState?.value === expectedState) {
+        if (data?.currentState === expectedState) {
           // Rejection check via getRejections — assert no rejections during state change
           const rejections = await getRejections({ fiberId });
           assert.strictEqual(rejections.length, 0, `Fiber ${fiberId} rejected during state change to ${expectedState}: ${rejections.map(r => r.errors.map(e => `${e.code}: ${e.message}`).join(', ')).join('; ')}`);
@@ -195,7 +195,7 @@ describe('Bridge E2E Tests', () => {
       const fiber = await waitForFiber(agent1FiberId);
       
       assert.ok(fiber, 'Fiber should appear on ML0');
-      assert.strictEqual(fiber.currentState.value, 'REGISTERED', 'Should be in Registered state');
+      assert.strictEqual(fiber.currentState, 'REGISTERED', 'Should be in Registered state');
       assert.strictEqual(fiber.owners[0], wallet1.address, 'Should be owned by registrant');
       assert.strictEqual(fiber.stateData.displayName, 'E2E Test Agent 1', 'Should have correct displayName');
       assert.strictEqual(fiber.stateData.reputation, 10, 'Should have initial reputation of 10');
@@ -204,7 +204,7 @@ describe('Bridge E2E Tests', () => {
       const rejections = await getRejections({ fiberId: agent1FiberId });
       assert.strictEqual(rejections.length, 0, `Fiber ${agent1FiberId} was unexpectedly rejected: ${rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
       
-      console.log(`  ✓ Fiber confirmed on ML0: state=${fiber.currentState.value}, reputation=${fiber.stateData.reputation}`);
+      console.log(`  ✓ Fiber confirmed on ML0: state=${fiber.currentState}, reputation=${fiber.stateData.reputation}`);
     });
 
     it('should register a second agent', async () => {
@@ -262,14 +262,14 @@ describe('Bridge E2E Tests', () => {
       const fiber = await waitForState(agent1FiberId, 'ACTIVE');
       
       assert.ok(fiber, 'Fiber should transition to Active');
-      assert.strictEqual(fiber.currentState.value, 'ACTIVE', 'State should be Active');
+      assert.strictEqual(fiber.currentState, 'ACTIVE', 'State should be Active');
       assert.strictEqual(fiber.sequenceNumber, 1, 'Sequence number should be 1 after activation');
       
       // Rejection assertion: verify no rejections during state change to Active
       const rejections = await getRejections({ fiberId: agent1FiberId });
       assert.strictEqual(rejections.length, 0, `Fiber ${agent1FiberId} was unexpectedly rejected during state change: ${rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
       
-      console.log(`  ✓ Agent now active: state=${fiber.currentState.value}, seq=${fiber.sequenceNumber}`);
+      console.log(`  ✓ Agent now active: state=${fiber.currentState}, seq=${fiber.sequenceNumber}`);
     });
   });
 
@@ -280,7 +280,7 @@ describe('Bridge E2E Tests', () => {
       
       const agent = await response.json() as StateMachine;
       assert.strictEqual(agent.fiberId, agent1FiberId);
-      assert.strictEqual(agent.currentState.value, 'ACTIVE');
+      assert.strictEqual(agent.currentState, 'ACTIVE');
       
       // Rejection assertion: final check that no rejections exist for the active agent
       const rejections = await getRejections({ fiberId: agent1FiberId });
@@ -429,7 +429,7 @@ describe('Bridge E2E Tests', () => {
     it('should appear on ML0 with epoch deadline', async () => {
       const fiber = await waitForFiber(marketId);
       assert.ok(fiber, 'Market should appear on ML0');
-      assert.strictEqual(fiber.currentState.value, 'PROPOSED', 'Should be PROPOSED');
+      assert.strictEqual(fiber.currentState, 'PROPOSED', 'Should be PROPOSED');
       
       // Verify deadline is stored as number (epoch ms), not string
       const deadline = fiber.stateData.deadline as number;
@@ -460,7 +460,7 @@ describe('Bridge E2E Tests', () => {
       const fiber = await waitForState(marketId, 'OPEN');
       assert.ok(fiber, 'Market should transition to OPEN');
       
-      console.log(`  ✓ Market state: ${fiber.currentState.value}`);
+      console.log(`  ✓ Market state: ${fiber.currentState}`);
     });
 
     it('should accept a commitment', async () => {
@@ -515,7 +515,7 @@ describe('Bridge E2E Tests', () => {
       const fiber = await waitForState(marketId, 'CLOSED');
       assert.ok(fiber, 'Market should transition to CLOSED');
       
-      console.log(`  ✓ Market state: ${fiber.currentState.value}`);
+      console.log(`  ✓ Market state: ${fiber.currentState}`);
     });
 
     it('should accept oracle resolution', async () => {
