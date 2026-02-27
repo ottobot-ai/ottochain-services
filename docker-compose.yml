@@ -7,6 +7,9 @@
 #
 # Required env vars (set in .env or environment):
 #   DATABASE_URL, METAGRAPH_ML0_URL, METAGRAPH_DL1_URL
+#
+# Network: requires `docker network create ottochain` first (shared with deploy stack)
+# For standalone use, change networks.ottochain to `driver: bridge`
 
 version: '3.8'
 
@@ -35,7 +38,7 @@ services:
     networks:
       - ottochain
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 4000 || exit 1"]
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -64,7 +67,7 @@ services:
     networks:
       - ottochain
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 3030 || exit 1"]
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3030/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -94,7 +97,7 @@ services:
     networks:
       - ottochain
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 3031 || exit 1"]
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3031/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -124,7 +127,7 @@ services:
     networks:
       - ottochain
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 3032 || exit 1"]
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3032/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -247,6 +250,8 @@ services:
 
 networks:
   ottochain:
+    # Use external network when running via ottochain-deploy (docker network create ottochain)
+    # For standalone: change to `driver: bridge` and remove `external: true`
     external: true
     name: ottochain
 
