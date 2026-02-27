@@ -16,6 +16,7 @@ import { HealthCollector } from './collector.js';
 import { MonitorCache } from './cache.js';
 import { CacheRefresher } from './refresher.js';
 import { storeEvent, getMonitoringActivity, getRestartHistory, closeEvents } from './events.js';
+import { updateMetrics, metricsHandler } from './metrics.js';
 
 // =============================================================================
 // Authentication
@@ -171,6 +172,9 @@ async function main(): Promise<void> {
   app.use(basicAuthMiddleware(auth));
   app.use(express.static(path.join(__dirname, '../public')));
   
+  // Prometheus metrics endpoint (no auth, before other routes)
+  app.get('/metrics', metricsHandler);
+
   // REST endpoints with caching
   app.get('/health', async (_, res) => {
     // Build health response with component statuses
@@ -560,6 +564,9 @@ async function main(): Promise<void> {
     
     console.log(`${icon} [${new Date().toISOString()}] Nodes: ${healthyNodes}/${health.nodes.length} | Services: ${healthyServices}/${health.services.length} | Ordinal: ${health.metagraph.snapshotOrdinal ?? '-'} | Fibers: ${health.metagraph.fiberCount ?? '-'}`);
     
+    // Update Prometheus metrics
+    updateMetrics(health.nodes, health.services, health.metagraph, overall);
+
     // Broadcast to WebSocket clients
     broadcast({
       type: 'status',
