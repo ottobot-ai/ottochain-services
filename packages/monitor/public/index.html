@@ -389,21 +389,29 @@
     // Storage service names
     const storageServices = ['Postgres', 'Redis'];
     
+    /** Escape HTML entities to prevent XSS when interpolating into innerHTML */
+    function esc(str) {
+      if (str == null) return '-';
+      const d = document.createElement('div');
+      d.textContent = String(str);
+      return d.innerHTML;
+    }
+
     function createNodeCard(node) {
       return `
         <div class="card">
           <div class="card-header">
-            <div class="card-title">${node.name}</div>
-            <div class="status-badge ${node.status}">${node.status}</div>
+            <div class="card-title">${esc(node.name)}</div>
+            <div class="status-badge ${esc(node.status)}">${esc(node.status)}</div>
           </div>
           <div class="card-details">
-            <div class="row"><span>Type</span><span class="value">${node.type.toUpperCase()}</span></div>
-            <div class="row"><span>State</span><span class="value">${node.state ?? '-'}</span></div>
-            <div class="row"><span>Cluster</span><span class="value">${node.clusterSize ?? '-'} nodes</span></div>
-            <div class="row"><span>Latency</span><span class="value">${node.latencyMs ?? '-'}ms</span></div>
-            <div class="row"><span>Version</span><span class="value">${node.version?.slice(0, 20) ?? '-'}</span></div>
+            <div class="row"><span>Type</span><span class="value">${esc(node.type?.toUpperCase())}</span></div>
+            <div class="row"><span>State</span><span class="value">${esc(node.state)}</span></div>
+            <div class="row"><span>Cluster</span><span class="value">${esc(node.clusterSize)} nodes</span></div>
+            <div class="row"><span>Latency</span><span class="value">${esc(node.latencyMs)}ms</span></div>
+            <div class="row"><span>Version</span><span class="value">${esc(node.version?.slice(0, 20))}</span></div>
           </div>
-          ${node.error ? `<div class="error-text">${node.error}</div>` : ''}
+          ${node.error ? `<div class="error-text">${esc(node.error)}</div>` : ''}
         </div>
       `;
     }
@@ -433,20 +441,20 @@
         return `
           <div class="card">
             <div class="card-header">
-              <div class="card-title">${service.name}</div>
-              <div class="status-badge ${tg.enabled ? 'healthy' : 'degraded'}">${tg.enabled ? tg.mode : 'idle'}</div>
+              <div class="card-title">${esc(service.name)}</div>
+              <div class="status-badge ${tg.enabled ? 'healthy' : 'degraded'}">${tg.enabled ? esc(tg.mode) : 'idle'}</div>
             </div>
             <div class="card-details">
-              <div class="row"><span>Mode</span><span class="value">${tg.mode}</span></div>
-              <div class="row"><span>Target TPS</span><span class="value">${tg.targetTps}</span></div>
-              <div class="row"><span>Population</span><span class="value">${tg.currentPopulation}/${tg.targetPopulation}</span></div>
-              <div class="row"><span>Generation</span><span class="value">${tg.generation}</span></div>
-              <div class="row"><span>Transactions</span><span class="value">${tg.totalTransactions}</span></div>
+              <div class="row"><span>Mode</span><span class="value">${esc(tg.mode)}</span></div>
+              <div class="row"><span>Target TPS</span><span class="value">${esc(tg.targetTps)}</span></div>
+              <div class="row"><span>Population</span><span class="value">${esc(tg.currentPopulation)}/${esc(tg.targetPopulation)}</span></div>
+              <div class="row"><span>Generation</span><span class="value">${esc(tg.generation)}</span></div>
+              <div class="row"><span>Transactions</span><span class="value">${esc(tg.totalTransactions)}</span></div>
             </div>
             <div class="card-controls">
-              <button class="btn ${buttonClass}" onclick="trafficGenControl('${buttonAction}')">${buttonText}</button>
+              <button class="btn ${buttonClass}" onclick="trafficGenControl('${esc(buttonAction)}')">${esc(buttonText)}</button>
             </div>
-            ${service.error ? `<div class="error-text">${service.error}</div>` : ''}
+            ${service.error ? `<div class="error-text">${esc(service.error)}</div>` : ''}
           </div>
         `;
       }
@@ -454,14 +462,14 @@
       return `
         <div class="card">
           <div class="card-header">
-            <div class="card-title">${service.name}</div>
-            <div class="status-badge ${service.status}">${service.status}</div>
+            <div class="card-title">${esc(service.name)}</div>
+            <div class="status-badge ${esc(service.status)}">${esc(service.status)}</div>
           </div>
           <div class="card-details">
-            <div class="row"><span>Type</span><span class="value">${service.type}</span></div>
-            <div class="row"><span>Latency</span><span class="value">${service.latencyMs ?? '-'}ms</span></div>
+            <div class="row"><span>Type</span><span class="value">${esc(service.type)}</span></div>
+            <div class="row"><span>Latency</span><span class="value">${esc(service.latencyMs)}ms</span></div>
           </div>
-          ${service.error ? `<div class="error-text">${service.error}</div>` : ''}
+          ${service.error ? `<div class="error-text">${esc(service.error)}</div>` : ''}
         </div>
       `;
     }

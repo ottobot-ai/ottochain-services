@@ -159,7 +159,7 @@ async function main(): Promise<void> {
     console.log('──────────────────────────────────────────────────────────────');
     console.log('🔐 Authentication enabled');
     console.log(`   Username: ${auth.username}`);
-    console.log(`   Password: ${auth.password}`);
+    console.log(`   Password: ${'*'.repeat(auth.password.length)}`);
     if (!process.env.MONITOR_PASS) {
       console.log('   (auto-generated, set MONITOR_PASS to use your own)');
     }
