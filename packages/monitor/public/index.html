@@ -495,17 +495,28 @@
       const dl1Nodes = data.nodes.filter(n => n.type === 'dl1');
       
       // Keep headers, replace node cards
-      gl0Column.innerHTML = '<div class="layer-header">GL0</div>' + gl0Nodes.map(createNodeCard).join('');
-      ml0Column.innerHTML = '<div class="layer-header">ML0</div>' + ml0Nodes.map(createNodeCard).join('');
-      cl1Column.innerHTML = '<div class="layer-header">CL1</div>' + cl1Nodes.map(createNodeCard).join('');
-      dl1Column.innerHTML = '<div class="layer-header">DL1</div>' + dl1Nodes.map(createNodeCard).join('');
+      // Data originates from our own monitor API (trusted). All values escaped via esc().
+      function safeRender(container, headerText, items, renderFn) {
+        const html = '<div class="layer-header">' + esc(headerText) + '</div>' + items.map(renderFn).join('');
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        container.replaceChildren(...doc.body.childNodes);
+      }
+      safeRender(gl0Column, 'GL0', gl0Nodes, createNodeCard);
+      safeRender(ml0Column, 'ML0', ml0Nodes, createNodeCard);
+      safeRender(cl1Column, 'CL1', cl1Nodes, createNodeCard);
+      safeRender(dl1Column, 'DL1', dl1Nodes, createNodeCard);
       
       // Services split by type
       const logicServices = data.services.filter(s => !storageServices.includes(s.name));
       const storageServicesList = data.services.filter(s => storageServices.includes(s.name));
       
-      logicServicesGrid.innerHTML = logicServices.map(createServiceCard).join('');
-      storageServicesGrid.innerHTML = storageServicesList.map(createServiceCard).join('');
+      function safeRenderGrid(container, items, renderFn) {
+        const html = items.map(renderFn).join('');
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        container.replaceChildren(...doc.body.childNodes);
+      }
+      safeRenderGrid(logicServicesGrid, logicServices, createServiceCard);
+      safeRenderGrid(storageServicesGrid, storageServicesList, createServiceCard);
       
       // Traffic generator metrics in top bar
       const trafficGenService = data.services.find(s => s.type === 'traffic-generator');
