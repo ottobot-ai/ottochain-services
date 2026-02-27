@@ -24,7 +24,7 @@ import {
   selectActiveAgents,
   selectCounterparty,
   selectForDeath,
-  computeTransitionWeights,
+  computeTransitionChoices,
   softmaxSelect,
 } from './selection.js';
 import {
@@ -53,6 +53,32 @@ export interface SimulatorEvents {
   onAgentBirth?: (agent: Agent) => void;
   onAgentDeath?: (agent: Agent) => void;
   onError?: (error: Error, context: string) => void;
+}
+
+/**
+ * Get available state machine events for an agent based on its current state.
+ * Uses the canonical event names that match the state machine definition.
+ * Accepts both short ('ACTIVE') and prefixed ('AGENT_STATE_ACTIVE') state strings.
+ */
+export function getAvailableAgentEvents(agent: Agent): string[] {
+  // Normalize state: strip 'AGENT_STATE_' prefix if present
+  const raw = String(agent.state);
+  const state = raw.startsWith('AGENT_STATE_') ? raw.slice('AGENT_STATE_'.length) : raw;
+
+  switch (state) {
+    case 'REGISTERED':
+      return ['activate'];
+    case 'ACTIVE':
+      return ['receive_vouch', 'receive_completion', 'receive_violation', 'challenge', 'withdraw'];
+    case 'CHALLENGED':
+      return []; // Wait for resolution
+    case 'SUSPENDED':
+      return []; // Wait for probation
+    case 'PROBATION':
+      return ['receive_vouch', 'receive_completion'];
+    default:
+      return [];
+  }
 }
 
 export class Simulator {
@@ -576,7 +602,7 @@ export class Simulator {
     if (availableEvents.length === 0) return;
     
     // Compute transition weights and select
-    const choices = computeTransitionWeights(agent, availableEvents, this.context);
+    const choices = computeTransitionChoices(agent, availableEvents, this.context);
     const chosen = softmaxSelect(choices, this.context.temperature);
     
     if (!chosen) return;
@@ -629,20 +655,7 @@ export class Simulator {
   }
 
   private getAvailableAgentEvents(agent: Agent): string[] {
-    switch (agent.state) {
-      case AgentState.AGENT_STATE_REGISTERED:
-        return ['activate'];
-      case AgentState.AGENT_STATE_ACTIVE:
-        return ['submit_attestation', 'submit_violation', 'file_challenge', 'withdraw'];
-      case AgentState.AGENT_STATE_CHALLENGED:
-        return []; // Wait for resolution
-      case AgentState.AGENT_STATE_SUSPENDED:
-        return []; // Wait for probation
-      case AgentState.AGENT_STATE_PROBATION:
-        return ['submit_attestation'];
-      default:
-        return [];
-    }
+    return getAvailableAgentEvents(agent);
   }
 
   private handleAgentTransition(
@@ -654,7 +667,7 @@ export class Simulator {
       case 'withdraw':
         agent.state = AgentState.AGENT_STATE_WITHDRAWN;
         break;
-      case 'file_challenge':
+      case 'challenge':
         // Would need to track challenged agents
         break;
       // Other state updates happen via chain query
@@ -789,7 +802,7 @@ export class Simulator {
       try {
         if (contract.state === ContractState.CONTRACT_STATE_PROPOSED) {
           // Counterparty decides: accept or reject
-          const choices = computeTransitionWeights(
+          const choices = computeTransitionChoices(
             counterpartyAgent,
             ['accept', 'reject'],
             this.context
@@ -820,7 +833,7 @@ export class Simulator {
           // Check if it's time to complete
           if (this.generation >= contract.expectedCompletion) {
             // Decide: complete or dispute
-            const choices = computeTransitionWeights(
+            const choices = computeTransitionChoices(
               proposerAgent,
               ['complete', 'dispute'],
               this.context

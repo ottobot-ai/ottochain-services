@@ -97,7 +97,7 @@ export const AGENT_IDENTITY_WORKFLOW: WorkflowDefinition = {
     { from: 'REGISTERED', to: 'ACTIVE', event: 'activate', actor: 'owner', weight: 1.0 },
     { from: 'ACTIVE', to: 'ACTIVE', event: 'receive_vouch', actor: 'third_party', weight: 0.6 },
     { from: 'ACTIVE', to: 'ACTIVE', event: 'receive_completion', actor: 'any', weight: 0.7 },
-    { from: 'ACTIVE', to: 'CHALLENGED', event: 'file_challenge', actor: 'third_party', weight: 0.05 },
+    { from: 'ACTIVE', to: 'CHALLENGED', event: 'challenge', actor: 'third_party', weight: 0.05 },
     { from: 'CHALLENGED', to: 'ACTIVE', event: 'dismiss_challenge', actor: 'any', weight: 0.7 },
     { from: 'CHALLENGED', to: 'SUSPENDED', event: 'uphold_challenge', actor: 'any', weight: 0.3 },
     { from: 'ACTIVE', to: 'WITHDRAWN', event: 'withdraw', actor: 'owner', weight: 0.02 },
@@ -485,6 +485,12 @@ export const APPROVAL_WORKFLOW: WorkflowDefinition = {
 // ============================================================================
 // All Workflows
 // ============================================================================
+
+/**
+ * Agent identity workflow transitions (convenience export for tests and tooling).
+ * Each entry has { from, to, event, actor, weight }.
+ */
+export const AGENT_WORKFLOWS = AGENT_IDENTITY_WORKFLOW.transitions;
 
 export const ALL_WORKFLOWS: WorkflowDefinition[] = [
   AGENT_IDENTITY_WORKFLOW,
