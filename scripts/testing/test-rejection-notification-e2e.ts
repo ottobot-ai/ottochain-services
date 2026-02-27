@@ -58,7 +58,7 @@ interface Wallet {
 
 interface StateMachine {
   fiberId: string;
-  currentState: { value: string };
+  currentState: string;
   stateData: Record<string, unknown>;
   sequenceNumber: number;
 }
@@ -170,7 +170,7 @@ async function waitForFiberState(fiberId: string, expectedState: string): Promis
       const res = await fetch(`${ML0_URL}/data-application/v1/state-machines/${fiberId}`);
       if (!res.ok) return null;
       const fiber = await res.json() as StateMachine;
-      return fiber.currentState?.value === expectedState ? fiber : null;
+      return fiber.currentState === expectedState ? fiber : null;
     },
     `fiber ${fiberId.substring(0, 8)}... to be ${expectedState}`,
     parseInt(process.env.STATE_WAIT_TIMEOUT || '90') * 1000
@@ -196,15 +196,15 @@ async function waitForRejection(fiberId: string): Promise<RejectionRecord> {
 
 const CONTRACT_DEFINITION = {
   states: {
-    Proposed: { id: { value: 'PROPOSED' }, isFinal: false, metadata: null },
-    Active:   { id: { value: 'ACTIVE'   }, isFinal: false, metadata: null },
-    Rejected: { id: { value: 'REJECTED' }, isFinal: true,  metadata: null },
+    Proposed: { id: 'PROPOSED', isFinal: false, metadata: null },
+    Active:   { id: 'ACTIVE', isFinal: false, metadata: null },
+    Rejected: { id: 'REJECTED', isFinal: true,  metadata: null },
   },
-  initialState: { value: 'PROPOSED' },
+  initialState: 'PROPOSED',
   transitions: [
     {
-      from: { value: 'PROPOSED' },
-      to:   { value: 'ACTIVE' },
+      from: 'PROPOSED',
+      to: 'ACTIVE',
       eventName: 'accept',
       // The guard that must pass for the transition to be accepted by ML0.
       // Requires event.agent (from payload) === state.counterparty (from initialData).
@@ -214,8 +214,8 @@ const CONTRACT_DEFINITION = {
       dependencies: [],
     },
     {
-      from: { value: 'PROPOSED' },
-      to:   { value: 'REJECTED' },
+      from: 'PROPOSED',
+      to: 'REJECTED',
       eventName: 'reject',
       guard: { '===': [{ var: 'event.agent' }, { var: 'state.counterparty' }] },
       effect: { merge: [{ var: 'state' }, { status: 'REJECTED' }] },
@@ -303,8 +303,8 @@ async function main(): Promise<void> {
 
   await test('Fiber appears on ML0 within 30s', async () => {
     const fiber = await waitForFiberOnML0(contractId);
-    assert(fiber.currentState.value === 'PROPOSED', `Expected PROPOSED, got ${fiber.currentState.value}`);
-    console.log(`\n     State: ${fiber.currentState.value}, seq: ${fiber.sequenceNumber}`);
+    assert(fiber.currentState === 'PROPOSED', `Expected PROPOSED, got ${fiber.currentState}`);
+    console.log(`\n     State: ${fiber.currentState}, seq: ${fiber.sequenceNumber}`);
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -580,8 +580,8 @@ async function main(): Promise<void> {
 
   await test('Fiber reaches ACTIVE state on ML0', async () => {
     const fiber = await waitForFiberState(contractId, 'ACTIVE');
-    console.log(`\n     State: ${fiber.currentState.value}, seq: ${fiber.sequenceNumber}`);
-    assert(fiber.currentState.value === 'ACTIVE', `Expected ACTIVE, got ${fiber.currentState.value}`);
+    console.log(`\n     State: ${fiber.currentState}, seq: ${fiber.sequenceNumber}`);
+    assert(fiber.currentState === 'ACTIVE', `Expected ACTIVE, got ${fiber.currentState}`);
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
