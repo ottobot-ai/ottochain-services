@@ -25,11 +25,11 @@ vi.mock('@ottochain/sdk/apps/contracts', () => ({
   getContractDefinition: vi.fn(() => ({
     metadata: { name: 'Contract' },
     states: {
-      PROPOSED: { id: { value: 'PROPOSED' }, isFinal: false },
-      ACTIVE: { id: { value: 'ACTIVE' }, isFinal: false },
-      COMPLETED: { id: { value: 'COMPLETED' }, isFinal: true },
+      PROPOSED: { id: 'PROPOSED', isFinal: false },
+      ACTIVE: { id: 'ACTIVE', isFinal: false },
+      COMPLETED: { id: 'COMPLETED', isFinal: true },
     },
-    initialState: { value: 'PROPOSED' },
+    initialState: 'PROPOSED',
   })),
 }));
 
@@ -59,7 +59,7 @@ describe('Contract Routes', () => {
       const ordinal = '1001';
 
       (metagraph.submitTransaction as Mock).mockResolvedValue({
-        ordinal: { value: ordinal },
+        ordinal: ordinal,
         fiberId: contractId,
         success: true,
       });
@@ -219,7 +219,7 @@ describe('Contract Routes', () => {
       });
 
       (metagraph.submitTransaction as Mock).mockResolvedValue({
-        ordinal: { value: ordinal },
+        ordinal: ordinal,
         fiberId: contractId,
         success: true,
       });
@@ -332,7 +332,7 @@ describe('Contract Routes', () => {
       });
 
       (metagraph.submitTransaction as Mock).mockResolvedValue({
-        ordinal: { value: ordinal },
+        ordinal: ordinal,
         fiberId: contractId,
         success: true,
       });
@@ -400,7 +400,7 @@ describe('Contract Routes', () => {
       });
 
       (metagraph.submitTransaction as Mock).mockResolvedValue({
-        ordinal: { value: ordinal },
+        ordinal: ordinal,
         fiberId: contractId,
         success: true,
       });
@@ -548,7 +548,7 @@ describe('Contract Routes', () => {
       });
 
       (metagraph.submitTransaction as Mock).mockResolvedValue({
-        ordinal: { value: ordinal },
+        ordinal: ordinal,
         fiberId: contractId,
         success: true,
       });
