@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.5.0](https://github.com/ottobot-ai/ottochain-services/compare/v0.4.1...v0.5.0) (2026-02-27)
+
+
+### Features
+
+* add rejection API assertions to integration tests ([#131](https://github.com/ottobot-ai/ottochain-services/issues/131)) ([4dff0f0](https://github.com/ottobot-ai/ottochain-services/commit/4dff0f07a69e6de9c63a7126b7bf8e163e5b4f77))
+* Bridge fan-out to all DL1 nodes (fork prevention) ([#136](https://github.com/ottobot-ai/ottochain-services/issues/136)) ([624432f](https://github.com/ottobot-ai/ottochain-services/commit/624432f77a1e6a7aa67af2007dc2db53526da75e))
+* **bridge:** add response time percentiles to /health endpoint ([#134](https://github.com/ottobot-ai/ottochain-services/issues/134)) ([1c541b5](https://github.com/ottobot-ai/ottochain-services/commit/1c541b527aab66ef89148060475599beb7f09cf4))
+* **bridge:** Token domain routes — spec + implementation ([#144](https://github.com/ottobot-ai/ottochain-services/issues/144)) ([ef5e5a3](https://github.com/ottobot-ai/ottochain-services/commit/ef5e5a36a94f1a43e54753dd7e64ac449d145467))
+* **ci:** use pre-built JARs from versions.yaml ([#137](https://github.com/ottobot-ai/ottochain-services/issues/137)) ([ad4b9e4](https://github.com/ottobot-ai/ottochain-services/commit/ad4b9e4e29780914a5aa54ee960c4cd6401a87db))
+* **gateway:** add Market types to GraphQL schema ([#120](https://github.com/ottobot-ai/ottochain-services/issues/120)) ([4fff1b0](https://github.com/ottobot-ai/ottochain-services/commit/4fff1b0789066dcd115121ef2de668516794c97b))
+* **monitor:** add monitoring events API for status page ([#143](https://github.com/ottobot-ai/ottochain-services/issues/143)) ([b77523e](https://github.com/ottobot-ai/ottochain-services/commit/b77523e8340b47ce2084361b6822352378a4b6ad))
+* **monitor:** write watchdog health snapshot to Redis ([#167](https://github.com/ottobot-ai/ottochain-services/issues/167)) ([d5ffd1e](https://github.com/ottobot-ai/ottochain-services/commit/d5ffd1e6aae51a2440450876894b6746bf05154d))
+* **traffic-gen:** add TokenEscrow fiber type ([#115](https://github.com/ottobot-ai/ottochain-services/issues/115)) ([4be8932](https://github.com/ottobot-ai/ottochain-services/commit/4be8932cd1b810bc55b995b83f5d22cd72fb34a2))
+
+
+### Bug Fixes
+
+* bump @ottochain/sdk to 1.0.2 ([#139](https://github.com/ottobot-ai/ottochain-services/issues/139)) ([aecc20a](https://github.com/ottobot-ai/ottochain-services/commit/aecc20a7f171f815345ef6b03fdc861ff759d67e))
+* bump @ottochain/sdk to 1.0.3 ([#140](https://github.com/ottobot-ai/ottochain-services/issues/140)) ([b3e99f3](https://github.com/ottobot-ai/ottochain-services/commit/b3e99f380ff200fcea8c513a54caa8861b2ecb59))
+* identity domain event name alignment in traffic-gen and simulator ([#142](https://github.com/ottobot-ai/ottochain-services/issues/142)) ([1b5fa7d](https://github.com/ottobot-ai/ottochain-services/commit/1b5fa7dd3ac999296749999f68819e6c8683cdcd))
+* **traffic-gen:** exclude integration tests from vitest ([#128](https://github.com/ottobot-ai/ottochain-services/issues/128)) ([6ca0b0c](https://github.com/ottobot-ai/ottochain-services/commit/6ca0b0cda7e435f873a205473df09a7fd0e68b6b))
+* use npm @ottochain/sdk instead of GitHub refs ([#130](https://github.com/ottobot-ai/ottochain-services/issues/130)) ([32b1390](https://github.com/ottobot-ai/ottochain-services/commit/32b1390bcb050bd95e6ef6663d448232b5e8fefe))
+
 ## [0.4.1](https://github.com/ottobot-ai/ottochain-services/compare/v0.4.0...v0.4.1) (2026-02-19)
 
 
