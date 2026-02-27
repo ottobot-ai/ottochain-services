@@ -7,6 +7,9 @@
 #
 # Required env vars (set in .env or environment):
 #   DATABASE_URL, METAGRAPH_ML0_URL, METAGRAPH_DL1_URL
+#
+# Network: requires `docker network create ottochain` first (shared with deploy stack)
+# For standalone use, change networks.ottochain to `driver: bridge`
 
 version: '3.8'
 
@@ -35,7 +38,7 @@ services:
     networks:
       - ottochain
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:4000/health"]
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -64,7 +67,7 @@ services:
     networks:
       - ottochain
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3030/health"]
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3030/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -94,7 +97,7 @@ services:
     networks:
       - ottochain
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3031/health"]
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3031/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -124,7 +127,7 @@ services:
     networks:
       - ottochain
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3032/health"]
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3032/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -156,7 +159,7 @@ services:
     networks:
       - ottochain
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80"]
+      test: ["CMD-SHELL", "nc -z localhost 80 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -198,9 +201,59 @@ services:
       timeout: 5s
       retries: 5
 
+  # === Prometheus Exporters ===
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: postgres-exporter
+    restart: unless-stopped
+    ports:
+      - "9187:9187"
+    environment:
+      - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER:-ottochain}:${POSTGRES_PASSWORD:-ottochain}@postgres:5432/${POSTGRES_DB:-ottochain}?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ottochain
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.58.0
+    container_name: redis-exporter
+    restart: unless-stopped
+    ports:
+      - "9121:9121"
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - ottochain
+
+  node-exporter:
+    image: prom/node-exporter:v1.7.0
+    container_name: node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - ottochain
+
 networks:
   ottochain:
-    driver: bridge
+    # Use external network when running via ottochain-deploy (docker network create ottochain)
+    # For standalone: change to `driver: bridge` and remove `external: true`
+    external: true
+    name: ottochain
 
 volumes:
   postgres_data:

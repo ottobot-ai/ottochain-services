@@ -71,6 +71,9 @@ pnpm dev
 ### Using Docker Compose
 
 ```bash
+# Create shared network (required — shared with ottochain-deploy stack)
+docker network create ottochain 2>/dev/null || true
+
 # Start services (Gateway, Bridge, Indexer + Redis/Postgres)
 make up
 
