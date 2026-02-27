@@ -63,6 +63,10 @@ export interface MonitorConfig {
   ml0Urls: string[];
   cl1Urls: string[];
   dl1Urls: string[];
+
+  // Optional: Constellation hypergraph L0 URLs (for tracking global ordinal)
+  // For scratch: same as gl0Urls. For testnet/mainnet: Constellation public endpoints.
+  hypergraphL0Urls?: string[];
   
   // Services
   bridgeUrl?: string;

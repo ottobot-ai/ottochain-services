@@ -13,6 +13,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import type { StackHealth, ServiceStatus, MonitorConfig } from './types.js';
 import { HealthCollector } from './collector.js';
+import { metricsMiddleware, updateMetrics, checkDurationSeconds } from './metrics.js';
 import { MonitorCache } from './cache.js';
 import { CacheRefresher } from './refresher.js';
 import { storeEvent, getMonitoringActivity, getRestartHistory, closeEvents } from './events.js';
@@ -108,8 +109,8 @@ function basicAuthMiddleware(auth: AuthConfig) {
   return (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (!auth.enabled) return next();
     
-    // Allow health endpoint without auth
-    if (req.path === '/health') return next();
+    // Allow health and metrics endpoints without auth
+    if (req.path === '/health' || req.path === '/metrics') return next();
     
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Basic ')) {
@@ -251,7 +252,12 @@ async function main(): Promise<void> {
   app.use(express.json());
   app.use(basicAuthMiddleware(auth));
   app.use(express.static(path.join(__dirname, '../public')));
-  
+
+  // ---------------------------------------------------------------------------
+  // Prometheus metrics endpoint — no auth so Prometheus can scrape freely
+  // ---------------------------------------------------------------------------
+  app.get('/metrics', metricsMiddleware);
+
   // REST endpoints with caching
   app.get('/health', async (_, res) => {
     // Build health response with component statuses
@@ -630,13 +636,24 @@ async function main(): Promise<void> {
   
   // Start polling
   async function poll(): Promise<void> {
+    const end = checkDurationSeconds.startTimer();
     await collector.collect();
+    end();
     const health = collector.getHealth();
+
+    // Update Prometheus metrics from the latest health snapshot
+    const overall = computeOverallStatus(health.nodes, health.services);
+    updateMetrics({
+      timestamp: Date.now(),
+      overall,
+      nodes: health.nodes,
+      services: health.services,
+      metagraph: health.metagraph,
+    });
     
     // Log summary
     const healthyNodes = health.nodes.filter(n => n.status === 'healthy').length;
     const healthyServices = health.services.filter(s => s.status === 'healthy').length;
-    const overall = computeOverallStatus(health.nodes, health.services);
     const icon = overall === 'healthy' ? '✅' : overall === 'degraded' ? '⚠️' : '❌';
     
     console.log(`${icon} [${new Date().toISOString()}] Nodes: ${healthyNodes}/${health.nodes.length} | Services: ${healthyServices}/${health.services.length} | Ordinal: ${health.metagraph.snapshotOrdinal ?? '-'} | Fibers: ${health.metagraph.fiberCount ?? '-'}`);
