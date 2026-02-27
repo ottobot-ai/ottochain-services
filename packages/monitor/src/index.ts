@@ -498,6 +498,50 @@ async function main(): Promise<void> {
     }
   });
   
+
+
+  // Rejection API proxy (to indexer)
+  app.get('/api/rejections', async (req, res) => {
+    const indexerUrl = process.env.INDEXER_URL || 'http://indexer:4001';
+    try {
+      const qs = new URLSearchParams(req.query as Record<string, string>).toString();
+      const response = await fetch(`${indexerUrl}/api/rejections?${qs}`);
+      const data = await response.json();
+      res.status(response.status).json(data);
+    } catch (err) {
+      console.error('Rejection proxy error:', err);
+      res.status(502).json({ error: 'Failed to reach indexer' });
+    }
+  });
+
+  // Rejections tracking UI
+  app.get('/rejections', (_, res) => {
+    res.sendFile(path.join(__dirname, 'rejections.html'));
+  });
+
+  // GET traffic-gen status
+  app.get('/api/traffic-gen/status', async (req, res) => {
+    const trafficGenUrl = config.trafficGenUrl;
+    
+    if (!trafficGenUrl) {
+      return res.status(503).json({ error: 'Traffic generator URL not configured' });
+    }
+    
+    try {
+      const response = await fetch(`${trafficGenUrl}/status`);
+      const data = await response.json();
+      res.status(response.status).json(data);
+    } catch (err) {
+      console.error('Traffic gen status error:', err);
+      res.status(502).json({ error: 'Failed to reach traffic generator' });
+    }
+  });
+
+  // Traffic control UI
+  app.get('/traffic', (_, res) => {
+    res.sendFile(path.join(__dirname, 'traffic-control.html'));
+  });
+
   // WebSocket server for real-time updates
   const wss = new WebSocketServer({ 
     server, 
