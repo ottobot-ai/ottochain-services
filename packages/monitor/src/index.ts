@@ -18,75 +18,6 @@ import { CacheRefresher } from './refresher.js';
 import { storeEvent, getMonitoringActivity, getRestartHistory, closeEvents } from './events.js';
 
 // =============================================================================
-// Alerting (Telegram + Webhook)
-// =============================================================================
-
-async function sendTelegramAlert(message: string, severity: 'warning' | 'critical'): Promise<void> {
-  const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
-  
-  if (!botToken || !chatId) {
-    return; // Telegram not configured
-  }
-  
-  try {
-    const emoji = severity === 'critical' ? '🚨' : '⚠️';
-    const text = `${emoji} *OttoChain Monitor*\n\n${message}`;
-    
-    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: 'Markdown',
-      }),
-    });
-  } catch (err) {
-    console.error('Failed to send Telegram alert:', err);
-  }
-}
-
-async function sendWebhookAlert(message: string, severity: 'warning' | 'critical'): Promise<void> {
-  const webhookUrl = process.env.ALERT_WEBHOOK_URL;
-  const webhookSecret = process.env.ALERT_WEBHOOK_SECRET;
-  
-  if (!webhookUrl) {
-    return; // Webhook not configured
-  }
-  
-  try {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (webhookSecret) {
-      headers['Authorization'] = `Bearer ${webhookSecret}`;
-    }
-    
-    await fetch(webhookUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        source: 'ottochain-monitor',
-        severity,
-        message,
-        timestamp: new Date().toISOString(),
-      }),
-    });
-  } catch (err) {
-    console.error('Failed to send webhook alert:', err);
-  }
-}
-
-async function sendAlert(message: string, severity: 'warning' | 'critical'): Promise<void> {
-  console.log(`[ALERT ${severity.toUpperCase()}] ${message}`);
-  
-  // Send to all configured channels in parallel
-  await Promise.all([
-    sendTelegramAlert(message, severity),
-    sendWebhookAlert(message, severity),
-  ]);
-}
-
-// =============================================================================
 // Authentication
 // =============================================================================
 
@@ -185,9 +116,6 @@ async function main(): Promise<void> {
   const auth = setupAuth();
   const collector = new HealthCollector(config);
   
-  // Set up alerting
-  collector.setAlertCallback(sendAlert);
-  
   // Initialize cache if enabled
   let cache: MonitorCache | null = null;
   let refresher: CacheRefresher | null = null;
@@ -234,15 +162,6 @@ async function main(): Promise<void> {
     if (!process.env.MONITOR_PASS) {
       console.log('   (auto-generated, set MONITOR_PASS to use your own)');
     }
-  }
-  // Alerting config
-  const hasWebhook = !!process.env.ALERT_WEBHOOK_URL;
-  const hasTelegram = !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_CHAT_ID;
-  if (hasWebhook || hasTelegram) {
-    console.log('──────────────────────────────────────────────────────────────');
-    console.log('🚨 Alerting configured:');
-    if (hasWebhook) console.log('   ✓ Webhook: ' + process.env.ALERT_WEBHOOK_URL?.slice(0, 50) + '...');
-    if (hasTelegram) console.log('   ✓ Telegram');
   }
   console.log('══════════════════════════════════════════════════════════════');
   
