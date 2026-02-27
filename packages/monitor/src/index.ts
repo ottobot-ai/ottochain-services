@@ -143,6 +143,12 @@ function loadConfig(): MonitorConfig {
     ml0Urls: (process.env.ML0_URLS ?? 'http://localhost:9200').split(',').filter(Boolean),
     cl1Urls: (process.env.CL1_URLS ?? '').split(',').filter(Boolean),
     dl1Urls: (process.env.DL1_URLS ?? 'http://localhost:9400,http://localhost:9410,http://localhost:9420').split(',').filter(Boolean),
+    // Hypergraph URLs (optional). For scratch: leave unset or set to same as GL0.
+    // For testnet: https://l0-lb-testnet.constellationnetwork.io
+    // For mainnet: https://l0-lb-mainnet.constellationnetwork.io
+    hypergraphL0Urls: process.env.HYPERGRAPH_L0_URLS
+      ? process.env.HYPERGRAPH_L0_URLS.split(',').filter(Boolean)
+      : undefined,
     
     // Services
     bridgeUrl: process.env.BRIDGE_URL ?? 'http://localhost:3030',
@@ -226,6 +232,9 @@ async function main(): Promise<void> {
   console.log(`   ML0 nodes: ${config.ml0Urls.length}`);
   console.log(`   CL1 nodes: ${config.cl1Urls.length}`);
   console.log(`   DL1 nodes: ${config.dl1Urls.length}`);
+  if (config.hypergraphL0Urls?.length) {
+    console.log(`   Hypergraph: ${config.hypergraphL0Urls.join(', ')}`);
+  }
   console.log(`   Poll interval: ${config.pollIntervalMs}ms`);
   if (auth.enabled) {
     console.log('──────────────────────────────────────────────────────────────');

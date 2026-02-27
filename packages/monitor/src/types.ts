@@ -36,6 +36,12 @@ export interface MetagraphMetrics {
   // Sync health
   dl1Lag?: number;  // ML0 ordinal - DL1 cache ordinal
   isHealthy?: boolean;
+  // Hypergraph (Constellation Global L0) tracking
+  // Populated when hypergraphL0Urls is configured in MonitorConfig.
+  hypergraphOrdinal?: number;
+  // Number of metagraph (state channel) snapshots in the latest hypergraph snapshot.
+  // Non-zero means our data is flowing into the global ledger.
+  hypergraphStateChannels?: number;
 }
 
 export interface ServiceHealth {

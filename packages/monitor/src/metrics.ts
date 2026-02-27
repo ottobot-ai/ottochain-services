@@ -114,6 +114,28 @@ export const activeAlerts = new Gauge({
   registers: [registry],
 });
 
+/**
+ * Current ordinal of the Constellation hypergraph (Global L0).
+ * Populated only when HYPERGRAPH_L0_URLS is configured.
+ * For scratch: same as GL0 ordinal. For testnet/mainnet: Constellation public LB.
+ */
+export const hypergraphOrdinal = new Gauge({
+  name: 'ottochain_hypergraph_ordinal',
+  help: 'Current snapshot ordinal of the Constellation hypergraph (Global L0)',
+  registers: [registry],
+});
+
+/**
+ * Number of metagraph (state channel) snapshot binaries present in the latest
+ * hypergraph snapshot. Non-zero means our data is flowing into the global ledger.
+ * Populated only when HYPERGRAPH_L0_URLS is configured.
+ */
+export const hypergraphStateChannels = new Gauge({
+  name: 'ottochain_hypergraph_state_channels',
+  help: 'Number of metagraph state channel snapshots included in the latest hypergraph snapshot',
+  registers: [registry],
+});
+
 // ---------------------------------------------------------------------------
 // Update helper
 // ---------------------------------------------------------------------------
@@ -154,6 +176,14 @@ export function updateMetrics(health: StackHealth): void {
   // Metagraph aggregates
   if (health.metagraph.fiberCount !== undefined) {
     metagraphFiberCount.set(health.metagraph.fiberCount);
+  }
+
+  // Hypergraph (only set when monitor is polling hypergraph URLs)
+  if (health.metagraph.hypergraphOrdinal !== undefined) {
+    hypergraphOrdinal.set(health.metagraph.hypergraphOrdinal);
+  }
+  if (health.metagraph.hypergraphStateChannels !== undefined) {
+    hypergraphStateChannels.set(health.metagraph.hypergraphStateChannels);
   }
 }
 

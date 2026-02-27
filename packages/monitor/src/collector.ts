@@ -367,7 +367,8 @@ export async function getMetagraphMetrics(
   ml0Url: string, 
   gl0Url: string | undefined,
   dl1Url: string | undefined,
-  timeoutMs: number
+  timeoutMs: number,
+  hypergraphUrls?: string[],
 ): Promise<MetagraphMetrics> {
   const metrics: MetagraphMetrics = {};
   
@@ -437,6 +438,30 @@ export async function getMetagraphMetrics(
     metrics.currencySnapshotAvailable = false;
   }
   
+  // Hypergraph (Constellation Global L0) — poll the first reachable URL
+  if (hypergraphUrls && hypergraphUrls.length > 0) {
+    for (const hUrl of hypergraphUrls) {
+      try {
+        const hRes = await fetchWithTimeout(`${hUrl}/global-snapshots/latest`, timeoutMs);
+        if (hRes.ok) {
+          const hData = await hRes.json() as {
+            value?: {
+              ordinal?: number;
+              stateChannelSnapshotBinaries?: Record<string, unknown>;
+            };
+          };
+          metrics.hypergraphOrdinal = hData.value?.ordinal;
+          // Count how many metagraphs contributed to this snapshot
+          const bins = hData.value?.stateChannelSnapshotBinaries;
+          metrics.hypergraphStateChannels = bins ? Object.keys(bins).length : 0;
+          break; // Got a good response — stop trying
+        }
+      } catch {
+        // Try next URL
+      }
+    }
+  }
+
   // Overall health assessment
   metrics.isHealthy = 
     (metrics.ml0Ordinal ?? 0) > 0 &&
@@ -632,7 +657,8 @@ export class HealthCollector {
           healthyMl0.url,
           healthyGl0?.url,
           healthyDl1?.url,
-          this.config.timeoutMs
+          this.config.timeoutMs,
+          this.config.hypergraphL0Urls,
         )
       : {};
     
