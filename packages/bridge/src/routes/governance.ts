@@ -251,7 +251,7 @@ governanceRoutes.post('/propose', async (req, res) => {
 
     const state = await getStateMachine(input.daoId) as {
       sequenceNumber?: number;
-      currentState?: { value: string };
+      currentState?: string;
       stateData?: Record<string, unknown>;
     } | null;
 
@@ -259,10 +259,10 @@ governanceRoutes.post('/propose', async (req, res) => {
       return res.status(404).json({ error: 'DAO not found' });
     }
 
-    if (state.currentState?.value !== 'ACTIVE') {
+    if (state.currentState !== 'ACTIVE') {
       return res.status(400).json({
         error: 'DAO is not in Active state (may have pending proposal)',
-        currentState: state.currentState?.value,
+        currentState: state.currentState,
       });
     }
 
@@ -320,7 +320,7 @@ governanceRoutes.post('/vote', async (req, res) => {
 
     const state = await getStateMachine(input.daoId) as {
       sequenceNumber?: number;
-      currentState?: { value: string };
+      currentState?: string;
       stateData?: { schema?: string };
     } | null;
 
@@ -333,17 +333,17 @@ governanceRoutes.post('/vote', async (req, res) => {
     const isMultisig = schema === 'MultisigDAO';
 
     if (isMultisig) {
-      if (state.currentState?.value !== 'PENDING') {
+      if (state.currentState !== 'PENDING') {
         return res.status(400).json({
           error: 'Multisig: No pending proposal to sign',
-          currentState: state.currentState?.value,
+          currentState: state.currentState,
         });
       }
     } else {
-      if (state.currentState?.value !== 'VOTING') {
+      if (state.currentState !== 'VOTING') {
         return res.status(400).json({
           error: 'DAO is not in Voting state',
-          currentState: state.currentState?.value,
+          currentState: state.currentState,
         });
       }
     }
@@ -396,7 +396,7 @@ governanceRoutes.post('/execute', async (req, res) => {
 
     const state = await getStateMachine(input.daoId) as {
       sequenceNumber?: number;
-      currentState?: { value: string };
+      currentState?: string;
       stateData?: { schema?: string; proposal?: { id: string } };
     } | null;
 
@@ -404,7 +404,7 @@ governanceRoutes.post('/execute', async (req, res) => {
       return res.status(404).json({ error: 'DAO not found' });
     }
 
-    const currentState = state.currentState?.value;
+    const currentState = state.currentState;
     const schema = state.stateData?.schema;
 
     // Determine valid execute states based on schema
@@ -468,7 +468,7 @@ governanceRoutes.post('/delegate', async (req, res) => {
 
     const state = await getStateMachine(input.daoId) as {
       sequenceNumber?: number;
-      currentState?: { value: string };
+      currentState?: string;
       stateData?: { allowDelegation?: boolean };
     } | null;
 
@@ -524,7 +524,7 @@ governanceRoutes.post('/veto', async (req, res) => {
 
     const state = await getStateMachine(input.daoId) as {
       sequenceNumber?: number;
-      currentState?: { value: string };
+      currentState?: string;
       stateData?: { vetoers?: string[]; proposal?: { id: string; title: string } };
     } | null;
 
@@ -532,10 +532,10 @@ governanceRoutes.post('/veto', async (req, res) => {
       return res.status(404).json({ error: 'DAO not found' });
     }
 
-    if (state.currentState?.value !== 'PENDING') {
+    if (state.currentState !== 'PENDING') {
       return res.status(400).json({
         error: 'Veto only available during pending/veto period',
-        currentState: state.currentState?.value,
+        currentState: state.currentState,
       });
     }
 

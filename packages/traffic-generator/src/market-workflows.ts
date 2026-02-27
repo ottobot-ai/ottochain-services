@@ -22,31 +22,31 @@ export const MARKET_SM_DEFINITION = {
     version: '1.0.0',
   },
   states: {
-    PROPOSED: { id: { value: 'PROPOSED' }, isFinal: false },
-    OPEN: { id: { value: 'OPEN' }, isFinal: false },
-    CLOSED: { id: { value: 'CLOSED' }, isFinal: false },
-    RESOLVING: { id: { value: 'RESOLVING' }, isFinal: false },
-    SETTLED: { id: { value: 'SETTLED' }, isFinal: true },
-    REFUNDED: { id: { value: 'REFUNDED' }, isFinal: true },
-    CANCELLED: { id: { value: 'CANCELLED' }, isFinal: true },
+    PROPOSED: { id: 'PROPOSED', isFinal: false },
+    OPEN: { id: 'OPEN', isFinal: false },
+    CLOSED: { id: 'CLOSED', isFinal: false },
+    RESOLVING: { id: 'RESOLVING', isFinal: false },
+    SETTLED: { id: 'SETTLED', isFinal: true },
+    REFUNDED: { id: 'REFUNDED', isFinal: true },
+    CANCELLED: { id: 'CANCELLED', isFinal: true },
   },
-  initialState: { value: 'PROPOSED' },
+  initialState: 'PROPOSED',
   transitions: [
     // PROPOSED transitions
-    { eventName: 'open', from: { value: 'PROPOSED' }, to: { value: 'OPEN' } },
-    { eventName: 'cancel', from: { value: 'PROPOSED' }, to: { value: 'CANCELLED' } },
+    { eventName: 'open', from: 'PROPOSED', to: 'OPEN' },
+    { eventName: 'cancel', from: 'PROPOSED', to: 'CANCELLED' },
     // OPEN transitions
-    { eventName: 'commit', from: { value: 'OPEN' }, to: { value: 'OPEN' } }, // Self-loop for commits
-    { eventName: 'close', from: { value: 'OPEN' }, to: { value: 'CLOSED' } },
+    { eventName: 'commit', from: 'OPEN', to: 'OPEN' }, // Self-loop for commits
+    { eventName: 'close', from: 'OPEN', to: 'CLOSED' },
     // CLOSED transitions
-    { eventName: 'submit_resolution', from: { value: 'CLOSED' }, to: { value: 'RESOLVING' } },
-    { eventName: 'refund', from: { value: 'CLOSED' }, to: { value: 'REFUNDED' } },
+    { eventName: 'submit_resolution', from: 'CLOSED', to: 'RESOLVING' },
+    { eventName: 'refund', from: 'CLOSED', to: 'REFUNDED' },
     // RESOLVING transitions
-    { eventName: 'submit_resolution', from: { value: 'RESOLVING' }, to: { value: 'RESOLVING' } }, // Additional oracles
-    { eventName: 'finalize', from: { value: 'RESOLVING' }, to: { value: 'SETTLED' } },
-    { eventName: 'refund', from: { value: 'RESOLVING' }, to: { value: 'REFUNDED' } },
+    { eventName: 'submit_resolution', from: 'RESOLVING', to: 'RESOLVING' }, // Additional oracles
+    { eventName: 'finalize', from: 'RESOLVING', to: 'SETTLED' },
+    { eventName: 'refund', from: 'RESOLVING', to: 'REFUNDED' },
     // SETTLED transitions (claims don't change state, just distribute)
-    { eventName: 'claim', from: { value: 'SETTLED' }, to: { value: 'SETTLED' } },
+    { eventName: 'claim', from: 'SETTLED', to: 'SETTLED' },
   ],
 };
 

@@ -116,17 +116,17 @@ contractRoutes.post('/accept', async (req, res) => {
     const state = await getStateMachine(input.contractId) as { 
       sequenceNumber?: number; 
       stateData?: { counterparty?: string };
-      currentState?: { value: string };
+      currentState?: string;
     } | null;
     
     if (!state) {
       return res.status(404).json({ error: 'Contract not found' });
     }
 
-    if (state.currentState?.value !== 'PROPOSED') {
+    if (state.currentState !== 'PROPOSED') {
       return res.status(400).json({ 
         error: 'Contract is not in Proposed state',
-        currentState: state.currentState?.value 
+        currentState: state.currentState 
       });
     }
 
@@ -181,17 +181,17 @@ contractRoutes.post('/reject', async (req, res) => {
     const state = await getStateMachine(input.contractId) as { 
       sequenceNumber?: number; 
       stateData?: { counterparty?: string };
-      currentState?: { value: string };
+      currentState?: string;
     } | null;
     
     if (!state) {
       return res.status(404).json({ error: 'Contract not found' });
     }
 
-    if (state.currentState?.value !== 'PROPOSED') {
+    if (state.currentState !== 'PROPOSED') {
       return res.status(400).json({ 
         error: 'Contract is not in Proposed state',
-        currentState: state.currentState?.value 
+        currentState: state.currentState 
       });
     }
 
@@ -234,17 +234,17 @@ contractRoutes.post('/complete', async (req, res) => {
 
     const state = await getStateMachine(input.contractId) as { 
       sequenceNumber?: number;
-      currentState?: { value: string };
+      currentState?: string;
     } | null;
     
     if (!state) {
       return res.status(404).json({ error: 'Contract not found' });
     }
 
-    if (state.currentState?.value !== 'ACTIVE') {
+    if (state.currentState !== 'ACTIVE') {
       return res.status(400).json({ 
         error: 'Contract is not Active',
-        currentState: state.currentState?.value 
+        currentState: state.currentState 
       });
     }
 
@@ -287,7 +287,7 @@ contractRoutes.post('/finalize', async (req, res) => {
 
     const state = await getStateMachine(input.contractId) as { 
       sequenceNumber?: number;
-      currentState?: { value: string };
+      currentState?: string;
       stateData?: { completions?: unknown[] };
     } | null;
     
@@ -295,10 +295,10 @@ contractRoutes.post('/finalize', async (req, res) => {
       return res.status(404).json({ error: 'Contract not found' });
     }
 
-    if (state.currentState?.value !== 'ACTIVE') {
+    if (state.currentState !== 'ACTIVE') {
       return res.status(400).json({ 
         error: 'Contract is not Active',
-        currentState: state.currentState?.value 
+        currentState: state.currentState 
       });
     }
 
@@ -351,17 +351,17 @@ contractRoutes.post('/dispute', async (req, res) => {
 
     const state = await getStateMachine(input.contractId) as { 
       sequenceNumber?: number;
-      currentState?: { value: string };
+      currentState?: string;
     } | null;
     
     if (!state) {
       return res.status(404).json({ error: 'Contract not found' });
     }
 
-    if (state.currentState?.value !== 'ACTIVE') {
+    if (state.currentState !== 'ACTIVE') {
       return res.status(400).json({ 
         error: 'Can only dispute Active contracts',
-        currentState: state.currentState?.value 
+        currentState: state.currentState 
       });
     }
 

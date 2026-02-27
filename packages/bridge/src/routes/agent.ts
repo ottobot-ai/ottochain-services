@@ -197,15 +197,15 @@ agentRoutes.post('/activate', async (req, res) => {
       }
     }
 
-    const state = await getStateMachine(fiberId) as { sequenceNumber?: number; currentState?: { value: string } } | null;
+    const state = await getStateMachine(fiberId) as { sequenceNumber?: number; currentState?: string } | null;
     if (!state) {
       return res.status(404).json({ error: 'Agent not found' });
     }
 
-    if (state.currentState?.value !== 'REGISTERED') {
+    if (state.currentState !== 'REGISTERED') {
       return res.status(400).json({ 
         error: 'Agent cannot be activated', 
-        currentState: state.currentState?.value 
+        currentState: state.currentState 
       });
     }
 
@@ -250,15 +250,15 @@ agentRoutes.post('/vouch', async (req, res) => {
       return res.status(400).json({ error: 'privateKey and targetFiberId are required' });
     }
 
-    const state = await getStateMachine(targetFiberId) as { sequenceNumber?: number; currentState?: { value: string } } | null;
+    const state = await getStateMachine(targetFiberId) as { sequenceNumber?: number; currentState?: string } | null;
     if (!state) {
       return res.status(404).json({ error: 'Target agent not found' });
     }
 
-    if (state.currentState?.value !== 'ACTIVE') {
+    if (state.currentState !== 'ACTIVE') {
       return res.status(400).json({ 
         error: 'Can only vouch for active agents',
-        currentState: state.currentState?.value 
+        currentState: state.currentState 
       });
     }
 

@@ -158,7 +158,7 @@ oracleRoutes.post('/activate', async (req, res) => {
 
     const state = await getStateMachine(oracleId) as {
       sequenceNumber?: number;
-      currentState?: { value: string };
+      currentState?: string;
       stateData?: { address?: string };
     } | null;
 
@@ -166,10 +166,10 @@ oracleRoutes.post('/activate', async (req, res) => {
       return res.status(404).json({ error: 'Oracle not found' });
     }
 
-    if (state.currentState?.value !== 'REGISTERED') {
+    if (state.currentState !== 'REGISTERED') {
       return res.status(400).json({
         error: 'Oracle must be in REGISTERED state to activate',
-        currentState: state.currentState?.value,
+        currentState: state.currentState,
       });
     }
 
@@ -212,7 +212,7 @@ oracleRoutes.post('/stake', async (req, res) => {
 
     const state = await getStateMachine(input.oracleId) as {
       sequenceNumber?: number;
-      currentState?: { value: string };
+      currentState?: string;
       stateData?: { address?: string; stake?: number };
     } | null;
 
@@ -220,10 +220,10 @@ oracleRoutes.post('/stake', async (req, res) => {
       return res.status(404).json({ error: 'Oracle not found' });
     }
 
-    if (state.currentState?.value !== 'ACTIVE') {
+    if (state.currentState !== 'ACTIVE') {
       return res.status(400).json({
         error: 'Oracle must be ACTIVE to add stake',
-        currentState: state.currentState?.value,
+        currentState: state.currentState,
       });
     }
 
@@ -275,17 +275,17 @@ oracleRoutes.post('/record-resolution', async (req, res) => {
 
     const state = await getStateMachine(input.oracleId) as {
       sequenceNumber?: number;
-      currentState?: { value: string };
+      currentState?: string;
     } | null;
 
     if (!state) {
       return res.status(404).json({ error: 'Oracle not found' });
     }
 
-    if (state.currentState?.value !== 'ACTIVE') {
+    if (state.currentState !== 'ACTIVE') {
       return res.status(400).json({
         error: 'Oracle must be ACTIVE to record resolution',
-        currentState: state.currentState?.value,
+        currentState: state.currentState,
       });
     }
 
@@ -333,7 +333,7 @@ oracleRoutes.post('/slash', async (req, res) => {
 
     const state = await getStateMachine(input.oracleId) as {
       sequenceNumber?: number;
-      currentState?: { value: string };
+      currentState?: string;
       stateData?: { stake?: number };
     } | null;
 
@@ -341,10 +341,10 @@ oracleRoutes.post('/slash', async (req, res) => {
       return res.status(404).json({ error: 'Oracle not found' });
     }
 
-    if (state.currentState?.value !== 'ACTIVE') {
+    if (state.currentState !== 'ACTIVE') {
       return res.status(400).json({
         error: 'Oracle must be ACTIVE to be slashed',
-        currentState: state.currentState?.value,
+        currentState: state.currentState,
       });
     }
 
@@ -403,7 +403,7 @@ oracleRoutes.post('/transition', async (req, res) => {
 
     const state = await getStateMachine(input.oracleId) as {
       sequenceNumber?: number;
-      currentState?: { value: string };
+      currentState?: string;
       stateData?: { address?: string };
     } | null;
 
@@ -412,7 +412,7 @@ oracleRoutes.post('/transition', async (req, res) => {
     }
 
     // Validate transition is allowed from current state
-    const currentState = state.currentState?.value;
+    const currentState = state.currentState;
     const validTransitions: Record<string, string[]> = {
       REGISTERED: ['activate'],
       ACTIVE: ['withdraw'],
@@ -486,7 +486,7 @@ oracleRoutes.get('/', async (req, res) => {
       state: {
         stateMachines: Record<string, {
           stateData?: { schema?: string; status?: string; domains?: string[] };
-          currentState?: { value: string };
+          currentState?: string;
         }>;
       };
     };

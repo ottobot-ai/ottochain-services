@@ -38,11 +38,11 @@ export interface WorkflowDefinition {
 }
 
 export interface StateMachineDefinition {
-  states: Record<string, { id: { value: string }; isFinal: boolean; metadata?: unknown }>;
-  initialState: { value: string };
+  states: Record<string, { id: string; isFinal: boolean; metadata?: unknown }>;
+  initialState: string;
   transitions: Array<{
-    from: { value: string };
-    to: { value: string };
+    from: string;
+    to: string;
     eventName: string;
     guard: unknown;
     effect: unknown;
@@ -106,16 +106,16 @@ export const AGENT_IDENTITY_WORKFLOW: WorkflowDefinition = {
   frequency: 3,
   stateMachineDefinition: {
     states: {
-      Registered: { id: { value: 'REGISTERED' }, isFinal: false },
-      Active: { id: { value: 'ACTIVE' }, isFinal: false },
-      Withdrawn: { id: { value: 'WITHDRAWN' }, isFinal: true },
+      Registered: { id: 'REGISTERED', isFinal: false },
+      Active: { id: 'ACTIVE', isFinal: false },
+      Withdrawn: { id: 'WITHDRAWN', isFinal: true },
     },
-    initialState: { value: 'REGISTERED' },
+    initialState: 'REGISTERED',
     transitions: [
-      { from: { value: 'REGISTERED' }, to: { value: 'ACTIVE' }, eventName: 'activate', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'ACTIVE' }] } },
-      { from: { value: 'ACTIVE' }, to: { value: 'ACTIVE' }, eventName: 'receive_vouch', guard: { '!!': [{ var: 'event.from' }] }, effect: { merge: [{ var: 'state' }, { reputation: { '+': [{ var: 'state.reputation' }, 2] } }] } },
-      { from: { value: 'ACTIVE' }, to: { value: 'ACTIVE' }, eventName: 'receive_completion', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { reputation: { '+': [{ var: 'state.reputation' }, 5] } }] } },
-      { from: { value: 'ACTIVE' }, to: { value: 'WITHDRAWN' }, eventName: 'withdraw', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'WITHDRAWN' }] } },
+      { from: 'REGISTERED', to: 'ACTIVE', eventName: 'activate', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'ACTIVE' }] } },
+      { from: 'ACTIVE', to: 'ACTIVE', eventName: 'receive_vouch', guard: { '!!': [{ var: 'event.from' }] }, effect: { merge: [{ var: 'state' }, { reputation: { '+': [{ var: 'state.reputation' }, 2] } }] } },
+      { from: 'ACTIVE', to: 'ACTIVE', eventName: 'receive_completion', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { reputation: { '+': [{ var: 'state.reputation' }, 5] } }] } },
+      { from: 'ACTIVE', to: 'WITHDRAWN', eventName: 'withdraw', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'WITHDRAWN' }] } },
     ],
     metadata: { name: 'AgentIdentity', description: 'Agent registration and reputation' },
   },
@@ -151,20 +151,20 @@ export const CONTRACT_WORKFLOW: WorkflowDefinition = {
   frequency: 5,
   stateMachineDefinition: {
     states: {
-      Proposed: { id: { value: 'PROPOSED' }, isFinal: false },
-      Active: { id: { value: 'ACTIVE' }, isFinal: false },
-      Completed: { id: { value: 'COMPLETED' }, isFinal: true },
-      Rejected: { id: { value: 'REJECTED' }, isFinal: true },
-      Disputed: { id: { value: 'DISPUTED' }, isFinal: false },
+      Proposed: { id: 'PROPOSED', isFinal: false },
+      Active: { id: 'ACTIVE', isFinal: false },
+      Completed: { id: 'COMPLETED', isFinal: true },
+      Rejected: { id: 'REJECTED', isFinal: true },
+      Disputed: { id: 'DISPUTED', isFinal: false },
     },
-    initialState: { value: 'PROPOSED' },
+    initialState: 'PROPOSED',
     transitions: [
-      { from: { value: 'PROPOSED' }, to: { value: 'ACTIVE' }, eventName: 'accept', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'ACTIVE', acceptedAt: { var: 'event.timestamp' } }] } },
-      { from: { value: 'PROPOSED' }, to: { value: 'REJECTED' }, eventName: 'reject', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'REJECTED', rejectedAt: { var: 'event.timestamp' } }] } },
-      { from: { value: 'ACTIVE' }, to: { value: 'COMPLETED' }, eventName: 'complete', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'COMPLETED', completedAt: { var: 'event.timestamp' } }] } },
-      { from: { value: 'ACTIVE' }, to: { value: 'DISPUTED' }, eventName: 'dispute', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'DISPUTED', disputedAt: { var: 'event.timestamp' } }] } },
-      { from: { value: 'DISPUTED' }, to: { value: 'COMPLETED' }, eventName: 'resolve', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'COMPLETED', resolvedAt: { var: 'event.timestamp' } }] } },
-      { from: { value: 'DISPUTED' }, to: { value: 'REJECTED' }, eventName: 'cancel', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'REJECTED', cancelledAt: { var: 'event.timestamp' } }] } },
+      { from: 'PROPOSED', to: 'ACTIVE', eventName: 'accept', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'ACTIVE', acceptedAt: { var: 'event.timestamp' } }] } },
+      { from: 'PROPOSED', to: 'REJECTED', eventName: 'reject', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'REJECTED', rejectedAt: { var: 'event.timestamp' } }] } },
+      { from: 'ACTIVE', to: 'COMPLETED', eventName: 'complete', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'COMPLETED', completedAt: { var: 'event.timestamp' } }] } },
+      { from: 'ACTIVE', to: 'DISPUTED', eventName: 'dispute', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'DISPUTED', disputedAt: { var: 'event.timestamp' } }] } },
+      { from: 'DISPUTED', to: 'COMPLETED', eventName: 'resolve', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'COMPLETED', resolvedAt: { var: 'event.timestamp' } }] } },
+      { from: 'DISPUTED', to: 'REJECTED', eventName: 'cancel', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'REJECTED', cancelledAt: { var: 'event.timestamp' } }] } },
     ],
     metadata: { name: 'Contract', description: 'Two-party contract negotiation' },
   },
@@ -218,15 +218,15 @@ export const VOTING_WORKFLOW: WorkflowDefinition = {
   frequency: 2,
   stateMachineDefinition: {
     states: {
-      Pending: { id: { value: 'PENDING' }, isFinal: false },
-      Voting: { id: { value: 'VOTING' }, isFinal: false },
-      Completed: { id: { value: 'COMPLETED' }, isFinal: true },
+      Pending: { id: 'PENDING', isFinal: false },
+      Voting: { id: 'VOTING', isFinal: false },
+      Completed: { id: 'COMPLETED', isFinal: true },
     },
-    initialState: { value: 'PENDING' },
+    initialState: 'PENDING',
     transitions: [
-      { from: { value: 'PENDING' }, to: { value: 'VOTING' }, eventName: 'startVoting', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { candidates: { var: 'event.candidates' }, votingStartedAt: { var: 'event.timestamp' } }] } },
-      { from: { value: 'VOTING' }, to: { value: 'VOTING' }, eventName: 'castVote', guard: { '!!': [{ var: 'event.candidate' }] }, effect: { merge: [{ var: 'state' }, { lastVoteAt: { var: 'event.timestamp' }, voteCount: { '+': [{ var: 'state.voteCount' }, 1] } }] } },
-      { from: { value: 'VOTING' }, to: { value: 'COMPLETED' }, eventName: 'endVoting', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'COMPLETED', endedAt: { var: 'event.timestamp' } }] } },
+      { from: 'PENDING', to: 'VOTING', eventName: 'startVoting', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { candidates: { var: 'event.candidates' }, votingStartedAt: { var: 'event.timestamp' } }] } },
+      { from: 'VOTING', to: 'VOTING', eventName: 'castVote', guard: { '!!': [{ var: 'event.candidate' }] }, effect: { merge: [{ var: 'state' }, { lastVoteAt: { var: 'event.timestamp' }, voteCount: { '+': [{ var: 'state.voteCount' }, 1] } }] } },
+      { from: 'VOTING', to: 'COMPLETED', eventName: 'endVoting', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'COMPLETED', endedAt: { var: 'event.timestamp' } }] } },
     ],
     metadata: { name: 'VOTING', description: 'Multi-party voting' },
   },
@@ -282,17 +282,17 @@ export const TOKEN_ESCROW_WORKFLOW: WorkflowDefinition = {
   frequency: 3,
   stateMachineDefinition: {
     states: {
-      Pending: { id: { value: 'PENDING' }, isFinal: false },
-      Funded: { id: { value: 'FUNDED' }, isFinal: false },
-      Released: { id: { value: 'RELEASED' }, isFinal: true },
-      Refunded: { id: { value: 'REFUNDED' }, isFinal: true },
+      Pending: { id: 'PENDING', isFinal: false },
+      Funded: { id: 'FUNDED', isFinal: false },
+      Released: { id: 'RELEASED', isFinal: true },
+      Refunded: { id: 'REFUNDED', isFinal: true },
     },
-    initialState: { value: 'PENDING' },
+    initialState: 'PENDING',
     transitions: [
-      { from: { value: 'PENDING' }, to: { value: 'FUNDED' }, eventName: 'fund', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { depositor: { var: 'event.depositor' }, amount: { var: 'event.amount' }, fundedAt: { var: 'event.timestamp' } }] } },
-      { from: { value: 'FUNDED' }, to: { value: 'RELEASED' }, eventName: 'release', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { beneficiary: { var: 'event.beneficiary' }, releasedAt: { var: 'event.timestamp' } }] } },
-      { from: { value: 'FUNDED' }, to: { value: 'REFUNDED' }, eventName: 'refund', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { refundedAt: { var: 'event.timestamp' } }] } },
-      { from: { value: 'FUNDED' }, to: { value: 'REFUNDED' }, eventName: 'expire', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { expiredAt: { var: 'event.timestamp' } }] } },
+      { from: 'PENDING', to: 'FUNDED', eventName: 'fund', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { depositor: { var: 'event.depositor' }, amount: { var: 'event.amount' }, fundedAt: { var: 'event.timestamp' } }] } },
+      { from: 'FUNDED', to: 'RELEASED', eventName: 'release', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { beneficiary: { var: 'event.beneficiary' }, releasedAt: { var: 'event.timestamp' } }] } },
+      { from: 'FUNDED', to: 'REFUNDED', eventName: 'refund', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { refundedAt: { var: 'event.timestamp' } }] } },
+      { from: 'FUNDED', to: 'REFUNDED', eventName: 'expire', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { expiredAt: { var: 'event.timestamp' } }] } },
     ],
     metadata: { name: 'TokenEscrow', description: 'Escrow with fund/release/refund' },
   },
@@ -350,17 +350,17 @@ export const TICTACTOE_WORKFLOW: WorkflowDefinition = {
   frequency: 2,
   stateMachineDefinition: {
     states: {
-      Setup: { id: { value: 'Setup' }, isFinal: false },
-      Playing: { id: { value: 'Playing' }, isFinal: false },
-      Finished: { id: { value: 'Finished' }, isFinal: true },
-      Cancelled: { id: { value: 'Cancelled' }, isFinal: true },
+      Setup: { id: 'Setup', isFinal: false },
+      Playing: { id: 'Playing', isFinal: false },
+      Finished: { id: 'Finished', isFinal: true },
+      Cancelled: { id: 'Cancelled', isFinal: true },
     },
-    initialState: { value: 'Setup' },
+    initialState: 'Setup',
     transitions: [
-      { from: { value: 'Setup' }, to: { value: 'Playing' }, eventName: 'start_game', guard: { and: [{ '!!': [{ var: 'event.playerX' }] }, { '!!': [{ var: 'event.playerO' }] }] }, effect: { merge: [{ var: 'state' }, { playerX: { var: 'event.playerX' }, playerO: { var: 'event.playerO' }, gameId: { var: 'event.gameId' }, moveCount: 0, status: 'Playing' }] } },
-      { from: { value: 'Playing' }, to: { value: 'Playing' }, eventName: 'make_move', guard: { '<': [{ var: 'state.moveCount' }, 9] }, effect: { merge: [{ var: 'state' }, { lastMove: { player: { var: 'event.player' }, cell: { var: 'event.cell' } }, moveCount: { '+': [{ var: 'state.moveCount' }, 1] } }] } },
-      { from: { value: 'Playing' }, to: { value: 'Finished' }, eventName: 'finish_game', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'Finished', finishedAt: { var: 'event.timestamp' }, winner: { var: 'event.winner' } }] } },
-      { from: { value: 'Playing' }, to: { value: 'Cancelled' }, eventName: 'cancel_game', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'Cancelled', cancelledAt: { var: 'event.timestamp' } }] } },
+      { from: 'Setup', to: 'Playing', eventName: 'start_game', guard: { and: [{ '!!': [{ var: 'event.playerX' }] }, { '!!': [{ var: 'event.playerO' }] }] }, effect: { merge: [{ var: 'state' }, { playerX: { var: 'event.playerX' }, playerO: { var: 'event.playerO' }, gameId: { var: 'event.gameId' }, moveCount: 0, status: 'Playing' }] } },
+      { from: 'Playing', to: 'Playing', eventName: 'make_move', guard: { '<': [{ var: 'state.moveCount' }, 9] }, effect: { merge: [{ var: 'state' }, { lastMove: { player: { var: 'event.player' }, cell: { var: 'event.cell' } }, moveCount: { '+': [{ var: 'state.moveCount' }, 1] } }] } },
+      { from: 'Playing', to: 'Finished', eventName: 'finish_game', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'Finished', finishedAt: { var: 'event.timestamp' }, winner: { var: 'event.winner' } }] } },
+      { from: 'Playing', to: 'Cancelled', eventName: 'cancel_game', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'Cancelled', cancelledAt: { var: 'event.timestamp' } }] } },
     ],
     metadata: { name: 'TicTacToe', description: 'Two-player tic-tac-toe game' },
   },
@@ -399,20 +399,20 @@ export const SIMPLE_ORDER_WORKFLOW: WorkflowDefinition = {
   frequency: 3,
   stateMachineDefinition: {
     states: {
-      Created: { id: { value: 'Created' }, isFinal: false },
-      Confirmed: { id: { value: 'Confirmed' }, isFinal: false },
-      Shipped: { id: { value: 'Shipped' }, isFinal: false },
-      Delivered: { id: { value: 'DELIVERED' }, isFinal: true },
-      Cancelled: { id: { value: 'Cancelled' }, isFinal: true },
+      Created: { id: 'Created', isFinal: false },
+      Confirmed: { id: 'Confirmed', isFinal: false },
+      Shipped: { id: 'Shipped', isFinal: false },
+      Delivered: { id: 'DELIVERED', isFinal: true },
+      Cancelled: { id: 'Cancelled', isFinal: true },
     },
-    initialState: { value: 'Created' },
+    initialState: 'Created',
     transitions: [
-      { from: { value: 'Created' }, to: { value: 'Confirmed' }, eventName: 'confirm', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'Confirmed', confirmedAt: { var: 'event.timestamp' } }] } },
-      { from: { value: 'Created' }, to: { value: 'Cancelled' }, eventName: 'cancel', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'Cancelled', cancelledAt: { var: 'event.timestamp' } }] } },
-      { from: { value: 'Confirmed' }, to: { value: 'Shipped' }, eventName: 'ship', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'Shipped', shippedAt: { var: 'event.timestamp' }, trackingNumber: { var: 'event.trackingNumber' } }] } },
-      { from: { value: 'Confirmed' }, to: { value: 'Cancelled' }, eventName: 'cancel', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'Cancelled', cancelledAt: { var: 'event.timestamp' } }] } },
-      { from: { value: 'Shipped' }, to: { value: 'DELIVERED' }, eventName: 'deliver', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'DELIVERED', deliveredAt: { var: 'event.timestamp' } }] } },
-      { from: { value: 'Shipped' }, to: { value: 'Cancelled' }, eventName: 'lost', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'Cancelled', lostAt: { var: 'event.timestamp' } }] } },
+      { from: 'Created', to: 'Confirmed', eventName: 'confirm', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'Confirmed', confirmedAt: { var: 'event.timestamp' } }] } },
+      { from: 'Created', to: 'Cancelled', eventName: 'cancel', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'Cancelled', cancelledAt: { var: 'event.timestamp' } }] } },
+      { from: 'Confirmed', to: 'Shipped', eventName: 'ship', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'Shipped', shippedAt: { var: 'event.timestamp' }, trackingNumber: { var: 'event.trackingNumber' } }] } },
+      { from: 'Confirmed', to: 'Cancelled', eventName: 'cancel', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'Cancelled', cancelledAt: { var: 'event.timestamp' } }] } },
+      { from: 'Shipped', to: 'DELIVERED', eventName: 'deliver', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'DELIVERED', deliveredAt: { var: 'event.timestamp' } }] } },
+      { from: 'Shipped', to: 'Cancelled', eventName: 'lost', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'Cancelled', lostAt: { var: 'event.timestamp' } }] } },
     ],
     metadata: { name: 'SimpleOrder', description: 'Order fulfillment workflow' },
   },
@@ -451,22 +451,22 @@ export const APPROVAL_WORKFLOW: WorkflowDefinition = {
   frequency: 2,
   stateMachineDefinition: {
     states: {
-      Draft: { id: { value: 'Draft' }, isFinal: false },
-      Submitted: { id: { value: 'Submitted' }, isFinal: false },
-      Level1Approved: { id: { value: 'Level1Approved' }, isFinal: false },
-      Level2Approved: { id: { value: 'Level2Approved' }, isFinal: false },
-      Approved: { id: { value: 'APPROVED' }, isFinal: true },
-      Rejected: { id: { value: 'REJECTED' }, isFinal: true },
+      Draft: { id: 'Draft', isFinal: false },
+      Submitted: { id: 'Submitted', isFinal: false },
+      Level1Approved: { id: 'Level1Approved', isFinal: false },
+      Level2Approved: { id: 'Level2Approved', isFinal: false },
+      Approved: { id: 'APPROVED', isFinal: true },
+      Rejected: { id: 'REJECTED', isFinal: true },
     },
-    initialState: { value: 'Draft' },
+    initialState: 'Draft',
     transitions: [
-      { from: { value: 'Draft' }, to: { value: 'Submitted' }, eventName: 'submit', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'Submitted', submittedAt: { var: 'event.timestamp' } }] } },
-      { from: { value: 'Submitted' }, to: { value: 'Level1Approved' }, eventName: 'approve_l1', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'Level1Approved', l1ApprovedAt: { var: 'event.timestamp' }, l1Approver: { var: 'event.approver' } }] } },
-      { from: { value: 'Submitted' }, to: { value: 'REJECTED' }, eventName: 'reject', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'REJECTED', rejectedAt: { var: 'event.timestamp' }, rejectedBy: { var: 'event.rejector' }, rejectReason: { var: 'event.reason' } }] } },
-      { from: { value: 'Level1Approved' }, to: { value: 'Level2Approved' }, eventName: 'approve_l2', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'Level2Approved', l2ApprovedAt: { var: 'event.timestamp' }, l2Approver: { var: 'event.approver' } }] } },
-      { from: { value: 'Level1Approved' }, to: { value: 'REJECTED' }, eventName: 'reject', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'REJECTED', rejectedAt: { var: 'event.timestamp' }, rejectedBy: { var: 'event.rejector' }, rejectReason: { var: 'event.reason' } }] } },
-      { from: { value: 'Level2Approved' }, to: { value: 'APPROVED' }, eventName: 'finalize', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'APPROVED', finalizedAt: { var: 'event.timestamp' } }] } },
-      { from: { value: 'Level2Approved' }, to: { value: 'REJECTED' }, eventName: 'cancel', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'REJECTED', cancelledAt: { var: 'event.timestamp' } }] } },
+      { from: 'Draft', to: 'Submitted', eventName: 'submit', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'Submitted', submittedAt: { var: 'event.timestamp' } }] } },
+      { from: 'Submitted', to: 'Level1Approved', eventName: 'approve_l1', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'Level1Approved', l1ApprovedAt: { var: 'event.timestamp' }, l1Approver: { var: 'event.approver' } }] } },
+      { from: 'Submitted', to: 'REJECTED', eventName: 'reject', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'REJECTED', rejectedAt: { var: 'event.timestamp' }, rejectedBy: { var: 'event.rejector' }, rejectReason: { var: 'event.reason' } }] } },
+      { from: 'Level1Approved', to: 'Level2Approved', eventName: 'approve_l2', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'Level2Approved', l2ApprovedAt: { var: 'event.timestamp' }, l2Approver: { var: 'event.approver' } }] } },
+      { from: 'Level1Approved', to: 'REJECTED', eventName: 'reject', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'REJECTED', rejectedAt: { var: 'event.timestamp' }, rejectedBy: { var: 'event.rejector' }, rejectReason: { var: 'event.reason' } }] } },
+      { from: 'Level2Approved', to: 'APPROVED', eventName: 'finalize', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'APPROVED', finalizedAt: { var: 'event.timestamp' } }] } },
+      { from: 'Level2Approved', to: 'REJECTED', eventName: 'cancel', guard: { '==': [1, 1] }, effect: { merge: [{ var: 'state' }, { status: 'REJECTED', cancelledAt: { var: 'event.timestamp' } }] } },
     ],
     metadata: { name: 'ApprovalWorkflow', description: 'Multi-level approval process' },
   },
