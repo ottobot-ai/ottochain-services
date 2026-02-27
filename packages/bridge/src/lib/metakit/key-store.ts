@@ -2,53 +2,99 @@
  * Key Store for Server-Signed Mode
  * 
  * Stores private keys for agents registered in server-signed mode.
- * Phase 1: In-memory storage (keys lost on restart)
- * Phase 2: Encrypted database backing (TODO)
+ * Keys are persisted in Postgres via Prisma and encrypted at rest using AES-256-GCM.
+ * 
+ * Encryption key is read from BRIDGE_KEY_ENCRYPTION_KEY environment variable.
+ * If not set, keys are stored unencrypted (development only - logs a warning).
  */
 
+import { PrismaClient, SigningMode as PrismaSigningMode } from '@prisma/client';
+import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 import { generateKeyPair, keyPairFromPrivateKey } from '../../metagraph.js';
 import type { KeyPair } from '../../metagraph.js';
 
+// Lazy-init Prisma client (shared across requests)
+let prismaClient: PrismaClient | null = null;
+
+function getPrisma(): PrismaClient {
+  if (!prismaClient) {
+    prismaClient = new PrismaClient();
+  }
+  return prismaClient;
+}
+
+// Encryption configuration
+const ALGORITHM = 'aes-256-gcm';
+const IV_LENGTH = 12;
+const TAG_LENGTH = 16;
+
 /**
- * Key store interface for managing server-stored keys.
- * Allows swapping implementations (memory → database).
+ * Get the encryption key from environment.
+ * Returns null if not configured (development mode - keys stored unencrypted).
  */
-export interface KeyStore {
-  /**
-   * Get the private key for a fiber.
-   * Returns undefined if not found or if fiber uses self-signed mode.
-   */
-  get(fiberId: string): Promise<string | undefined>;
+function getEncryptionKey(): Buffer | null {
+  const keyHex = process.env.BRIDGE_KEY_ENCRYPTION_KEY;
+  if (!keyHex) {
+    return null;
+  }
+  // Expect 64-char hex string (32 bytes)
+  if (keyHex.length !== 64) {
+    throw new Error('BRIDGE_KEY_ENCRYPTION_KEY must be 64 hex characters (32 bytes)');
+  }
+  return Buffer.from(keyHex, 'hex');
+}
+
+/**
+ * Encrypt a private key for storage.
+ */
+function encryptKey(privateKey: string): { encrypted: string; iv: string; tag: string } {
+  const encryptionKey = getEncryptionKey();
   
-  /**
-   * Store a private key for a fiber.
-   */
-  set(fiberId: string, privateKey: string): Promise<void>;
+  if (!encryptionKey) {
+    // Development mode - store as-is with marker
+    console.warn('[key-store] WARNING: BRIDGE_KEY_ENCRYPTION_KEY not set. Storing keys unencrypted.');
+    return {
+      encrypted: `UNENCRYPTED:${privateKey}`,
+      iv: '',
+      tag: '',
+    };
+  }
   
-  /**
-   * Delete the key for a fiber (e.g., on deregistration).
-   */
-  delete(fiberId: string): Promise<void>;
+  const iv = randomBytes(IV_LENGTH);
+  const cipher = createCipheriv(ALGORITHM, encryptionKey, iv);
   
-  /**
-   * Check if a fiber has a stored key.
-   */
-  has(fiberId: string): Promise<boolean>;
+  let encrypted = cipher.update(privateKey, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  const tag = cipher.getAuthTag();
   
-  /**
-   * Get the signing mode for a fiber.
-   */
-  getMode(fiberId: string): Promise<SigningMode | undefined>;
+  return {
+    encrypted,
+    iv: iv.toString('hex'),
+    tag: tag.toString('hex'),
+  };
+}
+
+/**
+ * Decrypt a private key from storage.
+ */
+function decryptKey(encrypted: string, iv: string, tag: string): string {
+  // Check for unencrypted marker (development mode)
+  if (encrypted.startsWith('UNENCRYPTED:')) {
+    return encrypted.slice('UNENCRYPTED:'.length);
+  }
   
-  /**
-   * Set metadata for a fiber (signing mode, public key for self-signed).
-   */
-  setMetadata(fiberId: string, metadata: FiberKeyMetadata): Promise<void>;
+  const encryptionKey = getEncryptionKey();
+  if (!encryptionKey) {
+    throw new Error('Cannot decrypt key: BRIDGE_KEY_ENCRYPTION_KEY not set');
+  }
   
-  /**
-   * Get metadata for a fiber.
-   */
-  getMetadata(fiberId: string): Promise<FiberKeyMetadata | undefined>;
+  const decipher = createDecipheriv(ALGORITHM, encryptionKey, Buffer.from(iv, 'hex'));
+  decipher.setAuthTag(Buffer.from(tag, 'hex'));
+  
+  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  
+  return decrypted;
 }
 
 export type SigningMode = 'server' | 'self';
@@ -61,76 +107,153 @@ export interface FiberKeyMetadata {
 }
 
 /**
- * Maximum number of entries in the in-memory store.
- * Prevents unbounded memory growth.
+ * Key store interface for managing server-stored keys.
  */
-const MAX_ENTRIES = 10_000;
+export interface KeyStore {
+  get(fiberId: string): Promise<string | undefined>;
+  set(fiberId: string, privateKey: string): Promise<void>;
+  delete(fiberId: string): Promise<void>;
+  has(fiberId: string): Promise<boolean>;
+  getMode(fiberId: string): Promise<SigningMode | undefined>;
+  setMetadata(fiberId: string, metadata: FiberKeyMetadata): Promise<void>;
+  getMetadata(fiberId: string): Promise<FiberKeyMetadata | undefined>;
+}
 
 /**
- * In-memory key store implementation.
+ * Prisma-backed key store implementation.
  * 
- * ⚠️ Keys are lost on process restart!
- * This is acceptable for development/staging but not production.
- * 
- * ⚠️ Single-instance only!
- * Multiple bridge instances would have separate stores.
- * For HA, use Redis or database backing.
+ * Keys are encrypted at rest using AES-256-GCM when BRIDGE_KEY_ENCRYPTION_KEY is set.
  */
-class InMemoryKeyStore implements KeyStore {
-  private keys = new Map<string, string>();
-  private metadata = new Map<string, FiberKeyMetadata>();
-  
+class PrismaKeyStore implements KeyStore {
   async get(fiberId: string): Promise<string | undefined> {
-    return this.keys.get(fiberId);
+    const prisma = getPrisma();
+    const record = await prisma.signingKey.findUnique({
+      where: { fiberId },
+    });
+    
+    if (!record || !record.encryptedKey) {
+      return undefined;
+    }
+    
+    // Update last used timestamp
+    await prisma.signingKey.update({
+      where: { fiberId },
+      data: { lastUsedAt: new Date() },
+    }).catch(() => {}); // Non-critical, don't fail on update error
+    
+    return decryptKey(record.encryptedKey, record.keyIv ?? '', record.keyTag ?? '');
   }
   
   async set(fiberId: string, privateKey: string): Promise<void> {
-    this.evictIfNeeded();
-    this.keys.set(fiberId, privateKey);
+    const prisma = getPrisma();
+    const { encrypted, iv, tag } = encryptKey(privateKey);
+    const keyPair = keyPairFromPrivateKey(privateKey);
+    
+    // Normalize public key to 128 chars (no 04 prefix)
+    const publicKey = keyPair.publicKey.length === 130 
+      ? keyPair.publicKey.slice(2) 
+      : keyPair.publicKey;
+    
+    await prisma.signingKey.upsert({
+      where: { fiberId },
+      create: {
+        fiberId,
+        signingMode: 'SERVER',
+        publicKey,
+        address: keyPair.address,
+        encryptedKey: encrypted,
+        keyIv: iv,
+        keyTag: tag,
+      },
+      update: {
+        encryptedKey: encrypted,
+        keyIv: iv,
+        keyTag: tag,
+      },
+    });
+    
+    console.log(`[key-store] Stored server-signed key for fiber ${fiberId}`);
   }
   
   async delete(fiberId: string): Promise<void> {
-    this.keys.delete(fiberId);
-    this.metadata.delete(fiberId);
+    const prisma = getPrisma();
+    await prisma.signingKey.delete({
+      where: { fiberId },
+    }).catch(() => {}); // Ignore if not found
+    
+    console.log(`[key-store] Deleted key for fiber ${fiberId}`);
   }
   
   async has(fiberId: string): Promise<boolean> {
-    return this.keys.has(fiberId);
+    const prisma = getPrisma();
+    const record = await prisma.signingKey.findUnique({
+      where: { fiberId },
+      select: { fiberId: true, encryptedKey: true },
+    });
+    return record !== null && record.encryptedKey !== null;
   }
   
   async getMode(fiberId: string): Promise<SigningMode | undefined> {
-    return this.metadata.get(fiberId)?.signingMode;
+    const prisma = getPrisma();
+    const record = await prisma.signingKey.findUnique({
+      where: { fiberId },
+      select: { signingMode: true },
+    });
+    
+    if (!record) return undefined;
+    return record.signingMode === 'SERVER' ? 'server' : 'self';
   }
   
   async setMetadata(fiberId: string, metadata: FiberKeyMetadata): Promise<void> {
-    this.evictIfNeeded();
-    this.metadata.set(fiberId, metadata);
+    const prisma = getPrisma();
+    
+    // Normalize public key to 128 chars
+    const publicKey = metadata.publicKey.length === 130 
+      ? metadata.publicKey.slice(2) 
+      : metadata.publicKey;
+    
+    const signingMode: PrismaSigningMode = metadata.signingMode === 'server' ? 'SERVER' : 'SELF';
+    
+    await prisma.signingKey.upsert({
+      where: { fiberId },
+      create: {
+        fiberId,
+        signingMode,
+        publicKey,
+        address: metadata.address,
+        encryptedKey: null,
+        keyIv: null,
+        keyTag: null,
+      },
+      update: {
+        signingMode,
+        publicKey,
+        address: metadata.address,
+      },
+    });
+    
+    console.log(`[key-store] Stored metadata for fiber ${fiberId} (${metadata.signingMode} mode)`);
   }
   
   async getMetadata(fiberId: string): Promise<FiberKeyMetadata | undefined> {
-    return this.metadata.get(fiberId);
-  }
-  
-  /**
-   * Evict oldest entries if at capacity.
-   * Uses Map's insertion order for FIFO eviction.
-   */
-  private evictIfNeeded(): void {
-    while (this.keys.size >= MAX_ENTRIES) {
-      const oldest = this.keys.keys().next().value;
-      if (oldest) {
-        console.log(`[key-store] Evicting ${oldest} (at capacity)`);
-        this.keys.delete(oldest);
-        this.metadata.delete(oldest);
-      } else {
-        break;
-      }
-    }
+    const prisma = getPrisma();
+    const record = await prisma.signingKey.findUnique({
+      where: { fiberId },
+    });
+    
+    if (!record) return undefined;
+    
+    return {
+      signingMode: record.signingMode === 'SERVER' ? 'server' : 'self',
+      publicKey: record.publicKey,
+      address: record.address,
+      createdAt: record.createdAt,
+    };
   }
 }
 
 // Singleton instance
-const keyStoreInstance = new InMemoryKeyStore();
+const keyStoreInstance = new PrismaKeyStore();
 
 /**
  * Get the global key store instance.
@@ -149,7 +272,7 @@ export interface ServerKeyRegistration {
 
 /**
  * Register a new agent with server-signed mode.
- * Generates a keypair and stores it in the key store.
+ * Generates a keypair and stores it encrypted in the database.
  */
 export async function registerServerSigned(fiberId: string): Promise<ServerKeyRegistration> {
   const keyPair = generateKeyPair();
@@ -179,7 +302,7 @@ export interface SelfKeyRegistration {
 
 /**
  * Register a new agent with self-signed mode.
- * Stores the public key for signature validation.
+ * Stores the public key for signature validation (no private key).
  */
 export async function registerSelfSigned(
   fiberId: string,
@@ -188,11 +311,6 @@ export async function registerSelfSigned(
   // Derive address from public key
   // dag4 expects 130-char key with 04 prefix
   const fullPublicKey = publicKey.length === 128 ? `04${publicKey}` : publicKey;
-  const keyPair = {
-    privateKey: '', // Not stored for self-signed
-    publicKey: fullPublicKey,
-    address: '', // Will be derived below
-  };
   
   // Import dag4 to derive address
   const { dag4 } = await import('@stardust-collective/dag4');

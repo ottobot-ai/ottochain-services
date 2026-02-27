@@ -343,3 +343,25 @@ enum MonitoringScope {
   FULL_LAYER
   FULL_METAGRAPH
 }
+
+/// Signing keys for server-signed mode agents
+/// Private keys are encrypted at rest using BRIDGE_KEY_ENCRYPTION_KEY env var
+model SigningKey {
+  fiberId         String      @id @db.VarChar(64)
+  signingMode     SigningMode
+  publicKey       String      @db.VarChar(128)    // 128-char hex (no 04 prefix)
+  address         String      @db.VarChar(64)     // DAG address
+  encryptedKey    String?     @db.Text            // AES-256-GCM encrypted private key (server mode only)
+  keyIv           String?     @db.VarChar(32)     // Initialization vector for decryption
+  keyTag          String?     @db.VarChar(32)     // Auth tag for AES-GCM
+  createdAt       DateTime    @default(now())
+  lastUsedAt      DateTime?
+
+  @@index([signingMode])
+  @@index([address])
+}
+
+enum SigningMode {
+  SERVER    // Bridge stores and uses private key
+  SELF      // Client manages private key, bridge only stores public key
+}
