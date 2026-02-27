@@ -109,6 +109,8 @@ export class MonitorCache {
     nodes: 'monitor:nodes',
     services: 'monitor:services',
     metagraph: 'monitor:metagraph',
+    /** Watchdog-consumable health snapshot (flat format, no CacheEntry wrapper) */
+    watchdogHealth: 'monitor:health:latest',
   } as const;
 
   /**
@@ -140,6 +142,18 @@ export class MonitorCache {
   async invalidateAll(): Promise<void> {
     const keys = Object.values(MonitorCache.keys);
     await Promise.all(keys.map(key => this.invalidate(key)));
+  }
+
+  /**
+   * Set raw JSON value (no CacheEntry wrapper).
+   * Used for cross-service data sharing where consumer expects plain JSON.
+   */
+  async setRaw(key: string, data: unknown, ttlSeconds: number): Promise<void> {
+    try {
+      await this.redis.setex(key, ttlSeconds, JSON.stringify(data));
+    } catch (err) {
+      console.warn(`Cache setRaw error for key ${key}:`, err);
+    }
   }
 
   /**

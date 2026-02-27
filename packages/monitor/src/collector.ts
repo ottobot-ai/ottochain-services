@@ -446,10 +446,6 @@ export async function getMetagraphMetrics(
   return metrics;
 }
 
-export interface AlertCallback {
-  (message: string, severity: 'warning' | 'critical'): void;
-}
-
 export class HealthCollector {
   private config: MonitorConfig;
   private latestHealth: {
@@ -457,117 +453,9 @@ export class HealthCollector {
     services: ServiceHealth[];
     metagraph: MetagraphMetrics;
   } = { nodes: [], services: [], metagraph: {} };
-  private previousHealth: typeof this.latestHealth | null = null;
-  private alertCallback: AlertCallback | null = null;
-  private lastAlertTime: Record<string, number> = {};
-  private alertCooldownMs = 60000; // Don't spam alerts - 1 min cooldown per issue
   
   constructor(config: MonitorConfig) {
     this.config = config;
-  }
-  
-  setAlertCallback(callback: AlertCallback): void {
-    this.alertCallback = callback;
-  }
-  
-  private alert(key: string, message: string, severity: 'warning' | 'critical'): void {
-    const now = Date.now();
-    if (this.lastAlertTime[key] && now - this.lastAlertTime[key] < this.alertCooldownMs) {
-      return; // Cooldown active
-    }
-    this.lastAlertTime[key] = now;
-    this.alertCallback?.(message, severity);
-  }
-  
-  private checkForAlerts(nodes: NodeHealth[]): void {
-    // Check for node failures
-    for (const node of nodes) {
-      const prevNode = this.previousHealth?.nodes.find(n => n.name === node.name);
-      
-      // Node went down
-      if (node.status === 'unhealthy' && prevNode?.status === 'healthy') {
-        this.alert(`node-down-${node.name}`, `🔴 Node DOWN: ${node.name} (${node.url})`, 'critical');
-      }
-      
-      // Node recovered
-      if (node.status === 'healthy' && prevNode?.status === 'unhealthy') {
-        this.alert(`node-up-${node.name}`, `🟢 Node RECOVERED: ${node.name}`, 'warning');
-      }
-      
-      // Ordinal stalled (was progressing, now stuck)
-      if (node.isProgressing === false && prevNode?.isProgressing === true) {
-        this.alert(
-          `stalled-${node.name}`,
-          `⚠️ STALLED: ${node.name} ordinal stuck at ${node.ordinal} for >4 minutes`,
-          'critical'
-        );
-      }
-      
-      // Ordinal resumed
-      if (node.isProgressing === true && prevNode?.isProgressing === false) {
-        this.alert(
-          `resumed-${node.name}`,
-          `🟢 RESUMED: ${node.name} ordinal progressing again (${node.ordinal})`,
-          'warning'
-        );
-      }
-    }
-    
-    // Check for forks (different ordinals/states between same-type nodes)
-    this.checkForForks(nodes);
-    
-    // Check metagraph health
-    this.checkMetagraphHealth();
-  }
-  
-  private checkMetagraphHealth(): void {
-    const current = this.latestHealth.metagraph;
-    const previous = this.previousHealth?.metagraph;
-    
-    // Currency snapshots became unavailable
-    if (current.currencySnapshotAvailable === false && previous?.currencySnapshotAvailable === true) {
-      this.alert('currency-unavailable', '🔴 Currency snapshots UNAVAILABLE - transactions will fail', 'critical');
-    }
-    
-    // Currency snapshots became available
-    if (current.currencySnapshotAvailable === true && previous?.currencySnapshotAvailable === false) {
-      this.alert('currency-available', '🟢 Currency snapshots AVAILABLE', 'warning');
-    }
-    
-    // DL1 lag too high (>50 ordinals behind ML0)
-    if ((current.dl1Lag ?? 0) > 50 && (previous?.dl1Lag ?? 0) <= 50) {
-      this.alert('dl1-lag-high', `⚠️ DL1 lagging behind ML0 by ${current.dl1Lag} ordinals`, 'warning');
-    }
-    
-    // DL1 lag recovered
-    if ((current.dl1Lag ?? 0) <= 50 && (previous?.dl1Lag ?? 0) > 50) {
-      this.alert('dl1-lag-ok', `🟢 DL1 sync recovered (lag: ${current.dl1Lag})`, 'warning');
-    }
-  }
-  
-  private checkForForks(nodes: NodeHealth[]): void {
-    // Group by type
-    const byType: Record<string, NodeHealth[]> = {};
-    for (const node of nodes) {
-      if (!byType[node.type]) byType[node.type] = [];
-      byType[node.type].push(node);
-    }
-    
-    // Check each group for state mismatches
-    for (const [type, typeNodes] of Object.entries(byType)) {
-      const healthyNodes = typeNodes.filter(n => n.status === 'healthy');
-      if (healthyNodes.length < 2) continue;
-      
-      // Check if all healthy nodes have the same state
-      const states = new Set(healthyNodes.map(n => n.state));
-      if (states.size > 1) {
-        this.alert(
-          `fork-${type}`,
-          `⚠️ Potential FORK in ${type.toUpperCase()}: Nodes have different states: ${Array.from(states).join(', ')}`,
-          'critical'
-        );
-      }
-    }
   }
   
   async collect(): Promise<void> {
@@ -636,12 +524,7 @@ export class HealthCollector {
         )
       : {};
     
-    // Update state first (so checkMetagraphHealth sees current data)
-    this.previousHealth = this.latestHealth;
     this.latestHealth = { nodes, services, metagraph };
-    
-    // Check for alerts after updating
-    this.checkForAlerts(nodes);
   }
   
   getHealth() {
