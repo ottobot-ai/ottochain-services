@@ -58,14 +58,18 @@ describe('Identity Event Names Alignment', () => {
   describe('selection.ts weight alignment', () => {
     const mockAgent: Agent = {
       address: 'test-address',
+      privateKey: 'test-private-key',
+      fiberId: null,
       state: 'ACTIVE',
-      fitness: { individual: 0.5, collaborative: 0.5, total: 0.5 },
-      reputation: 50,
+      fitness: { individual: 0.5, collaborative: 0.5, total: 0.5, reputation: 50, completionRate: 0.8, networkCentrality: 0.3 },
       meta: { platform: 'test', riskTolerance: 0.3 }
-    } as Agent;
+    } as unknown as Agent;
 
     it('T5.1: receive_vouch has weight defined', () => {
-      const weights = computeTransitionWeights(mockAgent, {});
+      const weights = computeTransitionWeights(mockAgent, {
+        generation: 1, temperature: 1.0, marketHealth: 0.8,
+        activityThreshold: 0.3, mutationRate: 0.05
+      });
       
       // This should FAIL initially because computeTransitionWeights still uses submit_attestation
       expect(weights.receive_vouch).toBeDefined();
@@ -73,7 +77,10 @@ describe('Identity Event Names Alignment', () => {
     });
 
     it('T5.2: receive_violation has weight defined', () => {
-      const weights = computeTransitionWeights(mockAgent, {});
+      const weights = computeTransitionWeights(mockAgent, {
+        generation: 1, temperature: 1.0, marketHealth: 0.8,
+        activityThreshold: 0.3, mutationRate: 0.05
+      });
       
       // This should FAIL initially because computeTransitionWeights still uses submit_violation  
       expect(weights.receive_violation).toBeDefined();
@@ -81,7 +88,10 @@ describe('Identity Event Names Alignment', () => {
     });
 
     it('T5.3: challenge has weight defined', () => {
-      const weights = computeTransitionWeights(mockAgent, {});
+      const weights = computeTransitionWeights(mockAgent, {
+        generation: 1, temperature: 1.0, marketHealth: 0.8,
+        activityThreshold: 0.3, mutationRate: 0.05
+      });
       
       // This should FAIL initially because computeTransitionWeights still uses file_challenge
       expect(weights.challenge).toBeDefined();
@@ -105,11 +115,12 @@ describe('Identity Event Names Alignment', () => {
   describe('generateEventData alignment', () => {
     const mockAgent: Agent = {
       address: 'test-address',
+      privateKey: 'test-private-key',
+      fiberId: null,
       state: 'ACTIVE',
-      fitness: { individual: 0.5, collaborative: 0.5, total: 0.5 },
-      reputation: 50,
+      fitness: { individual: 0.5, collaborative: 0.5, total: 0.5, reputation: 50, completionRate: 0.8, networkCentrality: 0.3 },
       meta: { platform: 'test', riskTolerance: 0.3 }
-    } as Agent;
+    } as unknown as Agent;
 
     it('T7.1: generateEventData handles receive_vouch', () => {
       // This should FAIL initially because generateEventData still uses submit_attestation
