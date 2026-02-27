@@ -8,12 +8,36 @@
 import { prisma, getConfig } from '@ottochain/shared';
 import { processSnapshot } from './processor.js';
 
-// ML0 node endpoints (all 3 peers)
-const ML0_PEERS = [
+// Default production ML0 peers — override via ML0_PEER_URLS env var
+// Format: ML0_PEER_URLS="http://ml0-0:9200,http://ml0-1:9200"
+// Falls back to METAGRAPH_ML0_URL as single peer if neither is set
+const DEFAULT_PEERS = [
   { name: 'node1', url: 'http://5.78.90.207:9200' },
   { name: 'node2', url: 'http://5.78.113.25:9200' },
   { name: 'node3', url: 'http://5.78.107.77:9200' },
 ];
+
+function getML0Peers(): Array<{ name: string; url: string }> {
+  const envPeers = process.env.ML0_PEER_URLS;
+  if (envPeers) {
+    return envPeers.split(',').map((url, i) => ({
+      name: `peer${i}`,
+      url: url.trim(),
+    }));
+  }
+  // Fall back to METAGRAPH_ML0_URL as single peer (CI, dev)
+  const config = getConfig();
+  if (config.METAGRAPH_ML0_URL && !config.METAGRAPH_ML0_URL.includes('5.78.')) {
+    return [{ name: 'primary', url: config.METAGRAPH_ML0_URL }];
+  }
+  return DEFAULT_PEERS;
+}
+
+let ML0_PEERS: Array<{ name: string; url: string }> | null = null;
+function peers(): Array<{ name: string; url: string }> {
+  if (!ML0_PEERS) ML0_PEERS = getML0Peers();
+  return ML0_PEERS;
+}
 
 interface PeerSnapshot {
   ordinal: number;
@@ -91,7 +115,7 @@ async function pollOnce(): Promise<void> {
   const primaryUrl = config.METAGRAPH_ML0_URL;
   
   // Poll all peers for fork detection
-  const results = await Promise.all(ML0_PEERS.map(async (peer) => {
+  const results = await Promise.all(peers().map(async (peer) => {
     const snapshot = await pollPeer(peer);
     if (snapshot) {
       peerState.set(peer.name, snapshot);
@@ -151,7 +175,9 @@ export function startSnapshotPoller(intervalMs = 60000): void {
     return;
   }
   
-  console.log(`🔄 Starting fallback poller (every ${intervalMs / 1000}s) with ${ML0_PEERS.length}-peer fork detection`);
+  const peerList = peers();
+  console.log(`🔄 Starting fallback poller (every ${intervalMs / 1000}s) with ${peerList.length}-peer fork detection`);
+  console.log(`   Peers: ${peerList.map(p => `${p.name}=${p.url}`).join(', ')}`);
   
   // Initial poll
   pollOnce().catch(console.error);
