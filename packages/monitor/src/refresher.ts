@@ -7,7 +7,7 @@
 
 import type { HealthCollector } from './collector.js';
 import { MonitorCache } from './cache.js';
-import type { StackHealth, ServiceStatus } from './types.js';
+import type { StackHealth, ServiceStatus, NodeHealth } from './types.js';
 
 export class CacheRefresher {
   private collector: HealthCollector;
@@ -108,6 +108,8 @@ export class CacheRefresher {
           { status: 'ok', service: 'monitor' }, 
           this.cache.getTTL('health')
         ),
+        // Watchdog-consumable snapshot (flat format, no CacheEntry wrapper)
+        this.writeWatchdogHealth(health.nodes),
       ]);
       
       const duration = Date.now() - startTime;
@@ -117,6 +119,59 @@ export class CacheRefresher {
       
     } catch (err) {
       console.error('Cache refresh failed:', err);
+    }
+  }
+
+  /**
+   * Write health snapshot in watchdog-consumable format.
+   * 
+   * The watchdog (ottochain-watchdog) reads `monitor:health:latest` as a flat
+   * JSON blob — no CacheEntry wrapper. Groups node data by IP with per-layer status.
+   * Written with 30s TTL; watchdog considers data stale after 60s (configurable).
+   */
+  private async writeWatchdogHealth(nodes: NodeHealth[]): Promise<void> {
+    // Group nodes by IP (nodes array has one entry per node-layer combo)
+    const byIp = new Map<string, { name: string; layers: Array<{
+      layer: string; state: string; ordinal: number; reachable: boolean; clusterSize: number;
+    }> }>();
+
+    for (const node of nodes) {
+      const ip = this.extractIp(node.url);
+      if (!ip) continue;
+
+      if (!byIp.has(ip)) {
+        byIp.set(ip, { name: node.name.split('-')[0] ?? node.name, layers: [] });
+      }
+      byIp.get(ip)!.layers.push({
+        layer: node.type,
+        state: node.state ?? (node.status === 'unhealthy' ? 'Unreachable' : 'Unknown'),
+        ordinal: node.ordinal ?? -1,
+        reachable: node.status !== 'unhealthy',
+        clusterSize: node.clusterSize ?? 0,
+      });
+    }
+
+    const payload = {
+      timestamp: new Date().toISOString(),
+      nodes: Array.from(byIp.entries()).map(([ip, data]) => ({
+        ip,
+        name: data.name,
+        layers: data.layers,
+      })),
+    };
+
+    // Write raw (no CacheEntry wrapper) — watchdog reads plain JSON
+    await this.cache.setRaw(MonitorCache.keys.watchdogHealth, payload, 30);
+  }
+
+  /** Extract IP from a node URL like http://10.0.0.1:9000 */
+  private extractIp(url: string | undefined): string | null {
+    if (!url) return null;
+    try {
+      const parsed = new URL(url);
+      return parsed.hostname;
+    } catch {
+      return null;
     }
   }
 
