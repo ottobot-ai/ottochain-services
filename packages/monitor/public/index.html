@@ -15,6 +15,8 @@
       --yellow: #ecc94b;
       --red: #fc8181;
       --blue: #63b3ed;
+      --purple: #b794f4;
+      --gray: #a0aec0;
     }
     
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -58,10 +60,100 @@
     .overall-status.healthy { background: rgba(72, 187, 120, 0.2); color: var(--green); }
     .overall-status.degraded { background: rgba(236, 201, 75, 0.2); color: var(--yellow); }
     .overall-status.unhealthy { background: rgba(252, 129, 129, 0.2); color: var(--red); }
-    
+    .overall-status.stale { background: rgba(236, 201, 75, 0.2); color: var(--yellow); }
+    .overall-status.unknown { background: rgba(113, 128, 150, 0.2); color: var(--text-muted); }
+
+    /* Stale banner */
+    #stale-banner {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 20px;
+      margin-bottom: 16px;
+      background: rgba(236, 201, 75, 0.15);
+      border: 1px solid rgba(236, 201, 75, 0.4);
+      border-radius: 10px;
+      color: var(--yellow);
+      font-weight: 500;
+    }
+    #stale-banner.show { display: flex; }
+
+    /* Monitor Health Panel */
+    .monitor-panel {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin-bottom: 24px;
+      padding: 14px 18px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+
+    .monitor-panel.unavailable {
+      opacity: 0.5;
+      font-size: 13px;
+      color: var(--text-muted);
+      gap: 0;
+    }
+
+    .monitor-item {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .monitor-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--text-muted);
+    }
+
+    .monitor-value {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .monitor-value.running { color: var(--green); }
+    .monitor-value.stopped { color: var(--red); }
+    .monitor-value.unknown { color: var(--text-muted); }
+    .monitor-value.amber  { color: var(--yellow); }
+    .monitor-value.fresh  { color: var(--green); }
+    .monitor-value.stale  { color: var(--red); }
+
+    .monitor-divider {
+      width: 1px;
+      background: var(--border);
+      margin: 0 4px;
+      align-self: stretch;
+    }
+
+    /* Active alerts strip inside monitor panel */
+    .active-alerts {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 8px;
+      border-top: 1px solid var(--border);
+      padding-top: 8px;
+    }
+
+    .active-alert-item {
+      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      background: rgba(236, 201, 75, 0.1);
+      border-left: 3px solid var(--yellow);
+      color: var(--yellow);
+    }
+
+    /* Metrics bar */
     .metrics-bar {
       display: flex;
       gap: 24px;
+      flex-wrap: wrap;
       margin-bottom: 24px;
       padding: 16px;
       background: var(--bg-card);
@@ -87,6 +179,15 @@
       font-weight: 600;
       color: var(--blue);
     }
+
+    .metric-sub {
+      font-size: 11px;
+      margin-top: 2px;
+    }
+
+    .metric-sub.advancing { color: var(--green); }
+    .metric-sub.stalled   { color: var(--yellow); }
+    .metric-sub.unknown   { color: var(--text-muted); }
     
     .section {
       margin-bottom: 32px;
@@ -137,10 +238,10 @@
       text-transform: uppercase;
     }
     
-    .status-badge.healthy { background: rgba(72, 187, 120, 0.2); color: var(--green); }
-    .status-badge.degraded { background: rgba(236, 201, 75, 0.2); color: var(--yellow); }
+    .status-badge.healthy   { background: rgba(72, 187, 120, 0.2); color: var(--green); }
+    .status-badge.degraded  { background: rgba(236, 201, 75, 0.2); color: var(--yellow); }
     .status-badge.unhealthy { background: rgba(252, 129, 129, 0.2); color: var(--red); }
-    .status-badge.unknown { background: rgba(113, 128, 150, 0.2); color: var(--text-muted); }
+    .status-badge.unknown   { background: rgba(113, 128, 150, 0.2); color: var(--text-muted); }
     
     .card-details {
       display: flex;
@@ -174,16 +275,8 @@
     }
     
     .btn:hover { opacity: 0.8; }
-    
-    .btn-start {
-      background: var(--green);
-      color: var(--bg-dark);
-    }
-    
-    .btn-stop {
-      background: var(--red);
-      color: var(--bg-dark);
-    }
+    .btn-start { background: var(--green); color: var(--bg-dark); }
+    .btn-stop  { background: var(--red);   color: var(--bg-dark); }
     
     .error-text {
       color: var(--red);
@@ -206,15 +299,8 @@
       gap: 8px;
     }
     
-    .connection-status.connected {
-      background: rgba(72, 187, 120, 0.2);
-      color: var(--green);
-    }
-    
-    .connection-status.disconnected {
-      background: rgba(252, 129, 129, 0.2);
-      color: var(--red);
-    }
+    .connection-status.connected    { background: rgba(72, 187, 120, 0.2); color: var(--green); }
+    .connection-status.disconnected { background: rgba(252, 129, 129, 0.2); color: var(--red); }
     
     .pulse {
       width: 8px;
@@ -234,7 +320,7 @@
       color: var(--text-muted);
     }
     
-    /* Nodes by layer layout */
+    /* Nodes by layer */
     .nodes-by-layer {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
@@ -258,7 +344,7 @@
       border: 1px solid var(--border);
     }
     
-    /* Services split layout */
+    /* Services split */
     .services-split {
       display: grid;
       grid-template-columns: 2fr 1fr;
@@ -280,20 +366,78 @@
       padding-bottom: 4px;
       border-bottom: 1px solid var(--border);
     }
+
+    /* Events Timeline */
+    .events-timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .event-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 8px 12px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    .event-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-top: 3px;
+      flex-shrink: 0;
+    }
+
+    .event-dot.RESTART             { background: var(--blue); }
+    .event-dot.ALERT               { background: var(--yellow); }
+    .event-dot.RESOLVED            { background: var(--green); }
+    .event-dot.MONITORING_START,
+    .event-dot.MONITORING_STOP     { background: var(--gray); }
+
+    .event-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .event-type {
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .event-type.RESTART             { color: var(--blue); }
+    .event-type.ALERT               { color: var(--yellow); }
+    .event-type.RESOLVED            { color: var(--green); }
+    .event-type.MONITORING_START,
+    .event-type.MONITORING_STOP     { color: var(--gray); }
+
+    .event-msg { color: var(--text); }
+    .event-time { color: var(--text-muted); font-size: 11px; }
+
+    .events-empty {
+      color: var(--text-muted);
+      font-size: 13px;
+      padding: 12px;
+      text-align: center;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
     
     @media (max-width: 900px) {
-      .nodes-by-layer {
-        grid-template-columns: repeat(2, 1fr);
-      }
-      .services-split {
-        grid-template-columns: 1fr;
-      }
+      .nodes-by-layer { grid-template-columns: repeat(2, 1fr); }
+      .services-split { grid-template-columns: 1fr; }
     }
     
     @media (max-width: 600px) {
-      .nodes-by-layer {
-        grid-template-columns: 1fr;
-      }
+      .nodes-by-layer { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -304,11 +448,50 @@
       <span>●</span> <span id="overall-text">Connecting...</span>
     </div>
   </div>
+
+  <!-- Stale data warning banner -->
+  <div id="stale-banner">
+    ⚠️ Status data may be stale — last update <span id="stale-age">-</span>
+  </div>
+
+  <!-- Monitor Health Panel -->
+  <div id="monitor-panel" class="monitor-panel" style="display:none;">
+    <div class="monitor-item">
+      <div class="monitor-label">Monitor</div>
+      <div class="monitor-value" id="mon-status">—</div>
+    </div>
+    <div class="monitor-divider"></div>
+    <div class="monitor-item">
+      <div class="monitor-label">Last Seen</div>
+      <div class="monitor-value" id="mon-last-seen">—</div>
+    </div>
+    <div class="monitor-divider"></div>
+    <div class="monitor-item">
+      <div class="monitor-label">Last Check</div>
+      <div class="monitor-value" id="mon-last-check">—</div>
+    </div>
+    <div class="monitor-divider"></div>
+    <div class="monitor-item">
+      <div class="monitor-label">Page Updated</div>
+      <div class="monitor-value" id="mon-page-age">—</div>
+    </div>
+    <!-- Active alerts injected here -->
+  </div>
+
+  <div id="monitor-unavailable" style="display:none; margin-bottom:16px; font-size:12px; color:var(--text-muted); padding:8px 14px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px;">
+    🔇 Monitor data unavailable
+  </div>
   
   <div class="metrics-bar">
     <div class="metric">
-      <div class="metric-label">Snapshot Ordinal</div>
+      <div class="metric-label">GL0 Ordinal</div>
       <div class="metric-value" id="ordinal">-</div>
+      <div class="metric-sub unknown" id="gl0-ordinal-status">—</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">ML0 Ordinal</div>
+      <div class="metric-value" id="ml0-ordinal">-</div>
+      <div class="metric-sub unknown" id="ml0-ordinal-status">—</div>
     </div>
     <div class="metric">
       <div class="metric-label">Active Fibers</div>
@@ -331,18 +514,10 @@
   <div class="section">
     <h2>🔗 Tessellation Nodes</h2>
     <div class="nodes-by-layer" id="nodes-grid">
-      <div class="layer-column" id="gl0-column">
-        <div class="layer-header">GL0</div>
-      </div>
-      <div class="layer-column" id="ml0-column">
-        <div class="layer-header">ML0</div>
-      </div>
-      <div class="layer-column" id="cl1-column">
-        <div class="layer-header">CL1</div>
-      </div>
-      <div class="layer-column" id="dl1-column">
-        <div class="layer-header">DL1</div>
-      </div>
+      <div class="layer-column" id="gl0-column"><div class="layer-header">GL0</div></div>
+      <div class="layer-column" id="ml0-column"><div class="layer-header">ML0</div></div>
+      <div class="layer-column" id="cl1-column"><div class="layer-header">CL1</div></div>
+      <div class="layer-column" id="dl1-column"><div class="layer-header">DL1</div></div>
     </div>
   </div>
   
@@ -359,6 +534,12 @@
       </div>
     </div>
   </div>
+
+  <!-- Recent Events Timeline -->
+  <div class="section" id="events-section" style="display:none;">
+    <h2>📋 Recent Events</h2>
+    <div class="events-timeline" id="events-timeline"></div>
+  </div>
   
   <div id="connection-status" class="connection-status disconnected">
     <div class="pulse"></div>
@@ -366,27 +547,174 @@
   </div>
   
   <script>
-    // Layer columns for nodes
-    const gl0Column = document.getElementById('gl0-column');
-    const ml0Column = document.getElementById('ml0-column');
-    const cl1Column = document.getElementById('cl1-column');
-    const dl1Column = document.getElementById('dl1-column');
-    
-    // Service grids
-    const logicServicesGrid = document.getElementById('logic-services-grid');
+    // ── DOM refs ──────────────────────────────────────────────────────────────
+    const gl0Column        = document.getElementById('gl0-column');
+    const ml0Column        = document.getElementById('ml0-column');
+    const cl1Column        = document.getElementById('cl1-column');
+    const dl1Column        = document.getElementById('dl1-column');
+    const logicServicesGrid   = document.getElementById('logic-services-grid');
     const storageServicesGrid = document.getElementById('storage-services-grid');
-    
-    const overallEl = document.getElementById('overall');
-    const overallText = document.getElementById('overall-text');
-    const ordinalEl = document.getElementById('ordinal');
-    const fibersEl = document.getElementById('fibers');
-    const healthyNodesEl = document.getElementById('healthy-nodes');
-    const lastUpdateEl = document.getElementById('last-update');
+    const overallEl        = document.getElementById('overall');
+    const overallText      = document.getElementById('overall-text');
+    const ordinalEl        = document.getElementById('ordinal');
+    const ml0OrdinalEl     = document.getElementById('ml0-ordinal');
+    const gl0OrdinalStatus = document.getElementById('gl0-ordinal-status');
+    const ml0OrdinalStatus = document.getElementById('ml0-ordinal-status');
+    const fibersEl         = document.getElementById('fibers');
+    const healthyNodesEl   = document.getElementById('healthy-nodes');
+    const lastUpdateEl     = document.getElementById('last-update');
     const connectionStatus = document.getElementById('connection-status');
-    
-    // Storage service names
+    const staleBanner      = document.getElementById('stale-banner');
+    const staleAge         = document.getElementById('stale-age');
+    const monitorPanel     = document.getElementById('monitor-panel');
+    const monitorUnavail   = document.getElementById('monitor-unavailable');
+    const monStatus        = document.getElementById('mon-status');
+    const monLastSeen      = document.getElementById('mon-last-seen');
+    const monLastCheck     = document.getElementById('mon-last-check');
+    const monPageAge       = document.getElementById('mon-page-age');
+    const eventsSection    = document.getElementById('events-section');
+    const eventsTimeline   = document.getElementById('events-timeline');
+
+    // ── State ─────────────────────────────────────────────────────────────────
     const storageServices = ['Postgres', 'Redis'];
-    
+    let lastDataTime = null;          // epoch ms of last received payload
+    let trafficGenUrl = null;
+
+    // Ordinal history: track last 2 values for stall detection
+    const ordinalHistory = { gl0: [], ml0: [] };
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    function relativeTime(ms) {
+      const s = Math.round((Date.now() - ms) / 1000);
+      if (s < 5)   return 'just now';
+      if (s < 60)  return `${s}s ago`;
+      const m = Math.round(s / 60);
+      if (m < 60)  return `${m}m ago`;
+      return `${Math.round(m / 60)}h ago`;
+    }
+
+    function pushOrdinal(key, val) {
+      const h = ordinalHistory[key];
+      if (val == null) return;
+      h.push(val);
+      if (h.length > 3) h.shift();
+    }
+
+    function ordinalStatus(key) {
+      const h = ordinalHistory[key];
+      if (h.length < 2) return 'unknown';
+      const same = h.every(v => v === h[0]);
+      return same ? 'stalled' : 'advancing';
+    }
+
+    function setOrdinalUI(el, statusEl, val, key) {
+      el.textContent = val ?? '-';
+      const st = ordinalStatus(key);
+      statusEl.className = `metric-sub ${st}`;
+      if (st === 'advancing') statusEl.textContent = '↑ advancing';
+      else if (st === 'stalled') statusEl.textContent = '⚠️ stalled';
+      else statusEl.textContent = '—';
+    }
+
+    // ── Staleness ticker (runs every second) ─────────────────────────────────
+    setInterval(() => {
+      if (!lastDataTime) return;
+      const ageSec = Math.round((Date.now() - lastDataTime) / 1000);
+
+      // Page-age badge in monitor panel
+      monPageAge.textContent = `${ageSec}s ago`;
+      monPageAge.className = `monitor-value ${ageSec > 60 ? 'stale' : ageSec > 30 ? 'amber' : 'fresh'}`;
+
+      // Stale banner
+      if (ageSec > 60) {
+        staleBanner.classList.add('show');
+        staleAge.textContent = `${ageSec}s ago`;
+        overallEl.className = 'overall-status stale';
+        overallText.textContent = '⚠️ Status data may be stale';
+      } else {
+        staleBanner.classList.remove('show');
+      }
+    }, 1000);
+
+    // ── Monitor activity fetch ────────────────────────────────────────────────
+    async function fetchMonitorActivity() {
+      try {
+        const res = await fetch('/api/monitoring/activity');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        renderMonitorPanel(data);
+        renderEventsTimeline(data.recentEvents || []);
+      } catch (e) {
+        // Gracefully hide panel, show unavailable note
+        monitorPanel.style.display = 'none';
+        monitorUnavail.style.display = 'block';
+        eventsSection.style.display = 'none';
+      }
+    }
+
+    function renderMonitorPanel(data) {
+      monitorUnavail.style.display = 'none';
+      monitorPanel.style.display = 'flex';
+
+      // Monitor status
+      const status = (data.monitoringStatus || 'unknown').toLowerCase();
+      monStatus.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+      monStatus.className = `monitor-value ${status === 'running' ? 'running' : status === 'stopped' ? 'stopped' : 'unknown'}`;
+
+      // Last seen (most recent event timestamp)
+      if (data.recentEvents && data.recentEvents.length > 0) {
+        const latestTs = Math.max(...data.recentEvents.map(e => new Date(e.timestamp).getTime()));
+        const ageSec = (Date.now() - latestTs) / 1000;
+        monLastSeen.textContent = relativeTime(latestTs);
+        monLastSeen.className = `monitor-value ${ageSec > 120 ? 'stale' : ageSec > 30 ? 'amber' : 'fresh'}`;
+      } else {
+        monLastSeen.textContent = '—';
+        monLastSeen.className = 'monitor-value unknown';
+      }
+
+      // Active alerts strip
+      // Remove any existing alert strip
+      const existingAlerts = monitorPanel.querySelector('.active-alerts');
+      if (existingAlerts) existingAlerts.remove();
+
+      const activeAlerts = (data.recentEvents || []).filter(e => e.type === 'ALERT' && !e.resolved);
+      if (activeAlerts.length > 0) {
+        const strip = document.createElement('div');
+        strip.className = 'active-alerts';
+        activeAlerts.forEach(a => {
+          const item = document.createElement('div');
+          item.className = 'active-alert-item';
+          item.textContent = `🔔 ${a.condition || ''}: ${a.message || ''}`;
+          strip.appendChild(item);
+        });
+        monitorPanel.appendChild(strip);
+      }
+    }
+
+    function renderEventsTimeline(events) {
+      if (!events || events.length === 0) {
+        eventsSection.style.display = 'none';
+        return;
+      }
+      eventsSection.style.display = 'block';
+      const recent = events.slice(0, 10);
+      eventsTimeline.innerHTML = recent.map(e => {
+        const typeClass = e.type || 'UNKNOWN';
+        const ts = e.timestamp ? new Date(e.timestamp).toLocaleTimeString() : '—';
+        return `
+          <div class="event-item">
+            <div class="event-dot ${typeClass}"></div>
+            <div class="event-meta">
+              <span class="event-type ${typeClass}">${typeClass}${e.condition ? ' · ' + e.condition : ''}</span>
+              <span class="event-msg">${e.message || ''}</span>
+              <span class="event-time">${ts}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // ── Node card ─────────────────────────────────────────────────────────────
     function createNodeCard(node) {
       return `
         <div class="card">
@@ -405,10 +733,8 @@
         </div>
       `;
     }
-    
-    // Traffic gen control functions
-    let trafficGenUrl = null;
-    
+
+    // ── Traffic gen ───────────────────────────────────────────────────────────
     async function trafficGenControl(action) {
       if (!trafficGenUrl) return;
       try {
@@ -419,15 +745,14 @@
         console.error(`Failed to ${action} traffic gen:`, err);
       }
     }
-    
+
     function createServiceCard(service) {
-      // Special rendering for traffic generator
       if (service.type === 'traffic-generator' && service.trafficGen) {
         const tg = service.trafficGen;
         trafficGenUrl = service.url;
-        const buttonText = tg.enabled ? 'Stop' : 'Start';
-        const buttonAction = tg.enabled ? 'stop' : 'start';
-        const buttonClass = tg.enabled ? 'btn-stop' : 'btn-start';
+        const buttonText   = tg.enabled ? 'Stop'     : 'Start';
+        const buttonAction = tg.enabled ? 'stop'     : 'start';
+        const buttonClass  = tg.enabled ? 'btn-stop' : 'btn-start';
         return `
           <div class="card">
             <div class="card-header">
@@ -448,7 +773,6 @@
           </div>
         `;
       }
-      
       return `
         <div class="card">
           <div class="card-header">
@@ -463,108 +787,111 @@
         </div>
       `;
     }
-    
+
+    // ── Main UI update ────────────────────────────────────────────────────────
     function updateUI(data) {
-      // Overall status
-      overallEl.className = `overall-status ${data.overall}`;
-      overallText.textContent = data.overall.charAt(0).toUpperCase() + data.overall.slice(1);
-      
-      // Metrics
-      ordinalEl.textContent = data.metagraph.snapshotOrdinal ?? '-';
-      fibersEl.textContent = data.metagraph.fiberCount ?? '-';
-      
-      const healthyNodes = data.nodes.filter(n => n.status === 'healthy').length;
-      healthyNodesEl.textContent = `${healthyNodes}/${data.nodes.length}`;
-      
-      lastUpdateEl.textContent = new Date(data.timestamp).toLocaleTimeString();
-      
+      lastDataTime = Date.now();
+
+      // Overall status (only update if we're not in a stale override)
+      const ageSec = (Date.now() - lastDataTime) / 1000;
+      if (ageSec <= 60) {
+        overallEl.className = `overall-status ${data.overall}`;
+        overallText.textContent = data.overall.charAt(0).toUpperCase() + data.overall.slice(1);
+        staleBanner.classList.remove('show');
+      }
+
+      // GL0 ordinal
+      const gl0Ordinal = data.metagraph?.snapshotOrdinal ?? null;
+      pushOrdinal('gl0', gl0Ordinal);
+      setOrdinalUI(ordinalEl, gl0OrdinalStatus, gl0Ordinal, 'gl0');
+
+      // ML0 ordinal — find the first ml0 node with an ordinal, or fall back to metagraph field
+      const ml0Node = data.nodes?.find(n => n.type === 'ml0' && n.snapshotOrdinal != null);
+      const ml0Ordinal = ml0Node?.snapshotOrdinal ?? data.metagraph?.ml0SnapshotOrdinal ?? null;
+      pushOrdinal('ml0', ml0Ordinal);
+      setOrdinalUI(ml0OrdinalEl, ml0OrdinalStatus, ml0Ordinal, 'ml0');
+
+      // Last check timestamp from payload
+      if (data.timestamp) {
+        monLastCheck.textContent = new Date(data.timestamp).toLocaleTimeString();
+        monLastCheck.className = 'monitor-value fresh';
+      }
+
+      fibersEl.textContent = data.metagraph?.fiberCount ?? '-';
+      const healthyCount = data.nodes?.filter(n => n.status === 'healthy').length ?? 0;
+      healthyNodesEl.textContent = `${healthyCount}/${data.nodes?.length ?? 0}`;
+      lastUpdateEl.textContent   = new Date(data.timestamp).toLocaleTimeString();
+
       // Nodes by layer
-      const gl0Nodes = data.nodes.filter(n => n.type === 'gl0');
-      const ml0Nodes = data.nodes.filter(n => n.type === 'ml0');
-      const cl1Nodes = data.nodes.filter(n => n.type === 'cl1');
-      const dl1Nodes = data.nodes.filter(n => n.type === 'dl1');
-      
-      // Keep headers, replace node cards
+      const gl0Nodes = data.nodes?.filter(n => n.type === 'gl0') ?? [];
+      const ml0Nodes = data.nodes?.filter(n => n.type === 'ml0') ?? [];
+      const cl1Nodes = data.nodes?.filter(n => n.type === 'cl1') ?? [];
+      const dl1Nodes = data.nodes?.filter(n => n.type === 'dl1') ?? [];
+
       gl0Column.innerHTML = '<div class="layer-header">GL0</div>' + gl0Nodes.map(createNodeCard).join('');
       ml0Column.innerHTML = '<div class="layer-header">ML0</div>' + ml0Nodes.map(createNodeCard).join('');
       cl1Column.innerHTML = '<div class="layer-header">CL1</div>' + cl1Nodes.map(createNodeCard).join('');
       dl1Column.innerHTML = '<div class="layer-header">DL1</div>' + dl1Nodes.map(createNodeCard).join('');
-      
-      // Services split by type
-      const logicServices = data.services.filter(s => !storageServices.includes(s.name));
-      const storageServicesList = data.services.filter(s => storageServices.includes(s.name));
-      
-      logicServicesGrid.innerHTML = logicServices.map(createServiceCard).join('');
+
+      // Services
+      const logicServices      = data.services?.filter(s => !storageServices.includes(s.name)) ?? [];
+      const storageServicesList = data.services?.filter(s => storageServices.includes(s.name)) ?? [];
+      logicServicesGrid.innerHTML   = logicServices.map(createServiceCard).join('');
       storageServicesGrid.innerHTML = storageServicesList.map(createServiceCard).join('');
-      
-      // Traffic generator metrics in top bar
-      const trafficGenService = data.services.find(s => s.type === 'traffic-generator');
-      const trafficGenMetric = document.getElementById('traffic-gen-metric');
-      const trafficGenTps = document.getElementById('traffic-gen-tps');
-      if (trafficGenService && trafficGenService.trafficGen) {
-        trafficGenMetric.style.display = 'flex';
-        const tg = trafficGenService.trafficGen;
-        trafficGenTps.textContent = tg.enabled ? `${tg.targetTps} TPS` : 'Off';
+
+      // Traffic gen top-bar metric
+      const tgService = data.services?.find(s => s.type === 'traffic-generator');
+      const tgMetric  = document.getElementById('traffic-gen-metric');
+      const tgTps     = document.getElementById('traffic-gen-tps');
+      if (tgService?.trafficGen) {
+        tgMetric.style.display = 'flex';
+        tgTps.textContent = tgService.trafficGen.enabled ? `${tgService.trafficGen.targetTps} TPS` : 'Off';
       } else {
-        trafficGenMetric.style.display = 'none';
+        tgMetric.style.display = 'none';
       }
+
+      // Refresh monitor activity on every status update
+      fetchMonitorActivity();
     }
-    
+
+    // ── Connection helpers ────────────────────────────────────────────────────
     function setConnected(connected) {
       connectionStatus.className = `connection-status ${connected ? 'connected' : 'disconnected'}`;
       connectionStatus.querySelector('span').textContent = connected ? 'Live' : 'Disconnected';
     }
-    
-    // WebSocket connection with token auth
+
+    // ── WebSocket ─────────────────────────────────────────────────────────────
     async function connect() {
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      
-      // Get WS token (this endpoint requires basic auth, which browser handles)
       let token = '';
       try {
         const res = await fetch('/api/ws-token');
         if (res.ok) {
-          const data = await res.json();
-          token = data.token;
+          const d = await res.json();
+          token = d.token;
         }
       } catch (e) {
         console.log('Could not get WS token, using REST fallback');
       }
-      
-      const wsUrl = token 
+      const wsUrl = token
         ? `${protocol}//${location.host}/ws?token=${token}`
         : `${protocol}//${location.host}/ws`;
-      
       const ws = new WebSocket(wsUrl);
-      
-      ws.onopen = () => {
-        console.log('WebSocket connected');
-        setConnected(true);
-      };
-      
+      ws.onopen = () => { setConnected(true); };
       ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);
-        if (msg.type === 'status') {
-          updateUI(msg.data);
-        }
+        if (msg.type === 'status') updateUI(msg.data);
       };
-      
       ws.onclose = () => {
-        console.log('WebSocket disconnected, reconnecting in 3s...');
         setConnected(false);
         setTimeout(connect, 3000);
       };
-      
-      ws.onerror = (err) => {
-        console.error('WebSocket error:', err);
-        ws.close();
-      };
+      ws.onerror = () => ws.close();
     }
-    
-    // Initial connection
+
+    // ── Bootstrap ─────────────────────────────────────────────────────────────
     connect();
-    
-    // Fallback: fetch via REST if WebSocket fails
+
     async function fetchStatus() {
       try {
         const res = await fetch('/api/status');
@@ -574,9 +901,10 @@
         console.error('Failed to fetch status:', err);
       }
     }
-    
-    // Fetch on load as backup
+
     fetchStatus();
+    // Periodic REST fallback (30s) in case WebSocket drops silently
+    setInterval(fetchStatus, 30000);
   </script>
 </body>
 </html>
