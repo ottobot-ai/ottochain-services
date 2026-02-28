@@ -485,6 +485,47 @@ function getPublicKeyId(keyPair: KeyPair): string;
 
 ---
 
+### Submission Options
+
+Self-signed clients can submit transactions two ways:
+
+#### Option A: Through Bridge (Convenience)
+
+The bridge validates ownership and relays to DL1.
+
+```typescript
+const bridge = new HttpClient('http://bridge:3030');
+await bridge.post('/agent/transition', { fiberId, signedUpdate });
+```
+
+The bridge handles sequence validation, ownership checks, and DL1 submission.
+This is the simplest path — recommended for most use cases.
+
+#### Option B: Direct to DL1 (No Bridge)
+
+Use the SDK's `MetagraphClient` to submit directly to DL1 nodes.
+No bridge dependency required for transaction submission.
+
+```typescript
+import { MetagraphClient, signTransaction, createTransitionPayload } from '@ottochain/sdk';
+
+const metagraph = new MetagraphClient({
+  ml0Url: 'http://ml0-node:9200',
+  dl1Urls: ['http://node1:9400', 'http://node2:9400'],
+});
+
+const payload = createTransitionPayload({ fiberId, eventName, payload, targetSequenceNumber });
+const signed = await signTransaction(payload, privateKey);
+await metagraph.submitData(signed);
+```
+
+Multiple DL1 URLs provide resilience — the SDK tries all nodes concurrently and
+returns the first successful response.
+
+> **Note:** The bridge is still required for agent registration (which stores
+> metadata like display name and platform links). Only transaction submission
+> can bypass the bridge.
+
 ## Implementation Checklist
 
 ### Services (`ottochain-services`)
