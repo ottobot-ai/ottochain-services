@@ -17,6 +17,7 @@ import { MonitorCache } from './cache.js';
 import { CacheRefresher } from './refresher.js';
 import { storeEvent, getMonitoringActivity, getRestartHistory, closeEvents } from './events.js';
 import { updateMetrics, metricsHandler } from './metrics.js';
+import rateLimit from 'express-rate-limit';
 
 // =============================================================================
 // Authentication
@@ -514,8 +515,16 @@ async function main(): Promise<void> {
     }
   });
 
+  // Rate limiter for static file routes (CodeQL: prevent DoS on fs access)
+  const staticLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
   // Rejections tracking UI
-  app.get('/rejections', (_, res) => {
+  app.get('/rejections', staticLimiter, (_, res) => {
     res.sendFile(path.join(__dirname, 'rejections.html'));
   });
 
@@ -538,7 +547,7 @@ async function main(): Promise<void> {
   });
 
   // Traffic control UI
-  app.get('/traffic', (_, res) => {
+  app.get('/traffic', staticLimiter, (_, res) => {
     res.sendFile(path.join(__dirname, 'traffic-control.html'));
   });
 
