@@ -30,7 +30,7 @@ import { HighThroughputSimulator, runHighThroughput } from './high-throughput.js
 import { FiberOrchestrator, TrafficConfig } from './orchestrator.js';
 import { BridgeClient } from './bridge-client.js';
 import { loadWalletPool, type WalletPool } from './wallets.js';
-import { startStatusServer, setStatusProvider, setControlCallbacks, type TrafficGenStatus } from './status-server.js';
+import { startStatusServer, setStatusProvider, setControlCallbacks, setWeightsProvider, setFibersProvider, setAgentsProvider, type TrafficGenStatus } from './status-server.js';
 
 // =============================================================================
 // Configuration from Environment
@@ -219,6 +219,31 @@ async function runWeightedOrchestrator(): Promise<void> {
     bridge,
     () => agents.filter(a => a.state !== 'UNREGISTERED') // Only return registered agents
   );
+  
+  // Wire up status-server providers for monitoring
+  setWeightsProvider(() => orchestrator.getWeights());
+  
+  setFibersProvider(() => ({
+    active: orchestrator.getActiveFibers().map(f => ({
+      id: f.id,
+      type: f.type,
+      currentState: f.currentState,
+      participants: Array.from(f.participants.keys()),
+      startedAt: f.startedAt,
+      pending: !!f.pendingTransition,
+    })),
+    completed: orchestrator.getCompletedFiberLog(),
+    failed: orchestrator.getStats().failedFibers,
+  }));
+  
+  setAgentsProvider(() => ({
+    registered: orchestrator.getRegisteredAgents(),
+    count: orchestrator.getRegisteredAgents().length,
+  }));
+  
+  setControlCallbacks({
+    onWeightsUpdate: (weights) => orchestrator.updateWeights(weights),
+  });
   
   console.log('──────────────────────────────────────────────────────────────');
   

@@ -11,9 +11,9 @@
       background: #0a0a0f;
       color: #e0e0e0;
       min-height: 100vh;
-      padding: 2rem;
+      padding: 1.5rem;
     }
-    .container { max-width: 800px; margin: 0 auto; }
+    .container { max-width: 1400px; margin: 0 auto; }
     h1 { 
       color: #00d4aa; 
       margin-bottom: 0.5rem;
@@ -21,21 +21,9 @@
       align-items: center;
       gap: 0.5rem;
     }
-    .subtitle { color: #888; margin-bottom: 2rem; }
+    .subtitle { color: #888; margin-bottom: 1.5rem; }
     
-    .status-card {
-      background: #1a1a24;
-      border: 1px solid #2a2a3a;
-      border-radius: 12px;
-      padding: 1.5rem;
-      margin-bottom: 1.5rem;
-    }
-    .status-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 1rem;
-    }
+    /* Status Badge */
     .status-badge {
       padding: 0.25rem 0.75rem;
       border-radius: 20px;
@@ -46,136 +34,213 @@
     .status-badge.stopped { background: #ff6b6b22; color: #ff6b6b; }
     .status-badge.idle { background: #ffa50022; color: #ffa500; }
     
+    /* Cards */
+    .card {
+      background: #1a1a24;
+      border: 1px solid #2a2a3a;
+      border-radius: 12px;
+      padding: 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    .card-header h2 {
+      color: #fff;
+      font-size: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .count-badge {
+      background: #00d4aa33;
+      color: #00d4aa;
+      padding: 0.125rem 0.5rem;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    
+    /* Grid Layouts */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; }
+    @media (max-width: 1200px) {
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    }
+    
+    /* Status Section */
     .metrics-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-      gap: 1rem;
+      grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+      gap: 0.75rem;
     }
     .metric {
       background: #12121a;
-      padding: 1rem;
+      padding: 0.75rem;
       border-radius: 8px;
       text-align: center;
     }
     .metric-value {
-      font-size: 1.5rem;
+      font-size: 1.25rem;
       font-weight: 700;
       color: #00d4aa;
     }
     .metric-label {
-      font-size: 0.75rem;
+      font-size: 0.7rem;
       color: #888;
-      margin-top: 0.25rem;
+      margin-top: 0.125rem;
     }
     
-    .controls-card {
-      background: #1a1a24;
-      border: 1px solid #2a2a3a;
-      border-radius: 12px;
-      padding: 1.5rem;
-      margin-bottom: 1.5rem;
-    }
-    .controls-card h2 {
-      color: #fff;
-      font-size: 1rem;
-      margin-bottom: 1rem;
-    }
-    
+    /* Controls */
     .button-group {
       display: flex;
-      gap: 1rem;
-      margin-bottom: 1.5rem;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
     }
     button {
-      flex: 1;
-      padding: 0.75rem 1.5rem;
+      padding: 0.625rem 1.25rem;
       border: none;
       border-radius: 8px;
-      font-size: 1rem;
+      font-size: 0.875rem;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.2s;
     }
-    button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    .btn-start {
-      background: #00d4aa;
-      color: #000;
-    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-start { background: #00d4aa; color: #000; flex: 1; }
     .btn-start:hover:not(:disabled) { background: #00e8bb; }
-    .btn-stop {
-      background: #ff6b6b;
-      color: #fff;
-    }
+    .btn-stop { background: #ff6b6b; color: #fff; flex: 1; }
     .btn-stop:hover:not(:disabled) { background: #ff8585; }
+    .btn-apply { background: #4a4aff; color: #fff; }
+    .btn-apply:hover:not(:disabled) { background: #5a5aff; }
     
-    .config-group {
-      margin-bottom: 1rem;
+    /* Weights Section */
+    .weights-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 0.75rem;
     }
-    .config-group label {
-      display: block;
-      font-size: 0.875rem;
+    .weight-group {
+      background: #12121a;
+      padding: 0.75rem;
+      border-radius: 8px;
+    }
+    .weight-group h4 {
       color: #888;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
       margin-bottom: 0.5rem;
     }
-    .config-row {
+    .weight-item {
       display: flex;
-      gap: 1rem;
       align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
     }
-    input[type="range"] {
+    .weight-item:last-child { margin-bottom: 0; }
+    .weight-label {
       flex: 1;
-      height: 8px;
-      border-radius: 4px;
+      font-size: 0.8rem;
+      color: #ccc;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .weight-item input[type="range"] {
+      width: 80px;
+      height: 6px;
+      border-radius: 3px;
       background: #2a2a3a;
       -webkit-appearance: none;
     }
-    input[type="range"]::-webkit-slider-thumb {
+    .weight-item input[type="range"]::-webkit-slider-thumb {
       -webkit-appearance: none;
-      width: 20px;
-      height: 20px;
+      width: 14px;
+      height: 14px;
       border-radius: 50%;
       background: #00d4aa;
       cursor: pointer;
     }
-    input[type="number"] {
-      width: 100px;
-      padding: 0.5rem;
-      background: #12121a;
-      border: 1px solid #2a2a3a;
-      border-radius: 6px;
-      color: #fff;
-      font-size: 1rem;
+    .weight-value {
+      width: 35px;
+      font-size: 0.75rem;
+      color: #00d4aa;
+      text-align: right;
     }
-    select {
-      width: 100%;
-      padding: 0.5rem;
-      background: #12121a;
-      border: 1px solid #2a2a3a;
-      border-radius: 6px;
-      color: #fff;
-      font-size: 1rem;
-    }
-    .btn-apply {
-      background: #4a4aff;
-      color: #fff;
-      margin-top: 1rem;
-    }
-    .btn-apply:hover:not(:disabled) { background: #5a5aff; }
     
-    .log {
-      background: #12121a;
-      border: 1px solid #2a2a3a;
-      border-radius: 8px;
-      padding: 1rem;
-      font-family: monospace;
-      font-size: 0.875rem;
-      max-height: 150px;
+    /* Tables */
+    .table-container {
+      max-height: 250px;
       overflow-y: auto;
     }
-    .log-entry { margin-bottom: 0.25rem; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.5rem;
+      border-bottom: 1px solid #2a2a3a;
+    }
+    th {
+      color: #888;
+      font-weight: 500;
+      position: sticky;
+      top: 0;
+      background: #1a1a24;
+    }
+    td { color: #ccc; }
+    tr:hover td { background: #12121a; }
+    
+    /* Fiber type colors */
+    .fiber-type {
+      display: inline-block;
+      padding: 0.125rem 0.375rem;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 500;
+    }
+    .fiber-contract { background: #3b82f622; color: #3b82f6; }
+    .fiber-market { background: #f59e0b22; color: #f59e0b; }
+    .fiber-dao { background: #8b5cf622; color: #8b5cf6; }
+    .fiber-governance { background: #06b6d422; color: #06b6d4; }
+    .fiber-corporate { background: #ec489922; color: #ec4899; }
+    .fiber-custom { background: #10b98122; color: #10b981; }
+    
+    /* Agents grid */
+    .agents-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 0.5rem;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .agent-card {
+      background: #12121a;
+      padding: 0.5rem;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 0.7rem;
+      color: #888;
+      text-align: center;
+    }
+    
+    /* Activity Log */
+    .log {
+      background: #12121a;
+      border-radius: 8px;
+      padding: 0.75rem;
+      font-family: monospace;
+      font-size: 0.75rem;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    .log-entry { margin-bottom: 0.125rem; }
     .log-entry.success { color: #00d4aa; }
     .log-entry.error { color: #ff6b6b; }
     .log-entry.info { color: #888; }
@@ -184,7 +249,8 @@
       display: inline-block;
       color: #00d4aa;
       text-decoration: none;
-      margin-bottom: 1rem;
+      margin-bottom: 0.75rem;
+      font-size: 0.875rem;
     }
     .back-link:hover { text-decoration: underline; }
     
@@ -192,10 +258,18 @@
       background: #ff6b6b22;
       border: 1px solid #ff6b6b;
       color: #ff6b6b;
-      padding: 1rem;
+      padding: 0.75rem;
       border-radius: 8px;
       margin-bottom: 1rem;
       display: none;
+    }
+    
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      color: #666;
+      padding: 2rem;
+      font-size: 0.875rem;
     }
   </style>
 </head>
@@ -208,10 +282,10 @@
     
     <div class="error-banner" id="errorBanner"></div>
     
-    <!-- Status Card -->
-    <div class="status-card">
-      <div class="status-header">
-        <h2 style="color:#fff; font-size:1rem;">Current Status</h2>
+    <!-- Section 1: Status Bar -->
+    <div class="card">
+      <div class="card-header">
+        <h2>📊 Status</h2>
         <span class="status-badge" id="statusBadge">--</span>
       </div>
       <div class="metrics-grid">
@@ -240,43 +314,85 @@
           <div class="metric-label">Uptime</div>
         </div>
       </div>
-    </div>
-    
-    <!-- Controls Card -->
-    <div class="controls-card">
-      <h2>Controls</h2>
-      <div class="button-group">
+      <div class="button-group" style="margin-top: 1rem;">
         <button class="btn-start" id="btnStart" onclick="startTraffic()">▶ Start</button>
         <button class="btn-stop" id="btnStop" onclick="stopTraffic()">⬛ Stop</button>
       </div>
-      
-      <div class="config-group">
-        <label>Target TPS</label>
-        <div class="config-row">
-          <input type="range" id="tpsSlider" min="1" max="100" value="10" oninput="updateTpsDisplay()">
-          <input type="number" id="tpsInput" min="1" max="100" value="10" onchange="syncTpsSlider()">
+    </div>
+    
+    <!-- Section 2: Fiber Weights -->
+    <div class="card">
+      <div class="card-header">
+        <h2>⚖️ Fiber Weights</h2>
+        <button class="btn-apply" onclick="applyWeights()">Apply Changes</button>
+      </div>
+      <div class="weights-grid" id="weightsGrid">
+        <!-- Populated dynamically -->
+      </div>
+    </div>
+    
+    <div class="grid-2">
+      <!-- Section 3: Active Fibers -->
+      <div class="card">
+        <div class="card-header">
+          <h2>🔥 Active Fibers <span class="count-badge" id="activeFiberCount">0</span></h2>
+        </div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Type</th>
+                <th>State</th>
+                <th>Participants</th>
+                <th>Age</th>
+              </tr>
+            </thead>
+            <tbody id="activeFibersTable">
+              <tr><td colspan="5" class="empty-state">No active fibers</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
       
-      <div class="config-group">
-        <label>Target Population</label>
-        <input type="number" id="populationInput" min="1" max="10000" value="100" style="width:100%">
+      <!-- Section 4: Completed Fibers -->
+      <div class="card">
+        <div class="card-header">
+          <h2>✅ Completed Fibers <span class="count-badge" id="completedFiberCount">0</span></h2>
+        </div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Type</th>
+                <th>Final State</th>
+                <th>Completed</th>
+              </tr>
+            </thead>
+            <tbody id="completedFibersTable">
+              <tr><td colspan="4" class="empty-state">No completed fibers</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
-      
-      <div class="config-group">
-        <label>Mode</label>
-        <select id="modeSelect">
-          <option value="standard">Standard</option>
-          <option value="high-throughput">High Throughput</option>
-        </select>
-      </div>
-      
-      <button class="btn-apply" onclick="applyConfig()">Apply Configuration</button>
     </div>
     
-    <!-- Log -->
-    <div class="controls-card">
-      <h2>Activity Log</h2>
+    <!-- Section 5: Agents -->
+    <div class="card">
+      <div class="card-header">
+        <h2>🤖 Registered Agents <span class="count-badge" id="agentCount">0</span></h2>
+      </div>
+      <div class="agents-grid" id="agentsGrid">
+        <div class="empty-state" style="grid-column: 1 / -1;">No agents registered</div>
+      </div>
+    </div>
+    
+    <!-- Activity Log -->
+    <div class="card">
+      <div class="card-header">
+        <h2>📝 Activity Log</h2>
+      </div>
       <div class="log" id="log">
         <div class="log-entry info">Ready</div>
       </div>
@@ -286,6 +402,27 @@
   <script>
     const API_BASE = '/api/traffic-gen';
     let lastStatus = null;
+    let currentWeights = {};
+    
+    // Fiber type categories for grouping
+    const FIBER_CATEGORIES = {
+      'Contracts': ['escrow', 'arbitratedEscrow', 'simpleOrder', 'approval'],
+      'Custom Fibers': ['ticTacToe', 'voting'],
+      'Markets': ['predictionMarket', 'auctionMarket', 'crowdfundMarket', 'groupBuyMarket'],
+      'DAOs': ['tokenDAO', 'multisigDAO', 'thresholdDAO'],
+      'Governance': ['simpleGovernance'],
+      'Corporate': ['corporateEntity', 'corporateBoard', 'corporateShareholders', 'corporateSecurities'],
+    };
+    
+    // Get fiber type CSS class
+    function getFiberTypeClass(type) {
+      if (type.includes('escrow') || type.includes('Order') || type.includes('approval')) return 'fiber-contract';
+      if (type.includes('Market')) return 'fiber-market';
+      if (type.includes('DAO')) return 'fiber-dao';
+      if (type.includes('Governance') || type.includes('governance')) return 'fiber-governance';
+      if (type.includes('corporate') || type.includes('Corporate')) return 'fiber-corporate';
+      return 'fiber-custom';
+    }
     
     function log(message, type = 'info') {
       const logEl = document.getElementById('log');
@@ -293,7 +430,6 @@
       entry.className = `log-entry ${type}`;
       entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
       logEl.insertBefore(entry, logEl.firstChild);
-      // Keep only last 50 entries
       while (logEl.children.length > 50) {
         logEl.removeChild(logEl.lastChild);
       }
@@ -322,20 +458,71 @@
       return n.toString();
     }
     
+    function formatAge(startedAt) {
+      const ms = Date.now() - startedAt;
+      const seconds = Math.floor(ms / 1000);
+      const minutes = Math.floor(seconds / 60);
+      if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+      return `${seconds}s`;
+    }
+    
+    function truncateId(id) {
+      if (!id || id.length <= 12) return id || '--';
+      return id.slice(0, 6) + '…' + id.slice(-4);
+    }
+    
+    function truncateAddr(addr) {
+      if (!addr || addr.length <= 14) return addr || '--';
+      return addr.slice(0, 8) + '…' + addr.slice(-4);
+    }
+    
     async function fetchStatus() {
       try {
-        const res = await fetch('/api/traffic-gen/status');
+        const res = await fetch(`${API_BASE}/status`);
         if (!res.ok) throw new Error('Failed to fetch status');
         const data = await res.json();
-        updateUI(data);
+        updateStatusUI(data);
         lastStatus = data;
       } catch (err) {
         console.error('Status fetch error:', err);
       }
     }
     
-    function updateUI(status) {
-      // Badge
+    async function fetchWeights() {
+      try {
+        const res = await fetch(`${API_BASE}/weights`);
+        if (!res.ok) throw new Error('Failed to fetch weights');
+        const data = await res.json();
+        currentWeights = data;
+        renderWeights(data);
+      } catch (err) {
+        console.error('Weights fetch error:', err);
+      }
+    }
+    
+    async function fetchFibers() {
+      try {
+        const res = await fetch(`${API_BASE}/fibers`);
+        if (!res.ok) throw new Error('Failed to fetch fibers');
+        const data = await res.json();
+        renderFibers(data);
+      } catch (err) {
+        console.error('Fibers fetch error:', err);
+      }
+    }
+    
+    async function fetchAgents() {
+      try {
+        const res = await fetch(`${API_BASE}/agents`);
+        if (!res.ok) throw new Error('Failed to fetch agents');
+        const data = await res.json();
+        renderAgents(data);
+      } catch (err) {
+        console.error('Agents fetch error:', err);
+      }
+    }
+    
+    function updateStatusUI(status) {
       const badge = document.getElementById('statusBadge');
       if (status.enabled) {
         badge.textContent = 'Running';
@@ -348,7 +535,6 @@
         badge.className = 'status-badge stopped';
       }
       
-      // Metrics
       document.getElementById('currentTps').textContent = status.currentTps?.toFixed(1) || '0';
       document.getElementById('targetTps').textContent = status.targetTps || '--';
       document.getElementById('population').textContent = `${status.currentPopulation || 0}/${status.targetPopulation || '--'}`;
@@ -356,17 +542,141 @@
       document.getElementById('successRate').textContent = status.successRate ? (status.successRate * 100).toFixed(1) + '%' : '--';
       document.getElementById('uptime').textContent = formatUptime(status.uptime);
       
-      // Button states
       document.getElementById('btnStart').disabled = status.enabled;
       document.getElementById('btnStop').disabled = !status.enabled;
     }
     
-    function updateTpsDisplay() {
-      document.getElementById('tpsInput').value = document.getElementById('tpsSlider').value;
+    function renderWeights(weights) {
+      const grid = document.getElementById('weightsGrid');
+      grid.innerHTML = '';
+      
+      // Calculate total for normalization
+      const total = Object.values(weights).reduce((sum, w) => sum + w, 0);
+      
+      for (const [category, types] of Object.entries(FIBER_CATEGORIES)) {
+        const categoryTypes = types.filter(t => t in weights);
+        if (categoryTypes.length === 0) continue;
+        
+        const group = document.createElement('div');
+        group.className = 'weight-group';
+        group.innerHTML = `<h4>${category}</h4>`;
+        
+        for (const type of categoryTypes) {
+          const weight = weights[type] || 0;
+          const pct = total > 0 ? Math.round((weight / total) * 100) : 0;
+          
+          const item = document.createElement('div');
+          item.className = 'weight-item';
+          item.innerHTML = `
+            <span class="weight-label" title="${type}">${type}</span>
+            <input type="range" min="0" max="100" value="${pct}" data-type="${type}" onchange="onWeightChange(this)">
+            <span class="weight-value" id="weight-${type}">${pct}%</span>
+          `;
+          group.appendChild(item);
+        }
+        
+        grid.appendChild(group);
+      }
     }
     
-    function syncTpsSlider() {
-      document.getElementById('tpsSlider').value = document.getElementById('tpsInput').value;
+    function onWeightChange(input) {
+      const type = input.dataset.type;
+      const pct = parseInt(input.value);
+      document.getElementById(`weight-${type}`).textContent = `${pct}%`;
+    }
+    
+    async function applyWeights() {
+      const inputs = document.querySelectorAll('.weight-item input[type="range"]');
+      const newWeights = {};
+      
+      // Collect all percentages
+      let total = 0;
+      for (const input of inputs) {
+        const pct = parseInt(input.value);
+        total += pct;
+      }
+      
+      // Normalize to sum to 1.0
+      for (const input of inputs) {
+        const type = input.dataset.type;
+        const pct = parseInt(input.value);
+        newWeights[type] = total > 0 ? pct / total : 0;
+      }
+      
+      try {
+        log('Applying weight changes...', 'info');
+        const res = await fetch(`${API_BASE}/weights`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newWeights),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          log('Weights updated successfully', 'success');
+          currentWeights = newWeights;
+        } else {
+          throw new Error(data.error || 'Failed to update weights');
+        }
+      } catch (err) {
+        log(`Error: ${err.message}`, 'error');
+        showError(err.message);
+      }
+    }
+    
+    function renderFibers(data) {
+      // Active fibers
+      const activeTable = document.getElementById('activeFibersTable');
+      const activeCount = document.getElementById('activeFiberCount');
+      
+      if (data.active && data.active.length > 0) {
+        activeCount.textContent = data.active.length;
+        activeTable.innerHTML = data.active.map(f => `
+          <tr>
+            <td title="${f.id}">${truncateId(f.id)}</td>
+            <td><span class="fiber-type ${getFiberTypeClass(f.type)}">${f.type}</span></td>
+            <td>${f.currentState || '--'}</td>
+            <td>${(f.participants || []).join(', ') || '--'}</td>
+            <td>${formatAge(f.startedAt)}</td>
+          </tr>
+        `).join('');
+      } else {
+        activeCount.textContent = '0';
+        activeTable.innerHTML = '<tr><td colspan="5" class="empty-state">No active fibers</td></tr>';
+      }
+      
+      // Completed fibers
+      const completedTable = document.getElementById('completedFibersTable');
+      const completedCount = document.getElementById('completedFiberCount');
+      
+      if (data.completed && data.completed.length > 0) {
+        completedCount.textContent = data.completed.length;
+        completedTable.innerHTML = data.completed.map(f => `
+          <tr>
+            <td title="${f.id}">${truncateId(f.id)}</td>
+            <td><span class="fiber-type ${getFiberTypeClass(f.type)}">${f.type}</span></td>
+            <td>${f.finalState || '--'}</td>
+            <td>${new Date(f.completedAt).toLocaleTimeString()}</td>
+          </tr>
+        `).join('');
+      } else {
+        completedCount.textContent = '0';
+        completedTable.innerHTML = '<tr><td colspan="4" class="empty-state">No completed fibers</td></tr>';
+      }
+    }
+    
+    function renderAgents(data) {
+      const grid = document.getElementById('agentsGrid');
+      const count = document.getElementById('agentCount');
+      
+      if (data.registered && data.registered.length > 0) {
+        count.textContent = data.count;
+        grid.innerHTML = data.registered.map(addr => `
+          <div class="agent-card" title="${addr}">${truncateAddr(addr)}</div>
+        `).join('');
+      } else {
+        count.textContent = '0';
+        grid.innerHTML = '<div class="empty-state" style="grid-column: 1 / -1;">No agents registered</div>';
+      }
     }
     
     async function startTraffic() {
@@ -403,36 +713,17 @@
       fetchStatus();
     }
     
-    async function applyConfig() {
-      const config = {
-        targetTps: parseInt(document.getElementById('tpsInput').value),
-        targetPopulation: parseInt(document.getElementById('populationInput').value),
-        mode: document.getElementById('modeSelect').value,
-      };
-      
-      try {
-        log(`Applying config: TPS=${config.targetTps}, Pop=${config.targetPopulation}, Mode=${config.mode}`, 'info');
-        const res = await fetch(`${API_BASE}/config`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(config),
-        });
-        const data = await res.json();
-        if (res.ok) {
-          log('Configuration applied', 'success');
-        } else {
-          throw new Error(data.error || 'Failed to apply config');
-        }
-      } catch (err) {
-        log(`Error: ${err.message}`, 'error');
-        showError(err.message);
-      }
-      fetchStatus();
-    }
-    
-    // Initial fetch and auto-refresh
+    // Initial fetch
     fetchStatus();
+    fetchWeights();
+    fetchFibers();
+    fetchAgents();
+    
+    // Auto-refresh
     setInterval(fetchStatus, 2000);
+    setInterval(fetchFibers, 2000);
+    setInterval(fetchAgents, 5000);
+    setInterval(fetchWeights, 10000);
   </script>
 </body>
 </html>

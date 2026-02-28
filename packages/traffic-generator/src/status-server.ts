@@ -29,6 +29,10 @@ export interface TrafficGenConfig {
 type StatusProvider = () => TrafficGenStatus;
 type ControlCallback = () => Promise<void> | void;
 type ConfigCallback = (config: TrafficGenConfig) => Promise<void> | void;
+type WeightsProvider = () => Record<string, number>;
+type WeightsUpdateCallback = (weights: Record<string, number>) => void;
+type FibersProvider = () => { active: unknown[]; completed: unknown[]; failed: number };
+type AgentsProvider = () => { registered: string[]; count: number };
 
 let statusProvider: StatusProvider = () => ({
   enabled: false,
@@ -47,6 +51,10 @@ let statusProvider: StatusProvider = () => ({
 let onStart: ControlCallback | null = null;
 let onStop: ControlCallback | null = null;
 let onConfig: ConfigCallback | null = null;
+let onWeightsUpdate: WeightsUpdateCallback | null = null;
+let weightsProvider: WeightsProvider | null = null;
+let fibersProvider: FibersProvider | null = null;
+let agentsProvider: AgentsProvider | null = null;
 
 let server: http.Server | null = null;
 
@@ -58,10 +66,24 @@ export function setControlCallbacks(callbacks: {
   onStart?: ControlCallback;
   onStop?: ControlCallback;
   onConfig?: ConfigCallback;
+  onWeightsUpdate?: WeightsUpdateCallback;
 }): void {
   if (callbacks.onStart) onStart = callbacks.onStart;
   if (callbacks.onStop) onStop = callbacks.onStop;
   if (callbacks.onConfig) onConfig = callbacks.onConfig;
+  if (callbacks.onWeightsUpdate) onWeightsUpdate = callbacks.onWeightsUpdate;
+}
+
+export function setWeightsProvider(provider: WeightsProvider): void {
+  weightsProvider = provider;
+}
+
+export function setFibersProvider(provider: FibersProvider): void {
+  fibersProvider = provider;
+}
+
+export function setAgentsProvider(provider: AgentsProvider): void {
+  agentsProvider = provider;
 }
 
 function parseBody(req: http.IncomingMessage): Promise<unknown> {
@@ -169,6 +191,79 @@ export function startStatusServer(port: number = 3033): Promise<void> {
         return;
       }
 
+      // GET /weights - Get current fiber weights
+      if (req.url === '/weights' && req.method === 'GET') {
+        if (!weightsProvider) {
+          res.writeHead(501);
+          res.end(JSON.stringify({ error: 'Weights provider not configured' }));
+          return;
+        }
+        try {
+          const weights = weightsProvider();
+          res.writeHead(200);
+          res.end(JSON.stringify(weights));
+        } catch (err) {
+          res.writeHead(500);
+          res.end(JSON.stringify({ error: 'Failed to get weights' }));
+        }
+        return;
+      }
+
+      // POST /weights - Update fiber weights
+      if (req.url === '/weights' && req.method === 'POST') {
+        if (!onWeightsUpdate) {
+          res.writeHead(501);
+          res.end(JSON.stringify({ error: 'Weights update not implemented' }));
+          return;
+        }
+        try {
+          const body = await parseBody(req) as Record<string, number>;
+          onWeightsUpdate(body);
+          res.writeHead(200);
+          res.end(JSON.stringify({ success: true, message: 'Weights updated', weights: body }));
+        } catch (err) {
+          res.writeHead(500);
+          res.end(JSON.stringify({ error: err instanceof Error ? err.message : 'Failed to update weights' }));
+        }
+        return;
+      }
+
+      // GET /fibers - Get active/completed fibers
+      if (req.url === '/fibers' && req.method === 'GET') {
+        if (!fibersProvider) {
+          res.writeHead(501);
+          res.end(JSON.stringify({ error: 'Fibers provider not configured' }));
+          return;
+        }
+        try {
+          const fibers = fibersProvider();
+          res.writeHead(200);
+          res.end(JSON.stringify(fibers));
+        } catch (err) {
+          res.writeHead(500);
+          res.end(JSON.stringify({ error: 'Failed to get fibers' }));
+        }
+        return;
+      }
+
+      // GET /agents - Get registered agents
+      if (req.url === '/agents' && req.method === 'GET') {
+        if (!agentsProvider) {
+          res.writeHead(501);
+          res.end(JSON.stringify({ error: 'Agents provider not configured' }));
+          return;
+        }
+        try {
+          const agents = agentsProvider();
+          res.writeHead(200);
+          res.end(JSON.stringify(agents));
+        } catch (err) {
+          res.writeHead(500);
+          res.end(JSON.stringify({ error: 'Failed to get agents' }));
+        }
+        return;
+      }
+
       res.writeHead(404);
       res.end(JSON.stringify({ error: 'Not found' }));
     });
@@ -176,10 +271,14 @@ export function startStatusServer(port: number = 3033): Promise<void> {
     server.on('error', reject);
     server.listen(port, () => {
       console.log(`📊 Status server listening on port ${port}`);
-      console.log(`   GET  /status - Get current status`);
-      console.log(`   POST /start  - Start traffic generation`);
-      console.log(`   POST /stop   - Stop traffic generation`);
-      console.log(`   POST /config - Update configuration`);
+      console.log(`   GET  /status  - Get current status`);
+      console.log(`   POST /start   - Start traffic generation`);
+      console.log(`   POST /stop    - Stop traffic generation`);
+      console.log(`   POST /config  - Update configuration`);
+      console.log(`   GET  /weights - Get fiber weights`);
+      console.log(`   POST /weights - Update fiber weights`);
+      console.log(`   GET  /fibers  - Get active/completed fibers`);
+      console.log(`   GET  /agents  - Get registered agents`);
       resolve();
     });
   });

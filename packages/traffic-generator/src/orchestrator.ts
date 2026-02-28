@@ -67,12 +67,23 @@ export interface TickResult {
  * With indexer verification enabled, waits for each transition to be indexed
  * before proceeding, and checks for rejections.
  */
+/** Completed fiber entry for logging */
+export interface CompletedFiberEntry {
+  id: string;
+  type: string;
+  finalState: string;
+  completedAt: string;
+}
+
 export class FiberOrchestrator {
   private activeFibers: ActiveFiber[] = [];
   private completedFibers: number = 0;
   private failedFibers: number = 0;
   private registeredAgents: Set<string> = new Set(); // Track registered agent addresses
   private indexer: IndexerClient | null = null;
+  /** Ring buffer of completed fibers (last 100) */
+  private completedFiberLog: CompletedFiberEntry[] = [];
+  private readonly MAX_COMPLETED_LOG = 100;
 
   constructor(
     private config: TrafficConfig,
@@ -227,7 +238,13 @@ export class FiberOrchestrator {
       }
     }
     
-    // Remove completed fibers
+    // Log and remove completed fibers
+    for (const fiberId of fibersToRemove) {
+      const fiber = this.activeFibers.find(f => f.id === fiberId);
+      if (fiber && !fiber.failed) {
+        this.logCompletedFiber(fiber);
+      }
+    }
     this.activeFibers = this.activeFibers.filter(f => !fibersToRemove.includes(f.id));
 
     // Start new fibers if needed
@@ -1299,5 +1316,65 @@ export class FiberOrchestrator {
       pendingFibers: pendingCount,
       fiberTypeDistribution: distribution
     };
+  }
+
+  /**
+   * Get a copy of active fibers for monitoring
+   */
+  getActiveFibers(): ActiveFiber[] {
+    return [...this.activeFibers];
+  }
+
+  /**
+   * Get array of registered agent addresses
+   */
+  getRegisteredAgents(): string[] {
+    return Array.from(this.registeredAgents);
+  }
+
+  /**
+   * Get the log of completed fibers (last 100)
+   */
+  getCompletedFiberLog(): CompletedFiberEntry[] {
+    return [...this.completedFiberLog];
+  }
+
+  /**
+   * Update fiber weights at runtime
+   */
+  updateWeights(weights: Record<string, number>): void {
+    // Merge new weights with existing (allows partial updates)
+    for (const [type, weight] of Object.entries(weights)) {
+      if (typeof weight === 'number' && weight >= 0) {
+        this.config.fiberWeights[type] = weight;
+      }
+    }
+    console.log('⚖️  Updated fiber weights:', this.config.fiberWeights);
+  }
+
+  /**
+   * Get current fiber weights
+   */
+  getWeights(): Record<string, number> {
+    return { ...this.config.fiberWeights };
+  }
+
+  /**
+   * Log a completed fiber to the ring buffer
+   */
+  private logCompletedFiber(fiber: ActiveFiber): void {
+    const entry: CompletedFiberEntry = {
+      id: fiber.id,
+      type: fiber.type,
+      finalState: fiber.currentState,
+      completedAt: new Date().toISOString(),
+    };
+    
+    this.completedFiberLog.unshift(entry);
+    
+    // Keep only the last MAX_COMPLETED_LOG entries
+    if (this.completedFiberLog.length > this.MAX_COMPLETED_LOG) {
+      this.completedFiberLog.pop();
+    }
   }
 }
