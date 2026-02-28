@@ -17,6 +17,7 @@ import { MonitorCache } from './cache.js';
 import { CacheRefresher } from './refresher.js';
 import { storeEvent, getMonitoringActivity, getRestartHistory, closeEvents } from './events.js';
 import { updateMetrics, metricsHandler } from './metrics.js';
+import rateLimit from 'express-rate-limit';
 
 // =============================================================================
 // Authentication
@@ -464,24 +465,14 @@ async function main(): Promise<void> {
   // Generate a session token for WebSocket auth (simpler than basic auth for WS)
   const wsToken = crypto.randomBytes(16).toString('hex');
 
-  // Simple in-memory rate limiter for routes that perform file system access
-  const uiRateLimitMap = new Map<string, { count: number; resetAt: number }>();
-  const uiRateLimit = (maxRequests = 60, windowMs = 60_000) => (req: express.Request, res: express.Response, next: express.NextFunction): void => {
-    const ip = (req.ip ?? req.socket.remoteAddress ?? 'unknown');
-    const now = Date.now();
-    const entry = uiRateLimitMap.get(ip);
-    if (!entry || now > entry.resetAt) {
-      uiRateLimitMap.set(ip, { count: 1, resetAt: now + windowMs });
-      next();
-      return;
-    }
-    entry.count++;
-    if (entry.count > maxRequests) {
-      res.status(429).json({ error: 'Too many requests' });
-      return;
-    }
-    next();
-  };
+  // Rate limiter for routes that perform file system access (recognized by CodeQL)
+  const uiRateLimit = () => rateLimit({
+    windowMs: 60_000,
+    max: 60,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests' },
+  }) as unknown as express.RequestHandler;
 
   
   // Endpoint to get WS token (requires basic auth)
