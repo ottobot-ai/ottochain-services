@@ -1,93 +1,36 @@
 /**
- * OttoChain Evolutionary Traffic Generator
- * 
- * Continuous traffic generator using genetic algorithm-inspired selection
- * to simulate realistic agent population dynamics on the OttoChain metagraph.
- * 
- * Features:
- *  - Fitness-weighted agent selection (reputation, completion rate, network effect, age)
- *  - Softmax transition selection with temperature annealing
- *  - Mutation for exploration of unexpected paths
- *  - Population dynamics (births, deaths)
- *  - Multiple workflow types (AgentIdentity, Contract, Voting, TokenEscrow, TicTacToe, etc.)
- *  - High-throughput mode for 1000+ agents at 10+ TPS
- * 
+ * OttoChain Traffic Generator
+ *
+ * Continuous traffic generator using weighted fiber selection via FiberOrchestrator.
+ *
  * Usage:
- *   # Standard mode
  *   BRIDGE_URL=http://localhost:3030 ML0_URL=http://localhost:9200 npx tsx src/index.ts
- * 
- *   # High-throughput mode (1000 agents, 10 TPS, all workflows)
- *   npx tsx src/index.ts --high-throughput
- *   # or
- *   MODE=high-throughput TARGET_POPULATION=1000 TARGET_TPS=10 npx tsx src/index.ts
+ *
+ *   # Optional: custom fiber weights
+ *   FIBER_WEIGHTS='{"escrow":0.2,"predictionMarket":0.3}' npx tsx src/index.ts
+ *
+ *   # Use a persistent wallet pool
+ *   npx tsx src/index.ts --wallets ./wallets.json
  */
 
 import 'dotenv/config';
-import type { GeneratorConfig, GenerationStats, Agent } from './types.js';
-import { DEFAULT_CONFIG, SdkAgentState as AgentState } from './types.js';
-import { Simulator } from './simulator.js';
-import { HighThroughputSimulator, runHighThroughput } from './high-throughput.js';
-import { FiberOrchestrator, TrafficConfig } from './orchestrator.js';
+import { FiberOrchestrator, type TrafficConfig } from './orchestrator.js';
 import { BridgeClient } from './bridge-client.js';
-import { loadWalletPool, type WalletPool } from './wallets.js';
-import { startStatusServer, setStatusProvider, setControlCallbacks, type TrafficGenStatus } from './status-server.js';
+import { loadWalletPool } from './wallets.js';
+import {
+  startStatusServer,
+  setStatusProvider,
+  setControlCallbacks,
+  type TrafficGenStatus,
+} from './status-server.js';
+import type { Agent } from './types.js';
+import { SdkAgentState as AgentState } from './types.js';
 
 // =============================================================================
 // Configuration from Environment
 // =============================================================================
 
-function loadConfig(): GeneratorConfig {
-  // Parse CLI args for wallet pool
-  const walletPoolIdx = process.argv.indexOf('--wallets');
-  const walletPoolPath = walletPoolIdx !== -1 && process.argv[walletPoolIdx + 1]
-    ? process.argv[walletPoolIdx + 1]
-    : process.env.WALLET_POOL_PATH;
-  
-  return {
-    ...DEFAULT_CONFIG,
-    targetPopulation: parseInt(process.env.TARGET_POPULATION ?? '100', 10),
-    birthRate: parseInt(process.env.BIRTH_RATE ?? '2', 10),
-    deathRate: parseFloat(process.env.DEATH_RATE ?? '0.05'),
-    activityRate: parseFloat(process.env.ACTIVITY_RATE ?? '0.4'),
-    proposalRate: parseFloat(process.env.PROPOSAL_RATE ?? '0.3'),
-    mutationRate: parseFloat(process.env.MUTATION_RATE ?? '0.1'),
-    initialTemperature: parseFloat(process.env.INITIAL_TEMPERATURE ?? '1.0'),
-    temperatureDecay: parseFloat(process.env.TEMPERATURE_DECAY ?? '0.995'),
-    minTemperature: parseFloat(process.env.MIN_TEMPERATURE ?? '0.1'),
-    generationIntervalMs: parseInt(process.env.GENERATION_INTERVAL_MS ?? '5000', 10),
-    maxGenerations: parseInt(process.env.MAX_GENERATIONS ?? '0', 10),
-    bridgeUrl: process.env.BRIDGE_URL ?? 'http://localhost:3030',
-    ml0Url: process.env.ML0_URL ?? 'http://localhost:9200',
-    platforms: (process.env.PLATFORMS ?? 'discord,telegram,twitter,github').split(','),
-    seed: process.env.SEED ? parseInt(process.env.SEED, 10) : undefined,
-    walletPoolPath,
-  };
-}
-
-// =============================================================================
-// Logging
-// =============================================================================
-
-function formatStats(stats: GenerationStats): string {
-  const lines = [
-    `Generation ${stats.generation} @ ${stats.timestamp.toISOString()}`,
-    `  Population: ${stats.populationSize} (births: ${stats.births}, deaths: ${stats.deaths})`,
-    `  Transactions: ${stats.successes}/${stats.transactions} (${stats.failures} failed)`,
-    `  Contracts: ${stats.completions} completed, ${stats.rejections} rejected, ${stats.disputes} disputed`,
-    `  Markets: ${stats.activeMarkets} active (${stats.marketsCreated} created, ${stats.marketsSettled} settled, ${stats.marketCommitments} commits)`,
-    `  Mutations: ${stats.mutations}`,
-    `  Fitness: avg=${stats.avgFitness.toFixed(3)}, max=${stats.maxFitness.toFixed(3)}`,
-  ];
-  return lines.join('\n');
-}
-
-// =============================================================================
-// Weighted Orchestrator Mode
-// =============================================================================
-
 function loadTrafficConfig(): TrafficConfig {
-  // Parse fiber weights from env or use defaults
-  // Includes Contract/Custom, Market, DAO, Governance, and Corporate workflows
   const defaultWeights: Record<string, number> = {
     // Contract workflows (27%)
     escrow: 0.10,
@@ -114,27 +57,27 @@ function loadTrafficConfig(): TrafficConfig {
     corporateShareholders: 0.04,
     corporateSecurities: 0.03,
   };
-  
-  // Allow override via FIBER_WEIGHTS env var (JSON string)
+
   let fiberWeights = defaultWeights;
   if (process.env.FIBER_WEIGHTS) {
     try {
       fiberWeights = JSON.parse(process.env.FIBER_WEIGHTS);
-    } catch (e) {
+    } catch {
       console.warn('⚠️  Invalid FIBER_WEIGHTS JSON, using defaults');
     }
   }
-  
-  // Parse indexer configuration
-  const indexerEnabled = process.env.INDEXER_VERIFY === 'true' || process.env.INDEXER_URL;
-  const indexerConfig = indexerEnabled ? {
-    enabled: true,
-    url: process.env.INDEXER_URL ?? 'http://localhost:3031',
-    waitTimeoutMs: parseInt(process.env.INDEXER_WAIT_TIMEOUT ?? '30000', 10),
-    pollIntervalMs: parseInt(process.env.INDEXER_POLL_INTERVAL ?? '2000', 10),
-    maxRetries: parseInt(process.env.INDEXER_MAX_RETRIES ?? '3', 10),
-    skipOnRejection: process.env.INDEXER_SKIP_ON_REJECTION !== 'false',
-  } : undefined;
+
+  const indexerEnabled = process.env.INDEXER_VERIFY === 'true' || !!process.env.INDEXER_URL;
+  const indexerConfig = indexerEnabled
+    ? {
+        enabled: true,
+        url: process.env.INDEXER_URL ?? 'http://localhost:3031',
+        waitTimeoutMs: parseInt(process.env.INDEXER_WAIT_TIMEOUT ?? '30000', 10),
+        pollIntervalMs: parseInt(process.env.INDEXER_POLL_INTERVAL ?? '2000', 10),
+        maxRetries: parseInt(process.env.INDEXER_MAX_RETRIES ?? '3', 10),
+        skipOnRejection: process.env.INDEXER_SKIP_ON_REJECTION !== 'false',
+      }
+    : undefined;
 
   return {
     generationIntervalMs: parseInt(process.env.GENERATION_INTERVAL_MS ?? '30000', 10),
@@ -144,31 +87,40 @@ function loadTrafficConfig(): TrafficConfig {
   };
 }
 
-async function runWeightedOrchestrator(): Promise<void> {
+// =============================================================================
+// Main
+// =============================================================================
+
+async function main(): Promise<void> {
+  const statusPort = parseInt(process.env.STATUS_PORT ?? '3033', 10);
+  const startedAt = new Date().toISOString();
+
+  await startStatusServer(statusPort);
+
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log(' OttoChain Traffic Generator (FiberOrchestrator)');
+  console.log('═══════════════════════════════════════════════════════════════');
+
   const config = loadTrafficConfig();
-  const walletPoolPath = process.argv.includes('--wallets') 
-    ? process.argv[process.argv.indexOf('--wallets') + 1]
-    : process.env.WALLET_POOL_PATH ?? './wallets.json';
-  
-  console.log('═══════════════════════════════════════════════════════════════');
-  console.log(' OttoChain WEIGHTED Traffic Generator');
-  console.log('═══════════════════════════════════════════════════════════════');
+
   console.log(`   Target active fibers: ${config.targetActiveFibers}`);
-  console.log(`   Generation interval: ${config.generationIntervalMs}ms`);
+  console.log(`   Generation interval:  ${config.generationIntervalMs}ms`);
   if (config.indexer?.enabled) {
-    console.log(`   Indexer verification: ENABLED`);
-    console.log(`     URL: ${config.indexer.url}`);
-    console.log(`     Wait timeout: ${config.indexer.waitTimeoutMs}ms`);
-    console.log(`     Max retries: ${config.indexer.maxRetries}`);
+    console.log(`   Indexer verification: ENABLED (${config.indexer.url})`);
   } else {
     console.log(`   Indexer verification: disabled`);
   }
-  console.log(`   Fiber weights:`);
+  console.log('   Fiber weights:');
   for (const [type, weight] of Object.entries(config.fiberWeights)) {
     console.log(`     ${type}: ${(weight * 100).toFixed(0)}%`);
   }
-  
+
   // Load wallet pool
+  const walletPoolPath =
+    process.argv.includes('--wallets')
+      ? process.argv[process.argv.indexOf('--wallets') + 1]
+      : process.env.WALLET_POOL_PATH ?? './wallets.json';
+
   const walletPool = await loadWalletPool(walletPoolPath);
   if (!walletPool) {
     console.error(`❌ Failed to load wallet pool from ${walletPoolPath}`);
@@ -176,14 +128,13 @@ async function runWeightedOrchestrator(): Promise<void> {
     process.exit(1);
   }
   console.log(`   Wallet pool: ${walletPool.wallets.length} wallets loaded`);
-  
+
   // Create bridge client
   const bridgeUrl = process.env.BRIDGE_URL ?? 'http://localhost:3030';
   const ml0Url = process.env.ML0_URL ?? 'http://localhost:9200';
-  const monitorUrl = process.env.MONITOR_URL ?? 'http://localhost:3032';
-  
+
   const bridge = new BridgeClient({ bridgeUrl, ml0Url });
-  
+
   // Convert wallet pool to agents
   const agents: Agent[] = walletPool.wallets.map((w, i) => ({
     address: w.address,
@@ -201,7 +152,6 @@ async function runWeightedOrchestrator(): Promise<void> {
       completedContracts: 0,
       failedContracts: 0,
       riskTolerance: 0.5,
-      // Market-related fields
       activeMarkets: new Set(),
       marketsCreated: 0,
       marketWins: 0,
@@ -212,252 +162,129 @@ async function runWeightedOrchestrator(): Promise<void> {
       oracleResolutions: 0,
     },
   }));
-  
+
   // Create orchestrator
   const orchestrator = new FiberOrchestrator(
     config,
     bridge,
-    () => agents.filter(a => a.state !== 'UNREGISTERED') // Only return registered agents
+    () => agents.filter((a) => a.state !== 'UNREGISTERED'),
   );
-  
-  console.log('──────────────────────────────────────────────────────────────');
-  
-  // Bootstrap: Register agents first (needed before contracts)
-  const targetAgents = Math.min(config.targetActiveFibers * 3, agents.length);
-  await orchestrator.bootstrapAgents(targetAgents);
-  
-  console.log('\n🚀 Starting weighted orchestrator...\n');
-  
-  // Main loop
+
+  // Track running state for control callbacks
+  let running = false;
+  let intervalHandle: ReturnType<typeof setInterval> | null = null;
   let generation = 0;
-  const interval = setInterval(async () => {
-    generation++;
-    
-    // Check network health first
-    try {
-      const syncStatus = await bridge.checkSyncStatus();
-      if (!syncStatus.ready) {
-        const reason = !syncStatus.allReady ? 'Nodes not ready' :
-                       !syncStatus.allHealthy ? 'Nodes unhealthy' :
-                       syncStatus.gl0?.fork ? 'GL0 fork detected' :
-                       syncStatus.ml0?.fork ? 'ML0 fork detected' :
-                       'Unknown';
-        console.log(`⏸️  Skipping generation - network not ready: ${reason}`);
-        return;
-      }
-    } catch (e) {
-      console.log(`⏸️  Skipping generation - sync check failed: ${e}`);
-      return;
-    }
-    
-    // Run orchestrator tick
-    try {
-      const result = await orchestrator.tick();
-      
-      if (result.skipped) {
-        console.log(`Generation ${generation}: ⏸️  Skipped (network not ready)`);
-        return;
-      }
-      
-      const stats = orchestrator.getStats();
-      console.log(`Generation ${generation}:`);
-      console.log(`  Active: ${stats.activeFibers} | Created: ${result.created} | Driven: ${result.driven} | Completed: ${result.completed}`);
-      if (result.rejected > 0 || result.pending > 0 || stats.failedFibers > 0) {
-        console.log(`  Rejected: ${result.rejected} | Pending: ${result.pending} | Total Failed: ${stats.failedFibers}`);
-      }
-      console.log(`  Distribution: ${JSON.stringify(stats.fiberTypeDistribution)}`);
-    } catch (e) {
-      console.error(`❌ Tick error: ${e}`);
-    }
-  }, config.generationIntervalMs);
-  
-  // Graceful shutdown
-  process.on('SIGINT', () => {
-    console.log('\n📊 Shutting down...');
-    clearInterval(interval);
+
+  // Status provider
+  setStatusProvider((): TrafficGenStatus => {
     const stats = orchestrator.getStats();
-    console.log(`Final: ${stats.activeFibers} active, ${stats.completedFibers} completed`);
-    process.exit(0);
-  });
-  
-  process.on('SIGTERM', () => {
-    clearInterval(interval);
-    process.exit(0);
-  });
-}
-
-// =============================================================================
-// Main
-// =============================================================================
-
-async function main(): Promise<void> {
-  // Start status server for monitoring
-  const statusPort = parseInt(process.env.STATUS_PORT ?? '3033', 10);
-  const startedAt = new Date().toISOString();
-  let currentMode: TrafficGenStatus['mode'] = 'idle';
-  let simulatorRef: Simulator | null = null;
-  
-  await startStatusServer(statusPort);
-  
-  // Check for weighted mode
-  const isWeighted = 
-    process.argv.includes('--weighted') ||
-    process.argv.includes('-W') ||
-    process.env.MODE === 'weighted';
-  
-  if (isWeighted) {
-    currentMode = 'orchestrator';
-    // TODO: Wire up orchestrator status provider
-    return runWeightedOrchestrator();
-  }
-  
-  // Check for high-throughput mode
-  const isHighThroughput = 
-    process.argv.includes('--high-throughput') ||
-    process.argv.includes('-H') ||
-    process.env.MODE === 'high-throughput';
-  
-  if (isHighThroughput) {
-    currentMode = 'high-throughput';
-    const targetTps = parseInt(process.env.TARGET_TPS ?? '10', 10);
-    const targetPopulation = parseInt(process.env.TARGET_POPULATION ?? '1000', 10);
-    
-    // Set up high-throughput status provider
-    setStatusProvider(() => ({
-      enabled: true,
-      mode: 'high-throughput',
-      targetTps,
-      targetPopulation,
-      currentPopulation: 0, // TODO: Wire up from HighThroughputSimulator
-      currentTps: 0,
-      generation: 0,
-      totalTransactions: 0,
-      successRate: 0,
-      uptime: Date.now() - new Date(startedAt).getTime(),
-      startedAt,
-    }));
-    
-    console.log('═══════════════════════════════════════════════════════════════');
-    console.log(' OttoChain HIGH-THROUGHPUT Traffic Generator');
-    console.log('═══════════════════════════════════════════════════════════════');
-    return runHighThroughput();
-  }
-  
-  console.log('═══════════════════════════════════════════════════════════════');
-  console.log(' OttoChain Evolutionary Traffic Generator');
-  console.log('═══════════════════════════════════════════════════════════════');
-  console.log(' (Use --high-throughput for 1000 agents / 10 TPS mode)');
-  console.log(' (Use --wallets <path> for persistent wallet pool)');
-  
-  const config = loadConfig();
-  
-  console.log(`   Target population: ${config.targetPopulation}`);
-  console.log(`   Generation interval: ${config.generationIntervalMs}ms`);
-  console.log(`   Bridge: ${config.bridgeUrl}`);
-  console.log(`   ML0: ${config.ml0Url}`);
-  if (config.walletPoolPath) {
-    console.log(`   Wallet pool: ${config.walletPoolPath}`);
-  }
-  
-  const simulator = new Simulator(config, {
-    onGenerationStart: (gen) => {
-      process.stdout.write(`\n🧬 Generation ${gen}...`);
-    },
-    
-    onGenerationEnd: (stats) => {
-      console.log(`\n${formatStats(stats)}`);
-    },
-    
-    onAgentBirth: (agent) => {
-      console.log(`  🌱 Birth: ${agent.meta.displayName} (${agent.meta.platform})`);
-    },
-    
-    onAgentDeath: (agent) => {
-      console.log(`  💀 Death: ${agent.meta.displayName}`);
-    },
-    
-    onError: (error, context) => {
-      console.error(`  ⚠️  Error in ${context}: ${error.message}`);
-    },
-  });
-  
-  // Set up standard mode status provider
-  simulatorRef = simulator;
-  let isRunning = false;
-  
-  setStatusProvider(() => {
-    const stats = simulator.getStats();
     return {
-      enabled: isRunning,
-      mode: isRunning ? 'standard' : 'idle',
-      targetTps: Math.round(1000 / config.generationIntervalMs), // Approximate
-      targetPopulation: config.targetPopulation,
-      currentPopulation: stats.population,
-      currentTps: 0, // Standard mode doesn't track TPS directly
-      generation: stats.generation,
-      totalTransactions: 0, // Standard simulator doesn't track this
-      successRate: 1,
+      enabled: running,
+      mode: running ? 'orchestrator' : 'idle',
+      targetTps: 0,
+      targetPopulation: agents.length,
+      currentPopulation: agents.filter((a) => a.state !== 'UNREGISTERED').length,
+      currentTps: 0,
+      generation,
+      totalTransactions: stats.completedFibers + stats.failedFibers,
+      successRate: stats.completedFibers / Math.max(1, stats.completedFibers + stats.failedFibers),
       uptime: Date.now() - new Date(startedAt).getTime(),
       startedAt,
     };
   });
-  
-  // Set up control callbacks
-  setControlCallbacks({
-    onStart: async () => {
-      if (isRunning) return;
-      console.log('\n🚀 Starting traffic generation via API...');
-      isRunning = true;
-      await simulator.start();
-    },
-    onStop: async () => {
-      if (!isRunning) return;
-      console.log('\n⏹️  Stopping traffic generation via API...');
-      simulator.stop();
-      isRunning = false;
-    },
-    onConfig: async (newConfig) => {
-      console.log('\n⚙️  Updating config via API:', newConfig);
-      // Config updates would require restarting the simulator
-      // For now, just log - full implementation would update config and restart
-      if (newConfig.targetPopulation) {
-        config.targetPopulation = newConfig.targetPopulation;
+
+  async function tick() {
+    // Check network health
+    try {
+      const syncStatus = await bridge.checkSyncStatus();
+      if (!syncStatus.ready) {
+        const reason = !syncStatus.allReady
+          ? 'Nodes not ready'
+          : !syncStatus.allHealthy
+            ? 'Nodes unhealthy'
+            : syncStatus.gl0?.fork
+              ? 'GL0 fork detected'
+              : syncStatus.ml0?.fork
+                ? 'ML0 fork detected'
+                : 'Unknown';
+        console.log(`⏸️  Skipping tick — network not ready: ${reason}`);
+        return;
       }
+    } catch (e) {
+      console.log(`⏸️  Skipping tick — sync check failed: ${e}`);
+      return;
+    }
+
+    generation++;
+    try {
+      const result = await orchestrator.tick();
+      if (result.skipped) {
+        console.log(`Tick ${generation}: ⏸️  Skipped (network not ready)`);
+        return;
+      }
+      const stats = orchestrator.getStats();
+      console.log(`Tick ${generation}: active=${stats.activeFibers} created=${result.created} driven=${result.driven} completed=${result.completed}${result.rejected > 0 ? ` rejected=${result.rejected}` : ''}`);
+      console.log(`  Distribution: ${JSON.stringify(stats.fiberTypeDistribution)}`);
+    } catch (e) {
+      console.error(`❌ Tick error: ${e}`);
+    }
+  }
+
+  function startLoop() {
+    if (running) return;
+    running = true;
+    intervalHandle = setInterval(tick, config.generationIntervalMs);
+    console.log('\n🚀 Traffic generation started.');
+  }
+
+  function stopLoop() {
+    if (!running) return;
+    running = false;
+    if (intervalHandle) {
+      clearInterval(intervalHandle);
+      intervalHandle = null;
+    }
+    console.log('\n⏹️  Traffic generation stopped.');
+  }
+
+  // Control callbacks for status-server
+  setControlCallbacks({
+    onStart: async () => startLoop(),
+    onStop: async () => stopLoop(),
+    onConfig: async (newConfig) => {
+      console.log('⚙️  Config update via API:', newConfig);
+      // Dynamic config updates not supported without restart
     },
   });
-  
-  // Handle graceful shutdown
+
+  // Graceful shutdown
   process.on('SIGINT', () => {
-    console.log('\n\n📊 Shutting down...');
-    simulator.stop();
-    
-    const stats = simulator.getStats();
-    console.log(`Final state:`);
-    console.log(`  Generations: ${stats.generation}`);
-    console.log(`  Population: ${stats.population}`);
-    console.log(`  Active contracts: ${stats.activeContracts}`);
-    console.log(`  Active markets: ${stats.activeMarkets}`);
-    console.log(`  Average fitness: ${stats.avgFitness.toFixed(3)}`);
-    
+    console.log('\n📊 Shutting down...');
+    stopLoop();
+    const stats = orchestrator.getStats();
+    console.log(`Final: ${stats.activeFibers} active, ${stats.completedFibers} completed, ${stats.failedFibers} failed`);
     process.exit(0);
   });
-  
+
   process.on('SIGTERM', () => {
-    simulator.stop();
+    stopLoop();
     process.exit(0);
   });
-  
-  // Start simulation (unless AUTO_START=false)
+
+  console.log('──────────────────────────────────────────────────────────────');
+
+  // Bootstrap: register agents before starting the loop
+  const targetAgents = Math.min(config.targetActiveFibers * 3, agents.length);
+  await orchestrator.bootstrapAgents(targetAgents);
+
   const autoStart = process.env.AUTO_START !== 'false';
   if (autoStart) {
-    console.log('\n🚀 Auto-starting traffic generation...');
-    console.log('   (Set AUTO_START=false to start via API instead)');
-    isRunning = true;
-    await simulator.start();
+    console.log('\n🚀 Auto-starting (set AUTO_START=false to disable)...');
+    startLoop();
+    // Run first tick immediately
+    await tick();
   } else {
-    console.log('\n⏸️  Waiting for start command via API...');
-    console.log('   POST /start to begin traffic generation');
-    // Keep process alive
+    console.log('\n⏸️  Waiting for start command (POST /start)...');
     await new Promise(() => {});
   }
 }
@@ -468,12 +295,9 @@ main().catch((err) => {
 });
 
 // Re-export for programmatic use
-export { Simulator } from './simulator.js';
-export { HighThroughputSimulator, runHighThroughput } from './high-throughput.js';
 export { FiberOrchestrator } from './orchestrator.js';
 export { BridgeClient } from './bridge-client.js';
 export * from './types.js';
-export * from './selection.js';
 export * from './workflows.js';
 export * from './wallets.js';
 export * from './fiber-definitions.js';

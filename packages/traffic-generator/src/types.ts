@@ -224,164 +224,19 @@ export interface Contract {
   expectedCompletion: number;
 }
 
+
+
 // ============================================================================
-// Simulation Context
+// Simulation Context (used by market-workflows.ts)
 // ============================================================================
 
 export interface SimulationContext {
-  /** Current generation number */
+  /** Current tick/cycle number */
   generation: number;
-  /** Temperature for softmax selection (exploration vs exploitation) */
-  temperature: number;
-  /** Market conditions modifier (0-1, affects acceptance rates) */
+  /** Market conditions modifier (0-1) */
   marketHealth: number;
   /** Base fitness required for activity */
   activityThreshold: number;
-  /** Mutation probability (random path choice) */
-  mutationRate: number;
-}
-
-export interface GenerationStats {
-  generation: number;
-  timestamp: Date;
-  /** New agent registrations */
-  births: number;
-  /** Agent withdrawals */
-  deaths: number;
-  /** Unexpected path choices */
-  mutations: number;
-  /** Successful contract completions */
-  completions: number;
-  /** Contract rejections */
-  rejections: number;
-  /** Disputes filed */
-  disputes: number;
-  /** Total transactions submitted */
-  transactions: number;
-  /** Successful transactions */
-  successes: number;
-  /** Failed transactions */
-  failures: number;
-  /** Population size */
-  populationSize: number;
-  /** Average fitness */
-  avgFitness: number;
-  /** Max fitness */
-  maxFitness: number;
-  // Market stats
-  /** Markets created this generation */
-  marketsCreated: number;
-  /** Markets opened for participation */
-  marketsOpened: number;
-  /** Markets closed */
-  marketsClosed: number;
-  /** Markets settled */
-  marketsSettled: number;
-  /** Markets refunded */
-  marketsRefunded: number;
-  /** Total commitments made to markets */
-  marketCommitments: number;
-  /** Total value committed to markets */
-  marketCommitmentValue: number;
-  /** Active market count */
-  activeMarkets: number;
-}
-
-// ============================================================================
-// Transition Selection
-// ============================================================================
-
-export interface TransitionChoice {
-  event: string;
-  payload: Record<string, unknown>;
-  /** Weight for selection */
-  weight: number;
-  /** Is this a mutation (unexpected choice)? */
-  isMutation: boolean;
-}
-
-export interface TransitionResult {
-  success: boolean;
-  hash?: string;
-  error?: string;
-  event: string;
-  fiberId: string;
-  isMutation: boolean;
-}
-
-// ============================================================================
-// Configuration
-// ============================================================================
-
-export interface GeneratorConfig {
-  /** Target population size */
-  targetPopulation: number;
-  /** Path to persisted wallet pool JSON (optional) */
-  walletPoolPath?: string;
-  /** Birth rate (new agents per generation) */
-  birthRate: number;
-  /** Death rate (withdrawals per generation as fraction of population) */
-  deathRate: number;
-  /** Activity rate (fraction of population active per generation) */
-  activityRate: number;
-  /** Contract proposal rate (per active agent) */
-  proposalRate: number;
   /** Mutation probability (0-1) */
   mutationRate: number;
-  /** Initial temperature for softmax */
-  initialTemperature: number;
-  /** Temperature decay per generation */
-  temperatureDecay: number;
-  /** Minimum temperature */
-  minTemperature: number;
-  /** Milliseconds between generations */
-  generationIntervalMs: number;
-  /** Max generations (0 = infinite) */
-  maxGenerations: number;
-  /** Bridge URL */
-  bridgeUrl: string;
-  /** ML0 URL for state queries */
-  ml0Url: string;
-  /** Indexer URL for state verification (preferred over ML0) */
-  indexerUrl: string;
-  /** Platform names for agent distribution */
-  platforms: string[];
-  /** Seed for reproducible runs (optional) */
-  seed?: number;
-  // Market configuration
-  /** Market creation rate (per active agent) */
-  marketCreationRate: number;
-  /** Market participation rate (per active agent per market) */
-  marketParticipationRate: number;
-  /** Fraction of agents that can act as oracles */
-  oracleFraction: number;
-  /** Distribution of market types [prediction, auction, crowdfund, group_buy] */
-  marketTypeWeights: [number, number, number, number];
-  /** Default market deadline (generations from creation) */
-  marketDeadlineGenerations: number;
 }
-
-export const DEFAULT_CONFIG: GeneratorConfig = {
-  targetPopulation: 20,
-  birthRate: 2,
-  deathRate: 0.05,
-  activityRate: 0.4,
-  proposalRate: 0.3,
-  mutationRate: 0.1,
-  initialTemperature: 1.0,
-  temperatureDecay: 0.995,
-  minTemperature: 0.1,
-  generationIntervalMs: 10000,
-  maxGenerations: 0, // Infinite
-  bridgeUrl: 'http://localhost:3030',
-  ml0Url: 'http://localhost:9200',
-  indexerUrl: 'http://localhost:3031',
-  platforms: ['discord', 'telegram', 'twitter', 'github'],
-  seed: undefined,
-  // Market defaults
-  marketCreationRate: 0.1,
-  marketParticipationRate: 0.3,
-  oracleFraction: 0.2,
-  marketTypeWeights: [0.4, 0.3, 0.2, 0.1], // prediction, auction, crowdfund, group_buy
-  marketDeadlineGenerations: 5,
-};
