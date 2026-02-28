@@ -530,7 +530,7 @@ async function main(): Promise<void> {
   });
 
   // Rejections tracking UI
-  app.get('/rejections', staticLimiter, (_, res) => {
+  app.get('/rejections', staticLimiter as express.RequestHandler, (_, res) => {
     res.sendFile(path.join(__dirname, 'rejections.html'));
   });
 
@@ -555,7 +555,7 @@ async function main(): Promise<void> {
   });
 
   // Traffic control UI
-  app.get('/traffic', staticLimiter, (_, res) => {
+  app.get('/traffic', staticLimiter as express.RequestHandler, (_, res) => {
     res.sendFile(path.join(__dirname, 'traffic-control.html'));
   });
 
