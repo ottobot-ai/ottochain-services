@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.0](https://github.com/ottobot-ai/ottochain-services/compare/v0.6.0...v0.7.0) (2026-02-28)
+
+
+### Features
+
+* **traffic-gen:** enhanced control UI with weights, fibers, and agents ([#175](https://github.com/ottobot-ai/ottochain-services/issues/175)) ([3b46775](https://github.com/ottobot-ai/ottochain-services/commit/3b4677520ec30cc671cc79370bcebf92ae154887))
+
+
+### Bug Fixes
+
+* **monitor:** copy HTML files to dist on build ([#173](https://github.com/ottobot-ai/ottochain-services/issues/173)) ([b2e4392](https://github.com/ottobot-ai/ottochain-services/commit/b2e439228e8af71f7de6f29b685dcf7e0cac8291))
+
 ## [0.6.0](https://github.com/ottobot-ai/ottochain-services/compare/v0.5.0...v0.6.0) (2026-02-28)
 
 
