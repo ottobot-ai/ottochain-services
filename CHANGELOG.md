@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/ottobot-ai/ottochain-services/compare/v0.7.0...v0.7.1) (2026-02-28)
+
+
+### Bug Fixes
+
+* **traffic-gen:** add proper types for fiber/agent providers ([#177](https://github.com/ottobot-ai/ottochain-services/issues/177)) ([#181](https://github.com/ottobot-ai/ottochain-services/issues/181)) ([745b6c0](https://github.com/ottobot-ai/ottochain-services/commit/745b6c0881d78667197e078e693e4489b3df9f72))
+
 ## [0.7.0](https://github.com/ottobot-ai/ottochain-services/compare/v0.6.0...v0.7.0) (2026-02-28)
 
 
