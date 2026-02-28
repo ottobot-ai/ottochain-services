@@ -489,6 +489,7 @@ async function main(): Promise<void> {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: action === 'config' ? JSON.stringify(req.body) : undefined,
+        signal: AbortSignal.timeout(5000),
       });
       
       const data = await response.json();
@@ -505,8 +506,13 @@ async function main(): Promise<void> {
   app.get('/api/rejections', async (req, res) => {
     const indexerUrl = process.env.INDEXER_URL || 'http://indexer:4001';
     try {
-      const qs = new URLSearchParams(req.query as Record<string, string>).toString();
-      const response = await fetch(`${indexerUrl}/api/rejections?${qs}`);
+      const params = new URLSearchParams();
+      for (const [k, v] of Object.entries(req.query)) {
+        if (typeof v === 'string') params.set(k, v);
+      }
+      const response = await fetch(`${indexerUrl}/api/rejections?${params}`, {
+        signal: AbortSignal.timeout(5000),
+      });
       const data = await response.json();
       res.status(response.status).json(data);
     } catch (err) {
@@ -537,7 +543,9 @@ async function main(): Promise<void> {
     }
     
     try {
-      const response = await fetch(`${trafficGenUrl}/status`);
+      const response = await fetch(`${trafficGenUrl}/status`, {
+        signal: AbortSignal.timeout(5000),
+      });
       const data = await response.json();
       res.status(response.status).json(data);
     } catch (err) {
