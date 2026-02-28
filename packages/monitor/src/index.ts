@@ -17,6 +17,7 @@ import { MonitorCache } from './cache.js';
 import { CacheRefresher } from './refresher.js';
 import { storeEvent, getMonitoringActivity, getRestartHistory, closeEvents } from './events.js';
 import { updateMetrics, metricsHandler } from './metrics.js';
+import rateLimit from 'express-rate-limit';
 
 // =============================================================================
 // Authentication
@@ -159,7 +160,7 @@ async function main(): Promise<void> {
     console.log('──────────────────────────────────────────────────────────────');
     console.log('🔐 Authentication enabled');
     console.log(`   Username: ${auth.username}`);
-    console.log(`   Password: ${auth.password}`);
+    console.log(`   Password: ${'*'.repeat(auth.password.length)}`);
     if (!process.env.MONITOR_PASS) {
       console.log('   (auto-generated, set MONITOR_PASS to use your own)');
     }
@@ -488,6 +489,7 @@ async function main(): Promise<void> {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: action === 'config' ? JSON.stringify(req.body) : undefined,
+        signal: AbortSignal.timeout(5000),
       });
       
       const data = await response.json();
@@ -498,6 +500,65 @@ async function main(): Promise<void> {
     }
   });
   
+
+
+  // Rejection API proxy (to indexer)
+  app.get('/api/rejections', async (req, res) => {
+    const indexerUrl = process.env.INDEXER_URL || 'http://indexer:4001';
+    try {
+      const params = new URLSearchParams();
+      for (const [k, v] of Object.entries(req.query)) {
+        if (typeof v === 'string') params.set(k, v);
+      }
+      const response = await fetch(`${indexerUrl}/api/rejections?${params}`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      const data = await response.json();
+      res.status(response.status).json(data);
+    } catch (err) {
+      console.error('Rejection proxy error:', err);
+      res.status(502).json({ error: 'Failed to reach indexer' });
+    }
+  });
+
+  // Rate limiter for static file routes (CodeQL: prevent DoS on fs access)
+  const staticLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
+  // Rejections tracking UI
+  app.get('/rejections', staticLimiter, (_, res) => {
+    res.sendFile(path.join(__dirname, 'rejections.html'));
+  });
+
+  // GET traffic-gen status
+  app.get('/api/traffic-gen/status', async (req, res) => {
+    const trafficGenUrl = config.trafficGenUrl;
+    
+    if (!trafficGenUrl) {
+      return res.status(503).json({ error: 'Traffic generator URL not configured' });
+    }
+    
+    try {
+      const response = await fetch(`${trafficGenUrl}/status`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      const data = await response.json();
+      res.status(response.status).json(data);
+    } catch (err) {
+      console.error('Traffic gen status error:', err);
+      res.status(502).json({ error: 'Failed to reach traffic generator' });
+    }
+  });
+
+  // Traffic control UI
+  app.get('/traffic', staticLimiter, (_, res) => {
+    res.sendFile(path.join(__dirname, 'traffic-control.html'));
+  });
+
   // WebSocket server for real-time updates
   const wss = new WebSocketServer({ 
     server, 

@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Traffic Generator Control | OttoChain</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0f;
+      color: #e0e0e0;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { 
+      color: #00d4aa; 
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .subtitle { color: #888; margin-bottom: 2rem; }
+    
+    .status-card {
+      background: #1a1a24;
+      border: 1px solid #2a2a3a;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .status-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    .status-badge {
+      padding: 0.25rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+    .status-badge.running { background: #00d4aa22; color: #00d4aa; }
+    .status-badge.stopped { background: #ff6b6b22; color: #ff6b6b; }
+    .status-badge.idle { background: #ffa50022; color: #ffa500; }
+    
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 1rem;
+    }
+    .metric {
+      background: #12121a;
+      padding: 1rem;
+      border-radius: 8px;
+      text-align: center;
+    }
+    .metric-value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #00d4aa;
+    }
+    .metric-label {
+      font-size: 0.75rem;
+      color: #888;
+      margin-top: 0.25rem;
+    }
+    
+    .controls-card {
+      background: #1a1a24;
+      border: 1px solid #2a2a3a;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .controls-card h2 {
+      color: #fff;
+      font-size: 1rem;
+      margin-bottom: 1rem;
+    }
+    
+    .button-group {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    button {
+      flex: 1;
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .btn-start {
+      background: #00d4aa;
+      color: #000;
+    }
+    .btn-start:hover:not(:disabled) { background: #00e8bb; }
+    .btn-stop {
+      background: #ff6b6b;
+      color: #fff;
+    }
+    .btn-stop:hover:not(:disabled) { background: #ff8585; }
+    
+    .config-group {
+      margin-bottom: 1rem;
+    }
+    .config-group label {
+      display: block;
+      font-size: 0.875rem;
+      color: #888;
+      margin-bottom: 0.5rem;
+    }
+    .config-row {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+    }
+    input[type="range"] {
+      flex: 1;
+      height: 8px;
+      border-radius: 4px;
+      background: #2a2a3a;
+      -webkit-appearance: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #00d4aa;
+      cursor: pointer;
+    }
+    input[type="number"] {
+      width: 100px;
+      padding: 0.5rem;
+      background: #12121a;
+      border: 1px solid #2a2a3a;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 1rem;
+    }
+    select {
+      width: 100%;
+      padding: 0.5rem;
+      background: #12121a;
+      border: 1px solid #2a2a3a;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 1rem;
+    }
+    .btn-apply {
+      background: #4a4aff;
+      color: #fff;
+      margin-top: 1rem;
+    }
+    .btn-apply:hover:not(:disabled) { background: #5a5aff; }
+    
+    .log {
+      background: #12121a;
+      border: 1px solid #2a2a3a;
+      border-radius: 8px;
+      padding: 1rem;
+      font-family: monospace;
+      font-size: 0.875rem;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+    .log-entry { margin-bottom: 0.25rem; }
+    .log-entry.success { color: #00d4aa; }
+    .log-entry.error { color: #ff6b6b; }
+    .log-entry.info { color: #888; }
+    
+    .back-link {
+      display: inline-block;
+      color: #00d4aa;
+      text-decoration: none;
+      margin-bottom: 1rem;
+    }
+    .back-link:hover { text-decoration: underline; }
+    
+    .error-banner {
+      background: #ff6b6b22;
+      border: 1px solid #ff6b6b;
+      color: #ff6b6b;
+      padding: 1rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a href="/" class="back-link">← Back to Status</a>
+    
+    <h1>🚦 Traffic Generator</h1>
+    <p class="subtitle">Control and monitor synthetic traffic generation</p>
+    
+    <div class="error-banner" id="errorBanner"></div>
+    
+    <!-- Status Card -->
+    <div class="status-card">
+      <div class="status-header">
+        <h2 style="color:#fff; font-size:1rem;">Current Status</h2>
+        <span class="status-badge" id="statusBadge">--</span>
+      </div>
+      <div class="metrics-grid">
+        <div class="metric">
+          <div class="metric-value" id="currentTps">--</div>
+          <div class="metric-label">Current TPS</div>
+        </div>
+        <div class="metric">
+          <div class="metric-value" id="targetTps">--</div>
+          <div class="metric-label">Target TPS</div>
+        </div>
+        <div class="metric">
+          <div class="metric-value" id="population">--</div>
+          <div class="metric-label">Population</div>
+        </div>
+        <div class="metric">
+          <div class="metric-value" id="totalTx">--</div>
+          <div class="metric-label">Total TX</div>
+        </div>
+        <div class="metric">
+          <div class="metric-value" id="successRate">--</div>
+          <div class="metric-label">Success Rate</div>
+        </div>
+        <div class="metric">
+          <div class="metric-value" id="uptime">--</div>
+          <div class="metric-label">Uptime</div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Controls Card -->
+    <div class="controls-card">
+      <h2>Controls</h2>
+      <div class="button-group">
+        <button class="btn-start" id="btnStart" onclick="startTraffic()">▶ Start</button>
+        <button class="btn-stop" id="btnStop" onclick="stopTraffic()">⬛ Stop</button>
+      </div>
+      
+      <div class="config-group">
+        <label>Target TPS</label>
+        <div class="config-row">
+          <input type="range" id="tpsSlider" min="1" max="100" value="10" oninput="updateTpsDisplay()">
+          <input type="number" id="tpsInput" min="1" max="100" value="10" onchange="syncTpsSlider()">
+        </div>
+      </div>
+      
+      <div class="config-group">
+        <label>Target Population</label>
+        <input type="number" id="populationInput" min="1" max="10000" value="100" style="width:100%">
+      </div>
+      
+      <div class="config-group">
+        <label>Mode</label>
+        <select id="modeSelect">
+          <option value="standard">Standard</option>
+          <option value="high-throughput">High Throughput</option>
+        </select>
+      </div>
+      
+      <button class="btn-apply" onclick="applyConfig()">Apply Configuration</button>
+    </div>
+    
+    <!-- Log -->
+    <div class="controls-card">
+      <h2>Activity Log</h2>
+      <div class="log" id="log">
+        <div class="log-entry info">Ready</div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    const API_BASE = '/api/traffic-gen';
+    let lastStatus = null;
+    
+    function log(message, type = 'info') {
+      const logEl = document.getElementById('log');
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      logEl.insertBefore(entry, logEl.firstChild);
+      // Keep only last 50 entries
+      while (logEl.children.length > 50) {
+        logEl.removeChild(logEl.lastChild);
+      }
+    }
+    
+    function showError(message) {
+      const banner = document.getElementById('errorBanner');
+      banner.textContent = message;
+      banner.style.display = 'block';
+      setTimeout(() => banner.style.display = 'none', 5000);
+    }
+    
+    function formatUptime(ms) {
+      if (!ms) return '--';
+      const seconds = Math.floor(ms / 1000);
+      const minutes = Math.floor(seconds / 60);
+      const hours = Math.floor(minutes / 60);
+      if (hours > 0) return `${hours}h ${minutes % 60}m`;
+      if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+      return `${seconds}s`;
+    }
+    
+    function formatNumber(n) {
+      if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+      if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+      return n.toString();
+    }
+    
+    async function fetchStatus() {
+      try {
+        const res = await fetch('/api/traffic-gen/status');
+        if (!res.ok) throw new Error('Failed to fetch status');
+        const data = await res.json();
+        updateUI(data);
+        lastStatus = data;
+      } catch (err) {
+        console.error('Status fetch error:', err);
+      }
+    }
+    
+    function updateUI(status) {
+      // Badge
+      const badge = document.getElementById('statusBadge');
+      if (status.enabled) {
+        badge.textContent = 'Running';
+        badge.className = 'status-badge running';
+      } else if (status.mode === 'idle') {
+        badge.textContent = 'Idle';
+        badge.className = 'status-badge idle';
+      } else {
+        badge.textContent = 'Stopped';
+        badge.className = 'status-badge stopped';
+      }
+      
+      // Metrics
+      document.getElementById('currentTps').textContent = status.currentTps?.toFixed(1) || '0';
+      document.getElementById('targetTps').textContent = status.targetTps || '--';
+      document.getElementById('population').textContent = `${status.currentPopulation || 0}/${status.targetPopulation || '--'}`;
+      document.getElementById('totalTx').textContent = formatNumber(status.totalTransactions || 0);
+      document.getElementById('successRate').textContent = status.successRate ? (status.successRate * 100).toFixed(1) + '%' : '--';
+      document.getElementById('uptime').textContent = formatUptime(status.uptime);
+      
+      // Button states
+      document.getElementById('btnStart').disabled = status.enabled;
+      document.getElementById('btnStop').disabled = !status.enabled;
+    }
+    
+    function updateTpsDisplay() {
+      document.getElementById('tpsInput').value = document.getElementById('tpsSlider').value;
+    }
+    
+    function syncTpsSlider() {
+      document.getElementById('tpsSlider').value = document.getElementById('tpsInput').value;
+    }
+    
+    async function startTraffic() {
+      try {
+        log('Starting traffic generator...', 'info');
+        const res = await fetch(`${API_BASE}/start`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+          log('Traffic generator started', 'success');
+        } else {
+          throw new Error(data.error || 'Failed to start');
+        }
+      } catch (err) {
+        log(`Error: ${err.message}`, 'error');
+        showError(err.message);
+      }
+      fetchStatus();
+    }
+    
+    async function stopTraffic() {
+      try {
+        log('Stopping traffic generator...', 'info');
+        const res = await fetch(`${API_BASE}/stop`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+          log('Traffic generator stopped', 'success');
+        } else {
+          throw new Error(data.error || 'Failed to stop');
+        }
+      } catch (err) {
+        log(`Error: ${err.message}`, 'error');
+        showError(err.message);
+      }
+      fetchStatus();
+    }
+    
+    async function applyConfig() {
+      const config = {
+        targetTps: parseInt(document.getElementById('tpsInput').value),
+        targetPopulation: parseInt(document.getElementById('populationInput').value),
+        mode: document.getElementById('modeSelect').value,
+      };
+      
+      try {
+        log(`Applying config: TPS=${config.targetTps}, Pop=${config.targetPopulation}, Mode=${config.mode}`, 'info');
+        const res = await fetch(`${API_BASE}/config`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(config),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          log('Configuration applied', 'success');
+        } else {
+          throw new Error(data.error || 'Failed to apply config');
+        }
+      } catch (err) {
+        log(`Error: ${err.message}`, 'error');
+        showError(err.message);
+      }
+      fetchStatus();
+    }
+    
+    // Initial fetch and auto-refresh
+    fetchStatus();
+    setInterval(fetchStatus, 2000);
+  </script>
+</body>
+</html>

@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Transaction Rejections | OttoChain</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0f;
+      color: #e0e0e0;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    h1 { 
+      color: #ff6b6b; 
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .subtitle { color: #888; margin-bottom: 2rem; }
+    
+    .back-link {
+      display: inline-block;
+      color: #00d4aa;
+      text-decoration: none;
+      margin-bottom: 1rem;
+    }
+    .back-link:hover { text-decoration: underline; }
+    
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .stat-card {
+      background: #1a1a24;
+      border: 1px solid #2a2a3a;
+      border-radius: 8px;
+      padding: 1rem;
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #ff6b6b;
+    }
+    .stat-label {
+      font-size: 0.75rem;
+      color: #888;
+      margin-top: 0.25rem;
+    }
+    
+    .filters {
+      background: #1a1a24;
+      border: 1px solid #2a2a3a;
+      border-radius: 12px;
+      padding: 1rem;
+      margin-bottom: 1.5rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      align-items: flex-end;
+    }
+    .filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .filter-group label {
+      font-size: 0.75rem;
+      color: #888;
+    }
+    .filter-group input, .filter-group select {
+      padding: 0.5rem;
+      background: #12121a;
+      border: 1px solid #2a2a3a;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 0.875rem;
+    }
+    .filter-group input { width: 180px; }
+    .btn-filter {
+      padding: 0.5rem 1rem;
+      background: #4a4aff;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .btn-filter:hover { background: #5a5aff; }
+    .btn-clear {
+      padding: 0.5rem 1rem;
+      background: transparent;
+      color: #888;
+      border: 1px solid #2a2a3a;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    
+    .rejections-table {
+      width: 100%;
+      background: #1a1a24;
+      border: 1px solid #2a2a3a;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th {
+      background: #12121a;
+      padding: 1rem;
+      text-align: left;
+      font-size: 0.75rem;
+      color: #888;
+      text-transform: uppercase;
+      border-bottom: 1px solid #2a2a3a;
+    }
+    td {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid #1a1a24;
+      font-size: 0.875rem;
+    }
+    tr:hover { background: #12121a; }
+    
+    .type-badge {
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .type-CreateStateMachine { background: #4a4aff22; color: #4a4aff; }
+    .type-TransitionStateMachine { background: #00d4aa22; color: #00d4aa; }
+    .type-CreateScript { background: #ffa50022; color: #ffa500; }
+    .type-InvokeScript { background: #ff6b6b22; color: #ff6b6b; }
+    .type-ArchiveStateMachine { background: #88888822; color: #888888; }
+    
+    .error-code {
+      background: #ff6b6b22;
+      color: #ff6b6b;
+      padding: 0.125rem 0.375rem;
+      border-radius: 3px;
+      font-family: monospace;
+      font-size: 0.75rem;
+      margin-right: 0.25rem;
+    }
+    
+    .fiber-id {
+      font-family: monospace;
+      font-size: 0.75rem;
+      color: #888;
+    }
+    
+    .hash {
+      font-family: monospace;
+      font-size: 0.75rem;
+      color: #63b3ed;
+      cursor: pointer;
+    }
+    .hash:hover { text-decoration: underline; }
+    
+    .timestamp {
+      color: #888;
+      font-size: 0.75rem;
+    }
+    
+    .pagination {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1rem;
+      background: #1a1a24;
+      border-top: 1px solid #2a2a3a;
+    }
+    .pagination button {
+      padding: 0.5rem 1rem;
+      background: #2a2a3a;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .pagination button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 2rem;
+      color: #888;
+    }
+    
+    .error-banner {
+      background: #ff6b6b22;
+      border: 1px solid #ff6b6b;
+      color: #ff6b6b;
+      padding: 1rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+    }
+    
+    .empty-state {
+      text-align: center;
+      padding: 3rem;
+      color: #888;
+    }
+    .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a href="/" class="back-link">← Back to Status</a>
+    
+    <h1>🚫 Transaction Rejections</h1>
+    <p class="subtitle">ML0 rejection tracking — transactions rejected by the metagraph</p>
+    
+    <div id="errorBanner" class="error-banner" style="display: none;"></div>
+    
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-value" id="totalRejections">-</div>
+        <div class="stat-label">Total Rejections</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="recentRejections">-</div>
+        <div class="stat-label">Last Hour</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="uniqueFibers">-</div>
+        <div class="stat-label">Affected Fibers</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="commonError">-</div>
+        <div class="stat-label">Top Error</div>
+      </div>
+    </div>
+    
+    <div class="filters">
+      <div class="filter-group">
+        <label>Fiber ID</label>
+        <input type="text" id="filterFiberId" placeholder="UUID...">
+      </div>
+      <div class="filter-group">
+        <label>Update Type</label>
+        <select id="filterUpdateType">
+          <option value="">All Types</option>
+          <option value="CreateStateMachine">CreateStateMachine</option>
+          <option value="TransitionStateMachine">TransitionStateMachine</option>
+          <option value="CreateScript">CreateScript</option>
+          <option value="InvokeScript">InvokeScript</option>
+          <option value="ArchiveStateMachine">ArchiveStateMachine</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Signer</label>
+        <input type="text" id="filterSigner" placeholder="DAG address...">
+      </div>
+      <div class="filter-group">
+        <label>Error Code</label>
+        <input type="text" id="filterErrorCode" placeholder="Error code...">
+      </div>
+      <button class="btn-filter" onclick="applyFilters()">Filter</button>
+      <button class="btn-clear" onclick="clearFilters()">Clear</button>
+    </div>
+    
+    <div class="rejections-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Ordinal</th>
+            <th>Type</th>
+            <th>Fiber</th>
+            <th>Errors</th>
+            <th>Signers</th>
+          </tr>
+        </thead>
+        <tbody id="rejectionsBody">
+          <tr><td colspan="6" class="loading">Loading...</td></tr>
+        </tbody>
+      </table>
+      <div class="pagination">
+        <button id="prevBtn" onclick="prevPage()" disabled>← Previous</button>
+        <span id="pageInfo">Page 1</span>
+        <button id="nextBtn" onclick="nextPage()" disabled>Next →</button>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    const INDEXER_URL = '/api/rejections';  // Proxied through monitor
+    let currentOffset = 0;
+    const limit = 25;
+    let totalCount = 0;
+    let hasMore = false;
+    
+    function showError(msg) {
+      const banner = document.getElementById('errorBanner');
+      banner.textContent = msg;
+      banner.style.display = 'block';
+    }
+    
+    function hideError() {
+      document.getElementById('errorBanner').style.display = 'none';
+    }
+    
+    function formatTime(ts) {
+      const d = new Date(ts);
+      return d.toLocaleString();
+    }
+    
+    function truncate(str, len = 12) {
+      if (!str) return '-';
+      if (str.length <= len) return str;
+      return str.slice(0, len) + '...';
+    }
+    
+    function getFilters() {
+      return {
+        fiberId: document.getElementById('filterFiberId').value || undefined,
+        updateType: document.getElementById('filterUpdateType').value || undefined,
+        signer: document.getElementById('filterSigner').value || undefined,
+        errorCode: document.getElementById('filterErrorCode').value || undefined,
+      };
+    }
+    
+    function buildQueryString(filters, offset) {
+      const params = new URLSearchParams();
+      params.set('limit', limit);
+      params.set('offset', offset);
+      if (filters.fiberId) params.set('fiberId', filters.fiberId);
+      if (filters.updateType) params.set('updateType', filters.updateType);
+      if (filters.signer) params.set('signer', filters.signer);
+      if (filters.errorCode) params.set('errorCode', filters.errorCode);
+      return params.toString();
+    }
+    
+    async function fetchRejections() {
+      hideError();
+      const filters = getFilters();
+      const qs = buildQueryString(filters, currentOffset);
+      
+      try {
+        const res = await fetch(`${INDEXER_URL}?${qs}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        
+        const data = await res.json();
+        totalCount = data.total;
+        hasMore = data.hasMore;
+        
+        renderStats(data);
+        renderTable(data.rejections);
+        updatePagination();
+      } catch (err) {
+        showError(`Failed to fetch rejections: ${err.message}`);
+        document.getElementById('rejectionsBody').innerHTML = 
+          '<tr><td colspan="6" class="empty-state"><div class="icon">⚠️</div>Failed to load rejections<br><small>Is the indexer running?</small></td></tr>';
+      }
+    }
+    
+    function renderStats(data) {
+      document.getElementById('totalRejections').textContent = data.total.toLocaleString();
+      
+      // Calculate recent (last hour) - would need backend support
+      document.getElementById('recentRejections').textContent = '-';
+      
+      // Unique fibers in current view
+      const fibers = new Set(data.rejections.map(r => r.fiberId));
+      document.getElementById('uniqueFibers').textContent = fibers.size;
+      
+      // Most common error
+      const errorCounts = {};
+      data.rejections.forEach(r => {
+        if (Array.isArray(r.errors)) {
+          r.errors.forEach(e => {
+            const code = e.code || 'unknown';
+            errorCounts[code] = (errorCounts[code] || 0) + 1;
+          });
+        }
+      });
+      const topError = Object.entries(errorCounts).sort((a, b) => b[1] - a[1])[0];
+      document.getElementById('commonError').textContent = topError ? topError[0] : '-';
+    }
+    
+    function renderTable(rejections) {
+      const tbody = document.getElementById('rejectionsBody');
+      
+      if (!rejections || rejections.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><div class="icon">✅</div>No rejections found<br><small>All transactions validated successfully</small></td></tr>';
+        return;
+      }
+      
+      tbody.innerHTML = rejections.map(r => {
+        const errors = Array.isArray(r.errors) 
+          ? r.errors.map(e => `<span class="error-code">${e.code || 'unknown'}</span>`).join(' ')
+          : '-';
+        
+        const signers = Array.isArray(r.signers)
+          ? r.signers.map(s => truncate(s, 10)).join(', ')
+          : '-';
+        
+        return `
+          <tr>
+            <td class="timestamp">${formatTime(r.timestamp)}</td>
+            <td>${r.ordinal}</td>
+            <td><span class="type-badge type-${r.updateType}">${r.updateType}</span></td>
+            <td class="fiber-id" title="${r.fiberId}">${truncate(r.fiberId, 8)}</td>
+            <td>${errors}</td>
+            <td title="${(r.signers || []).join(', ')}">${signers}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+    
+    function updatePagination() {
+      const page = Math.floor(currentOffset / limit) + 1;
+      const totalPages = Math.ceil(totalCount / limit);
+      
+      document.getElementById('pageInfo').textContent = `Page ${page} of ${totalPages} (${totalCount} total)`;
+      document.getElementById('prevBtn').disabled = currentOffset === 0;
+      document.getElementById('nextBtn').disabled = !hasMore;
+    }
+    
+    function prevPage() {
+      currentOffset = Math.max(0, currentOffset - limit);
+      fetchRejections();
+    }
+    
+    function nextPage() {
+      if (hasMore) {
+        currentOffset += limit;
+        fetchRejections();
+      }
+    }
+    
+    function applyFilters() {
+      currentOffset = 0;
+      fetchRejections();
+    }
+    
+    function clearFilters() {
+      document.getElementById('filterFiberId').value = '';
+      document.getElementById('filterUpdateType').value = '';
+      document.getElementById('filterSigner').value = '';
+      document.getElementById('filterErrorCode').value = '';
+      currentOffset = 0;
+      fetchRejections();
+    }
+    
+    // Initial load
+    fetchRejections();
+    
+    // Auto-refresh every 30s
+    setInterval(fetchRejections, 30000);
+  </script>
+</body>
+</html>

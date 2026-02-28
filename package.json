@@ -40,5 +40,10 @@
   "dependencies": {
     "@prisma/client": "^5.9.0",
     "ioredis": "^5.9.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "@types/express-serve-static-core": ">=5.0.0"
+    }
   }
 }
