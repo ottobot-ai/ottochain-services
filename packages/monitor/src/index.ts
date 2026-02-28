@@ -463,6 +463,26 @@ async function main(): Promise<void> {
   
   // Generate a session token for WebSocket auth (simpler than basic auth for WS)
   const wsToken = crypto.randomBytes(16).toString('hex');
+
+  // Simple in-memory rate limiter for routes that perform file system access
+  const uiRateLimitMap = new Map<string, { count: number; resetAt: number }>();
+  const uiRateLimit = (maxRequests = 60, windowMs = 60_000) => (req: express.Request, res: express.Response, next: express.NextFunction): void => {
+    const ip = (req.ip ?? req.socket.remoteAddress ?? 'unknown');
+    const now = Date.now();
+    const entry = uiRateLimitMap.get(ip);
+    if (!entry || now > entry.resetAt) {
+      uiRateLimitMap.set(ip, { count: 1, resetAt: now + windowMs });
+      next();
+      return;
+    }
+    entry.count++;
+    if (entry.count > maxRequests) {
+      res.status(429).json({ error: 'Too many requests' });
+      return;
+    }
+    next();
+  };
+
   
   // Endpoint to get WS token (requires basic auth)
   app.get('/api/ws-token', (_, res) => {
@@ -515,7 +535,7 @@ async function main(): Promise<void> {
   });
 
   // Rejections tracking UI
-  app.get('/rejections', (_, res) => {
+  app.get('/rejections', uiRateLimit(), (_, res) => {
     res.sendFile(path.join(__dirname, 'rejections.html'));
   });
 
@@ -538,7 +558,7 @@ async function main(): Promise<void> {
   });
 
   // Traffic control UI
-  app.get('/traffic', (_, res) => {
+  app.get('/traffic', uiRateLimit(), (_, res) => {
     res.sendFile(path.join(__dirname, 'traffic-control.html'));
   });
 
