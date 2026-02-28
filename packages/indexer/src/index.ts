@@ -6,6 +6,7 @@
 import express, { Request, Response } from 'express';
 import { prisma, getConfig, SnapshotNotificationSchema, RejectionNotificationSchema, getStatsCollector } from '@ottochain/shared';
 import { processSnapshot } from './processor.js';
+import { indexSnapshotByHash } from './snapshot-indexer.js';
 import { startConfirmationPoller, stopConfirmationPoller, getConfirmationStats } from './confirmations.js';
 import { startSnapshotPoller, stopSnapshotPoller, getPollerStats } from './poller.js';
 import { apiRouter } from './routes/index.js';
@@ -52,34 +53,53 @@ app.post('/webhook/snapshot', async (req, res) => {
     
     console.log(`📥 Received snapshot notification: ordinal=${notification.ordinal}, hash=${notification.hash}`);
     
-    // Check if already indexed
-    const existing = await prisma.indexedSnapshot.findUnique({
-      where: { ordinal: BigInt(notification.ordinal) }
+    // Check if already indexed BY HASH (not ordinal)
+    // This handles forks/reorgs: same ordinal with different hash = new snapshot
+    const existing = await prisma.indexedSnapshot.findFirst({
+      where: { hash: notification.hash }
     });
     
     if (existing) {
-      console.log(`⏭️ Snapshot ${notification.ordinal} already indexed (status: ${existing.status})`);
+      console.log(`⏭️ Snapshot hash ${notification.hash.slice(0, 16)}... already indexed at ordinal ${existing.ordinal}`);
       res.status(200).json({ 
         accepted: true, 
         ordinal: notification.ordinal,
+        hash: notification.hash,
         status: existing.status,
         alreadyIndexed: true
       });
       return;
     }
     
-    // Create PENDING record first
-    await prisma.indexedSnapshot.create({
-      data: {
+    // Create PENDING record with both ordinal and hash
+    // Use upsert in case ordinal exists with different hash (fork)
+    await prisma.indexedSnapshot.upsert({
+      where: { ordinal: BigInt(notification.ordinal) },
+      create: {
         ordinal: BigInt(notification.ordinal),
+        hash: notification.hash,
+        status: 'PENDING',
+      },
+      update: {
         hash: notification.hash,
         status: 'PENDING',
       }
     });
     
-    console.log(`📝 Created PENDING snapshot ${notification.ordinal}`);
+    console.log(`📝 Created PENDING snapshot ${notification.ordinal} (${notification.hash.slice(0, 16)}...)`);
     
-    // Process the snapshot asynchronously (index the state)
+    const config = getConfig();
+    
+    // Index transactions from snapshot blocks using SDK codec
+    indexSnapshotByHash(notification.ordinal, notification.hash, config.METAGRAPH_ML0_URL)
+      .then(({ transitionsRecorded, fibersCreated }) => {
+        console.log(`📝 Indexed ${transitionsRecorded} transitions from snapshot ${notification.ordinal}`);
+      })
+      .catch((err) => {
+        console.error(`❌ Failed to index snapshot transactions ${notification.ordinal}:`, err);
+      });
+    
+    // Process the checkpoint state (fibers, agents, contracts)
     processSnapshot(notification)
       .then((result) => {
         console.log(`✅ Indexed snapshot ${notification.ordinal}: ${result.fibersUpdated} fibers, ${result.agentsUpdated} agents, ${result.contractsUpdated} contracts`);
@@ -92,13 +112,15 @@ app.post('/webhook/snapshot', async (req, res) => {
     res.status(202).json({ 
       accepted: true, 
       ordinal: notification.ordinal,
+      hash: notification.hash,
       status: 'PENDING'
     });
   } catch (err) {
     console.error('Invalid webhook payload:', err);
     res.status(400).json({ error: 'Invalid payload' });
   }
-});
+})
+
 
 // Shared rejection handler - used by both /webhook/snapshot (routed) and /webhook/rejection (direct)
 async function handleRejectionWebhook(req: Request, res: Response): Promise<void> {

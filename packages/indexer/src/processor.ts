@@ -10,41 +10,6 @@ import {
 } from '@ottochain/shared';
 import { AgentState as PrismaAgentState, ContractState as PrismaContractState } from '@prisma/client';
 
-// ============================================================================
-// Snapshot Transaction Types
-// ============================================================================
-
-interface SnapshotBlock {
-  proofs: Array<{ id: string; signature: string }>;
-  value: {
-    roundId: number;
-    dataTransactions: Array<[DataTransaction]>;  // Array of tuple-wrapped transactions
-    dataTransactionsHashes: string[];
-    updateHashes: string[];
-  };
-}
-
-interface DataTransaction {
-  proofs: Array<{ id: string; signature: string }>;
-  value: {
-    CreateStateMachine?: {
-      fiberId: string;
-      definition: {
-        initialState: string;
-        metadata?: { name?: string; description?: string };
-      };
-      initialData?: Record<string, unknown>;
-      owners: string[];
-    };
-    TransitionStateMachine?: {
-      fiberId: string;
-      eventName: string;
-      payload?: Record<string, unknown>;
-    };
-  };
-}
-
-
 interface ProcessResult {
   ordinal: number;
   fibersUpdated: number;
@@ -99,135 +64,6 @@ interface ScriptFiber {
  * 3. Derive Agent records for AgentIdentity workflows
  * 4. Derive Contract records for Contract workflows
  */
-
-// ============================================================================
-// Snapshot Transaction Indexing
-// ============================================================================
-
-/**
- * Fetch the actual snapshot and extract transactions from blocks.
- * Records FiberTransition for both CreateStateMachine and TransitionStateMachine events.
- */
-async function indexSnapshotTransactions(ordinal: number, ml0Url: string): Promise<number> {
-  let transitionsRecorded = 0;
-
-  try {
-    const snapshotResp = await fetch(`${ml0Url}/snapshots/${ordinal}`, {
-      signal: AbortSignal.timeout(30000),
-    });
-    
-    if (!snapshotResp.ok) {
-      console.warn(`⚠️ Could not fetch snapshot ${ordinal}: ${snapshotResp.status}`);
-      return 0;
-    }
-    
-    const snapshot = await snapshotResp.json() as {
-      value: {
-        ordinal: number;
-        dataApplication?: {
-          blocks: number[][];  // Each block is an array of bytes (JSON-encoded)
-        };
-      };
-    };
-    
-    const blocks = snapshot.value?.dataApplication?.blocks || [];
-    if (blocks.length === 0) return 0;
-    
-    for (const blockBytes of blocks) {
-      // Decode block from byte array to JSON string
-      const blockJson = String.fromCharCode(...blockBytes);
-      const block: SnapshotBlock = JSON.parse(blockJson);
-      
-      for (const [tx] of block.value.dataTransactions) {
-        const { value } = tx;
-        
-        // Handle CreateStateMachine - record as CREATED transition
-        if (value.CreateStateMachine) {
-          const { fiberId, definition } = value.CreateStateMachine;
-          const initialState = definition?.initialState || 'UNKNOWN';
-          const workflowType = definition?.metadata?.name || 'Unknown';
-          
-          // Check if already recorded
-          const existing = await prisma.fiberTransition.findFirst({
-            where: {
-              fiberId,
-              snapshotOrdinal: BigInt(ordinal),
-              eventName: 'CREATED',
-            },
-          });
-          
-          if (!existing) {
-            await prisma.fiberTransition.create({
-              data: {
-                fiberId,
-                eventName: 'CREATED',
-                fromState: "NONE",
-                toState: initialState,
-                success: true,
-                gasUsed: 0,
-                snapshotOrdinal: BigInt(ordinal),
-              },
-            });
-            transitionsRecorded++;
-            
-            // Publish activity
-            await publishEvent(CHANNELS.ACTIVITY_FEED, {
-              eventType: 'CREATION',
-              timestamp: new Date().toISOString(),
-              fiberId,
-              workflowType,
-              action: `Created: → ${initialState}`,
-            });
-          }
-        }
-        
-        // Handle TransitionStateMachine
-        if (value.TransitionStateMachine) {
-          const { fiberId, eventName } = value.TransitionStateMachine;
-          
-          // Get the current fiber state to determine fromState/toState
-          // (The checkpoint has the result of this transition)
-          const fiber = await prisma.fiber.findUnique({ where: { fiberId } });
-          
-          const existing = await prisma.fiberTransition.findFirst({
-            where: {
-              fiberId,
-              snapshotOrdinal: BigInt(ordinal),
-              eventName,
-            },
-          });
-          
-          if (!existing && fiber) {
-            await prisma.fiberTransition.create({
-              data: {
-                fiberId,
-                eventName,
-                fromState: "NONE",  // Would need to track previous state
-                toState: fiber.currentState,
-                success: true,
-                gasUsed: 0,
-                snapshotOrdinal: BigInt(ordinal),
-              },
-            });
-            transitionsRecorded++;
-            
-            await publishEvent(CHANNELS.ACTIVITY_FEED, {
-              eventType: 'TRANSITION',
-              timestamp: new Date().toISOString(),
-              fiberId,
-              workflowType: fiber.workflowType,
-              action: `${eventName}: → ${fiber.currentState}`,
-            });
-          }
-        }
-      }
-    }
-  } catch (err) {
-    console.error(`❌ Error indexing snapshot ${ordinal} transactions:`, err);
-  }
-  
-  return transitionsRecorded;
-}
 export async function processSnapshot(notification: SnapshotNotification): Promise<ProcessResult> {
   const config = getConfig();
   
@@ -383,12 +219,6 @@ export async function processSnapshot(notification: SnapshotNotification): Promi
   });
   
   const result = { ordinal: notification.ordinal, fibersUpdated, agentsUpdated, contractsUpdated, corporateUpdated };
-  // Index actual transactions from snapshot blocks
-  const transitionsRecorded = await indexSnapshotTransactions(notification.ordinal, config.METAGRAPH_ML0_URL);
-  if (transitionsRecorded > 0) {
-    console.log(`📝 Recorded ${transitionsRecorded} fiber transitions from snapshot ${notification.ordinal}`);
-  }
-
   console.log(`✅ Indexed snapshot ${notification.ordinal}: ${fibersUpdated} fibers, ${agentsUpdated} agents, ${contractsUpdated} contracts, ${corporateUpdated} corporate`);
   
   await publishEvent(CHANNELS.STATS_UPDATED, result);
