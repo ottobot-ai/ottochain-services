@@ -30,7 +30,7 @@ import { HighThroughputSimulator, runHighThroughput } from './high-throughput.js
 import { FiberOrchestrator, TrafficConfig } from './orchestrator.js';
 import { BridgeClient } from './bridge-client.js';
 import { loadWalletPool, type WalletPool } from './wallets.js';
-import { startStatusServer, setStatusProvider, setControlCallbacks, setWeightsProvider, setFibersProvider, setAgentsProvider, type TrafficGenStatus } from './status-server.js';
+import { startStatusServer, setStatusProvider, setControlCallbacks, setWeightsProvider, setFibersProvider, setAgentsProvider, type TrafficGenStatus, type ActiveFiberStatus, type CompletedFiberStatus } from './status-server.js';
 
 // =============================================================================
 // Configuration from Environment
@@ -224,7 +224,7 @@ async function runWeightedOrchestrator(): Promise<void> {
   setWeightsProvider(() => orchestrator.getWeights());
   
   setFibersProvider(() => ({
-    active: orchestrator.getActiveFibers().map(f => ({
+    active: orchestrator.getActiveFibers().map((f): ActiveFiberStatus => ({
       id: f.id,
       type: f.type,
       currentState: f.currentState,
@@ -232,7 +232,12 @@ async function runWeightedOrchestrator(): Promise<void> {
       startedAt: f.startedAt,
       pending: !!f.pendingTransition,
     })),
-    completed: orchestrator.getCompletedFiberLog(),
+    completed: orchestrator.getCompletedFiberLog().map((f): CompletedFiberStatus => ({
+      id: f.id,
+      type: f.type,
+      finalState: f.finalState,
+      completedAt: f.completedAt,
+    })),
     failed: orchestrator.getStats().failedFibers,
   }));
   
