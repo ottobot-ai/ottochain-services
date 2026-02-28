@@ -12,7 +12,7 @@
   "dependencies": {
     "@ottochain/shared": "workspace:*",
     "@prisma/client": "^5.22.0",
-    "express": "^4.21.2",
+    "express": "^5.2.1",
     "express-rate-limit": "^8.2.1",
     "ioredis": "^5.9.3",
     "prom-client": "^15.1.3",
