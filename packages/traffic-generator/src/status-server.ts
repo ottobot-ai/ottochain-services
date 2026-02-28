@@ -31,8 +31,37 @@ type ControlCallback = () => Promise<void> | void;
 type ConfigCallback = (config: TrafficGenConfig) => Promise<void> | void;
 type WeightsProvider = () => Record<string, number>;
 type WeightsUpdateCallback = (weights: Record<string, number>) => void;
-type FibersProvider = () => { active: unknown[]; completed: unknown[]; failed: number };
-type AgentsProvider = () => { registered: string[]; count: number };
+/** Runtime view of an active fiber exposed by the status server */
+export interface ActiveFiberStatus {
+  id: string;
+  type: string;
+  currentState: string;
+  participants: string[];
+  startedAt: number;
+  pending: boolean;
+}
+
+/** Completed fiber entry exposed by the status server */
+export interface CompletedFiberStatus {
+  id: string;
+  type: string;
+  finalState: string;
+  completedAt: string;
+}
+
+export interface FibersResponse {
+  active: ActiveFiberStatus[];
+  completed: CompletedFiberStatus[];
+  failed: number;
+}
+
+export interface AgentsResponse {
+  registered: string[];
+  count: number;
+}
+
+type FibersProvider = () => FibersResponse;
+type AgentsProvider = () => AgentsResponse;
 
 let statusProvider: StatusProvider = () => ({
   enabled: false,
