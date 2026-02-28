@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0](https://github.com/ottobot-ai/ottochain-services/compare/v0.5.0...v0.6.0) (2026-02-28)
+
+
+### Features
+
+* add Prometheus /metrics endpoint to monitor ([#168](https://github.com/ottobot-ai/ottochain-services/issues/168)) ([e1e038c](https://github.com/ottobot-ai/ottochain-services/commit/e1e038c3e951b1deaf58e0dd15c8fe6350c0a3d3))
+* **monitor:** add traffic control & rejections dashboards ([#171](https://github.com/ottobot-ai/ottochain-services/issues/171)) ([251251d](https://github.com/ottobot-ai/ottochain-services/commit/251251d39ced91cda3bbc516245435341a4ed74f))
+
 ## [0.5.0](https://github.com/ottobot-ai/ottochain-services/compare/v0.4.1...v0.5.0) (2026-02-27)
 
 
