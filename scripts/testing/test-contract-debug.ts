@@ -1,11 +1,11 @@
 #!/usr/bin/env npx tsx
-import { batchSign, generateKeyPair, HttpClient } from '@ottochain/sdk';
+import { generateKeyPair } from '@ottochain/sdk';
 import { randomUUID } from 'crypto';
-
-const DL1_URL = 'http://localhost:9400';
+import { submitWithRetry } from './lib/submit-with-retry.js';
 
 async function testDef(name: string, transitions: object[]) {
   const keyPair = generateKeyPair();
+  const fiberId = randomUUID();
   const definition = {
     states: {
       Proposed: { id: { value: 'PROPOSED' }, isFinal: false, metadata: null },
@@ -17,36 +17,32 @@ async function testDef(name: string, transitions: object[]) {
     metadata: { name: 'Test' },
   };
 
-  const signed = await batchSign(
-    { CreateStateMachine: { fiberId: randomUUID(), definition, initialData: { completions: [] }, parentFiberId: null } },
-    [keyPair.privateKey],
-    { isDataUpdate: true }
-  );
-
   try {
-    await new HttpClient(DL1_URL).post('/data', signed);
-    console.log(`✅ ${name}`);
+    const result = await submitWithRetry({
+      message: { CreateStateMachine: { fiberId, definition, initialData: { completions: [] }, parentFiberId: null } },
+      privateKeys: [keyPair.privateKey],
+      fiberId,
+      waitForML0: true,
+    });
+    console.log(`✅ ${name} (attempt ${result.attempt}, ML0: ${result.ml0Confirmed})`);
   } catch {
     console.log(`❌ ${name}`);
   }
 }
 
 async function main() {
-  // Test the 'count' operator
   await testDef('With count guard', [
     { from: { value: 'ACTIVE' }, to: { value: 'COMPLETED' }, eventName: 'finalize',
       guard: { '>=': [{ count: { var: 'state.completions' } }, 2] },
       effect: { merge: [{ var: 'state' }, { status: 'COMPLETED' }] }, dependencies: [] },
   ]);
 
-  // Test without count
   await testDef('Without count (length)', [
     { from: { value: 'ACTIVE' }, to: { value: 'COMPLETED' }, eventName: 'finalize',
       guard: { '>=': [{ var: 'state.completionsCount' }, 2] },
       effect: { merge: [{ var: 'state' }, { status: 'COMPLETED' }] }, dependencies: [] },
   ]);
 
-  // Test simple guard
   await testDef('Simple guard', [
     { from: { value: 'ACTIVE' }, to: { value: 'COMPLETED' }, eventName: 'finalize',
       guard: { '==': [1, 1] },
