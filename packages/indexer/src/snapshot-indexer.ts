@@ -1,17 +1,18 @@
 // ============================================================================
 // Snapshot Transaction Indexer
-// Uses SDK codec to decode transactions from snapshot blocks
+// Records ALL OttochainMessages from snapshot blocks to OttochainEvent table
+// Uses SDK codec to decode transactions
 // ============================================================================
 
-import { OttochainMessage, CreateStateMachine, TransitionStateMachine } from '@ottochain/sdk';
+import { OttochainMessage } from '@ottochain/sdk';
 import { prisma, publishEvent, CHANNELS } from '@ottochain/shared';
+import { MessageType, Prisma } from '@prisma/client';
 
 /**
  * Decode a transaction value from metagraph JSON format.
  * Metagraph uses PascalCase (CreateStateMachine), SDK expects camelCase (createStateMachine).
  */
 function decodeTransaction(value: Record<string, unknown>): ReturnType<typeof OttochainMessage.fromJSON>['message'] {
-  // Transform PascalCase keys to camelCase for SDK compatibility
   const transformed: Record<string, unknown> = {};
   for (const [key, val] of Object.entries(value)) {
     const camelKey = key.charAt(0).toLowerCase() + key.slice(1);
@@ -29,29 +30,40 @@ interface SnapshotData {
   };
 }
 
+interface DecodedBlock {
+  proofs: Array<{ id: string; signature: string }>;
+  value: {
+    roundId: number;
+    dataTransactions: Array<[{
+      proofs: Array<{ id: string; signature: string }>;
+      value: Record<string, unknown>;
+    }]>;
+    dataTransactionsHashes: string[];
+  };
+}
+
 /**
- * Fetch snapshot by ordinal and index all transactions.
- * Returns number of transitions recorded.
+ * Fetch snapshot by hash and index ALL OttochainMessages.
  */
 export async function indexSnapshotByHash(
   ordinal: number,
   hash: string,
   ml0Url: string
-): Promise<{ transitionsRecorded: number; fibersCreated: number }> {
-  let transitionsRecorded = 0;
-  let fibersCreated = 0;
+): Promise<Record<string, number>> {
+  const counts: Record<string, number> = {
+    createStateMachine: 0,
+    transitionStateMachine: 0,
+    archiveStateMachine: 0,
+    createScript: 0,
+    invokeScript: 0,
+  };
 
-  // Check if we've already indexed this hash
-  const existing = await prisma.indexedSnapshot.findFirst({
-    where: { hash }
-  });
-  
+  const existing = await prisma.indexedSnapshot.findFirst({ where: { hash } });
   if (existing) {
-    console.log(`⏭️ Snapshot hash ${hash.slice(0, 16)}... already indexed at ordinal ${existing.ordinal}`);
-    return { transitionsRecorded: 0, fibersCreated: 0 };
+    console.log(`⏭️ Snapshot hash ${hash.slice(0, 16)}... already indexed`);
+    return counts;
   }
 
-  // Fetch the actual snapshot
   const snapshotResp = await fetch(`${ml0Url}/snapshots/${ordinal}`, {
     signal: AbortSignal.timeout(30000),
   });
@@ -63,115 +75,149 @@ export async function indexSnapshotByHash(
   const snapshot = await snapshotResp.json() as SnapshotData;
   const blocks = snapshot.value?.dataApplication?.blocks || [];
   
-  console.log(`📦 Processing snapshot ${ordinal} (${hash.slice(0, 16)}...): ${blocks.length} blocks`);
+  if (blocks.length === 0) return counts;
+  
+  console.log(`📦 Processing snapshot ${ordinal}: ${blocks.length} blocks`);
 
   for (const blockBytes of blocks) {
-    // Decode block from byte array to JSON
     const blockJson = String.fromCharCode(...blockBytes);
-    const block = JSON.parse(blockJson) as {
-      value: {
-        dataTransactions: Array<[{ proofs: unknown[]; value: Record<string, unknown> }]>;
-      };
-    };
+    const block: DecodedBlock = JSON.parse(blockJson);
+    const roundId = block.value.roundId;
     
-    for (const [tx] of block.value.dataTransactions) {
-      const message = decodeTransaction(tx.value);
+    for (let txIdx = 0; txIdx < block.value.dataTransactions.length; txIdx++) {
+      const [tx] = block.value.dataTransactions[txIdx];
+      const txHash = block.value.dataTransactionsHashes[txIdx] || `${hash}-${roundId}-${txIdx}`;
+      const signer = tx.proofs[0]?.id || 'unknown';
       
+      const message = decodeTransaction(tx.value);
       if (!message) continue;
       
+      const existingEvent = await prisma.ottochainEvent.findUnique({
+        where: { transactionHash: txHash }
+      });
+      if (existingEvent) continue;
+
+      const baseData = {
+        snapshotOrdinal: BigInt(ordinal),
+        snapshotHash: hash,
+        blockRoundId: roundId,
+        transactionHash: txHash,
+        signer,
+      };
+
       switch (message.$case) {
         case 'createStateMachine': {
-          const { fiberId, definition } = message.createStateMachine;
-          const initialState = definition?.initialState || 'UNKNOWN';
-          const workflowType = definition?.metadata?.name || 'Unknown';
-          
-          // Record CREATED transition
-          await prisma.fiberTransition.create({
+          const { fiberId, definition, initialData, parentFiberId } = message.createStateMachine;
+          await prisma.ottochainEvent.create({
             data: {
+              ...baseData,
+              messageType: MessageType.CREATE_STATE_MACHINE,
               fiberId,
-              eventName: 'CREATED',
-              fromState: 'NONE',
-              toState: initialState,
-              success: true,
-              gasUsed: 0,
-              snapshotOrdinal: BigInt(ordinal),
+              payload: { definition, initialData, parentFiberId } as Prisma.InputJsonValue,
             },
           });
-          
-          transitionsRecorded++;
-          fibersCreated++;
-          
+          counts.createStateMachine++;
           await publishEvent(CHANNELS.ACTIVITY_FEED, {
-            eventType: 'CREATION',
+            eventType: 'CREATE_STATE_MACHINE',
             timestamp: new Date().toISOString(),
             fiberId,
-            workflowType,
-            action: `Created → ${initialState}`,
+            workflowType: definition?.metadata?.name || 'Unknown',
+            signer,
           });
           break;
         }
         
         case 'transitionStateMachine': {
-          const { fiberId, eventName } = message.transitionStateMachine;
-          
-          // Get current fiber state (result of this transition)
-          const fiber = await prisma.fiber.findUnique({ where: { fiberId } });
-          if (!fiber) {
-            console.warn(`⚠️ TransitionStateMachine for unknown fiber ${fiberId}`);
-            continue;
-          }
-          
-          await prisma.fiberTransition.create({
+          const { fiberId, eventName, payload, targetSequenceNumber } = message.transitionStateMachine;
+          await prisma.ottochainEvent.create({
             data: {
+              ...baseData,
+              messageType: MessageType.TRANSITION_STATE_MACHINE,
               fiberId,
               eventName,
-              fromState: 'UNKNOWN', // Would need state tracking for accurate fromState
-              toState: fiber.currentState,
-              success: true,
-              gasUsed: 0,
-              snapshotOrdinal: BigInt(ordinal),
+              targetSeqNum: targetSequenceNumber,
+              payload: { payload } as Prisma.InputJsonValue,
             },
           });
-          
-          transitionsRecorded++;
-          
+          counts.transitionStateMachine++;
           await publishEvent(CHANNELS.ACTIVITY_FEED, {
-            eventType: 'TRANSITION',
+            eventType: 'TRANSITION_STATE_MACHINE',
             timestamp: new Date().toISOString(),
             fiberId,
-            workflowType: fiber.workflowType,
-            action: `${eventName} → ${fiber.currentState}`,
+            eventName,
+            signer,
           });
           break;
         }
         
         case 'archiveStateMachine': {
-          const { fiberId } = message.archiveStateMachine;
-          
-          await prisma.fiberTransition.create({
+          const { fiberId, targetSequenceNumber } = message.archiveStateMachine;
+          await prisma.ottochainEvent.create({
             data: {
+              ...baseData,
+              messageType: MessageType.ARCHIVE_STATE_MACHINE,
               fiberId,
-              eventName: 'ARCHIVED',
-              fromState: 'UNKNOWN',
-              toState: 'ARCHIVED',
-              success: true,
-              gasUsed: 0,
-              snapshotOrdinal: BigInt(ordinal),
+              targetSeqNum: targetSequenceNumber,
+              payload: {} as Prisma.InputJsonValue,
             },
           });
-          
-          transitionsRecorded++;
+          counts.archiveStateMachine++;
+          await publishEvent(CHANNELS.ACTIVITY_FEED, {
+            eventType: 'ARCHIVE_STATE_MACHINE',
+            timestamp: new Date().toISOString(),
+            fiberId,
+            signer,
+          });
           break;
         }
         
-        // Scripts don't create fiber transitions
-        case 'createScript':
-        case 'invokeScript':
+        case 'createScript': {
+          const { fiberId, scriptProgram, initialState, accessControl } = message.createScript;
+          await prisma.ottochainEvent.create({
+            data: {
+              ...baseData,
+              messageType: MessageType.CREATE_SCRIPT,
+              fiberId,
+              payload: { scriptProgram, initialState, accessControl } as Prisma.InputJsonValue,
+            },
+          });
+          counts.createScript++;
+          await publishEvent(CHANNELS.ACTIVITY_FEED, {
+            eventType: 'CREATE_SCRIPT',
+            timestamp: new Date().toISOString(),
+            fiberId,
+            signer,
+          });
           break;
+        }
+        
+        case 'invokeScript': {
+          const { fiberId, method, args, targetSequenceNumber } = message.invokeScript;
+          await prisma.ottochainEvent.create({
+            data: {
+              ...baseData,
+              messageType: MessageType.INVOKE_SCRIPT,
+              fiberId,
+              method,
+              targetSeqNum: targetSequenceNumber,
+              payload: { args } as Prisma.InputJsonValue,
+            },
+          });
+          counts.invokeScript++;
+          await publishEvent(CHANNELS.ACTIVITY_FEED, {
+            eventType: 'INVOKE_SCRIPT',
+            timestamp: new Date().toISOString(),
+            fiberId,
+            method,
+            signer,
+          });
+          break;
+        }
       }
     }
   }
 
-  console.log(`📝 Indexed ${transitionsRecorded} transitions, ${fibersCreated} new fibers from snapshot ${ordinal}`);
-  return { transitionsRecorded, fibersCreated };
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  if (total > 0) console.log(`📝 Indexed ${total} events from snapshot ${ordinal}:`, counts);
+  return counts;
 }

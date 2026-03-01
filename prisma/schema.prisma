@@ -368,3 +368,52 @@ enum SigningMode {
   SERVER    // Bridge stores and uses private key
   SELF      // Client manages private key, bridge only stores public key
 }
+
+// ============================================================================
+// On-Chain Event Log
+// Records ALL OttochainMessages from snapshots - the canonical audit trail
+// ============================================================================
+
+model OttochainEvent {
+  id              Int         @id @default(autoincrement())
+  
+  // Snapshot context
+  snapshotOrdinal BigInt
+  snapshotHash    String      @db.VarChar(64)
+  blockRoundId    Int?
+  transactionHash String      @db.VarChar(128)  // From proofs
+  
+  // Message type (discriminator)
+  messageType     MessageType
+  
+  // Common fields
+  fiberId         String      @db.VarChar(64)   // All message types have fiberId
+  signer          String      @db.VarChar(128)  // From transaction proof
+  
+  // Type-specific data (JSON blob)
+  payload         Json
+  
+  // For state machine operations
+  eventName       String?     @db.VarChar(64)   // TransitionStateMachine only
+  targetSeqNum    Int?                          // For transitions/archives/invokes
+  
+  // For script operations  
+  method          String?     @db.VarChar(64)   // InvokeScript only
+  
+  createdAt       DateTime    @default(now())
+  
+  @@index([snapshotOrdinal])
+  @@index([snapshotHash])
+  @@index([fiberId])
+  @@index([messageType])
+  @@index([signer])
+  @@unique([transactionHash])  // Each transaction is unique
+}
+
+enum MessageType {
+  CREATE_STATE_MACHINE
+  TRANSITION_STATE_MACHINE
+  ARCHIVE_STATE_MACHINE
+  CREATE_SCRIPT
+  INVOKE_SCRIPT
+}
