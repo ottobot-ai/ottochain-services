@@ -88,7 +88,7 @@ async function checkConfirmations(): Promise<void> {
       
       // Update the indexed snapshot
       await prisma.indexedSnapshot.update({
-        where: { ordinal: pending.ordinal },
+        where: { id: pending.id },
         data: {
           status: 'CONFIRMED',
           gl0Ordinal: gl0OrdinalBigInt,

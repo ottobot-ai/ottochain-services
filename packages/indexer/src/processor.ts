@@ -200,7 +200,7 @@ export async function processSnapshot(notification: SnapshotNotification): Promi
   
   // Update indexed snapshot stats (preserve status - set by confirmation poller)
   await prisma.indexedSnapshot.upsert({
-    where: { ordinal: BigInt(notification.ordinal) },
+    where: { ordinal_hash: { ordinal: BigInt(notification.ordinal), hash: notification.hash } },
     create: {
       ordinal: BigInt(notification.ordinal),
       hash: notification.hash,

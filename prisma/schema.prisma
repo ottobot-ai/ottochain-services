@@ -161,7 +161,8 @@ enum FiberStatus {
 
 /// Track indexing progress with GL0 confirmation status
 model IndexedSnapshot {
-  ordinal          BigInt         @id
+  id               Int            @id @default(autoincrement())
+  ordinal          BigInt
   hash             String         @db.VarChar(64)
   status           SnapshotStatus @default(PENDING)
   gl0Ordinal       BigInt?        // Global L0 ordinal when confirmed
@@ -171,8 +172,10 @@ model IndexedSnapshot {
   contractsUpdated Int            @default(0)
   fibersUpdated    Int            @default(0)
 
+  @@unique([ordinal, hash])  // Same ordinal can have multiple hashes (forks)
   @@index([status])
   @@index([hash])
+  @@index([ordinal])
 }
 
 enum SnapshotStatus {

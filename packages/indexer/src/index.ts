@@ -71,21 +71,25 @@ app.post('/webhook/snapshot', async (req, res) => {
       return;
     }
     
-    // Create PENDING record with both ordinal and hash
-    // Use upsert in case ordinal exists with different hash (fork)
+    
+    // Create record for this (ordinal, hash) pair
+    // Multiple hashes per ordinal allowed (forks)
     await prisma.indexedSnapshot.upsert({
-      where: { ordinal: BigInt(notification.ordinal) },
+      where: { 
+        ordinal_hash: { 
+          ordinal: BigInt(notification.ordinal), 
+          hash: notification.hash 
+        } 
+      },
       create: {
         ordinal: BigInt(notification.ordinal),
         hash: notification.hash,
         status: 'PENDING',
       },
       update: {
-        hash: notification.hash,
         status: 'PENDING',
       }
     });
-    
     console.log(`📝 Created PENDING snapshot ${notification.ordinal} (${notification.hash.slice(0, 16)}...)`);
     
     const config = getConfig();
