@@ -433,8 +433,9 @@ export const resolvers = {
     },
 
     snapshot: async (_: unknown, { ordinal }: { ordinal: bigint }) => {
-      return prisma.indexedSnapshot.findUnique({
+      return prisma.indexedSnapshot.findFirst({
         where: { ordinal },
+        orderBy: { id: 'desc' },
       });
     },
 
