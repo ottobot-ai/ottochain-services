@@ -9,7 +9,7 @@
  * - Contract state machines
  */
 
-const BRIDGE_URL = process.env.BRIDGE_URL || 'http://5.78.121.248:3030';
+const BRIDGE_URL = process.env.BRIDGE_URL || 'http://localhost:3030';
 const SYNC_DELAY_MS = 50000; // 50s for metagraph sync
 
 // ============================================================================

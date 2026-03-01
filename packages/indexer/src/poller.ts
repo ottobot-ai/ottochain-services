@@ -8,14 +8,10 @@
 import { prisma, getConfig } from '@ottochain/shared';
 import { processSnapshot } from './processor.js';
 
-// Default production ML0 peers — override via ML0_PEER_URLS env var
-// Format: ML0_PEER_URLS="http://ml0-0:9200,http://ml0-1:9200"
+// ML0 peers for fork detection — configure via ML0_PEER_URLS env var
+// Format: ML0_PEER_URLS="http://ml0-0:9200,http://ml0-1:9200,http://ml0-2:9200"
 // Falls back to METAGRAPH_ML0_URL as single peer if neither is set
-const DEFAULT_PEERS = [
-  { name: 'node1', url: 'http://5.78.90.207:9200' },
-  { name: 'node2', url: 'http://5.78.113.25:9200' },
-  { name: 'node3', url: 'http://5.78.107.77:9200' },
-];
+// No hardcoded defaults — environment must provide peer URLs
 
 function getML0Peers(): Array<{ name: string; url: string }> {
   const envPeers = process.env.ML0_PEER_URLS;
@@ -25,12 +21,12 @@ function getML0Peers(): Array<{ name: string; url: string }> {
       url: url.trim(),
     }));
   }
-  // Fall back to METAGRAPH_ML0_URL as single peer (CI, dev)
+  // Fall back to METAGRAPH_ML0_URL as single peer (CI, dev, production)
   const config = getConfig();
-  if (config.METAGRAPH_ML0_URL && !config.METAGRAPH_ML0_URL.includes('5.78.')) {
+  if (config.METAGRAPH_ML0_URL) {
     return [{ name: 'primary', url: config.METAGRAPH_ML0_URL }];
   }
-  return DEFAULT_PEERS;
+  throw new Error('ML0_PEER_URLS or METAGRAPH_ML0_URL must be set — no hardcoded defaults');
 }
 
 let ML0_PEERS: Array<{ name: string; url: string }> | null = null;

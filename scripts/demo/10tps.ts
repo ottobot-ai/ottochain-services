@@ -4,7 +4,7 @@
  * Runs until killed - creates agents and contracts via Bridge
  */
 
-const BRIDGE_URL = process.env.BRIDGE_URL || 'http://5.78.121.248:3030';
+const BRIDGE_URL = process.env.BRIDGE_URL || 'http://localhost:3030';
 const TPS = parseInt(process.env.TPS || '10');
 const INTERVAL_MS = 1000 / TPS;
 

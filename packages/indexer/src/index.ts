@@ -351,7 +351,7 @@ app.listen(port, '0.0.0.0', async () => {
   
   // Register with ML0 for push-based snapshot notifications
   const ml0Url = config.METAGRAPH_ML0_URL;
-  const callbackUrl = process.env.INDEXER_CALLBACK_URL || `http://5.78.121.248:${port}/webhook/snapshot`;
+  const callbackUrl = process.env.INDEXER_CALLBACK_URL || `http://${process.env.INDEXER_HOST || "indexer"}:${port}/webhook/snapshot`;
   await registerWebhookSubscriber(ml0Url, callbackUrl);
   
   // Start low-frequency fallback poller (catches missed webhooks + fork detection)

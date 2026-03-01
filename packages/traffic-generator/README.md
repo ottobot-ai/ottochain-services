@@ -109,8 +109,8 @@ MODE=high-throughput TARGET_POPULATION=1000 TARGET_TPS=10 pnpm dev
 pnpm build && pnpm start
 
 # Custom testnet config
-BRIDGE_URL=http://5.78.90.207:3030 \
-ML0_URL=http://5.78.90.207:9200 \
+BRIDGE_URL=http://localhost:3030 \
+ML0_URL=http://localhost:9200 \
 TARGET_POPULATION=500 \
 TARGET_TPS=15 \
 pnpm dev -- --high-throughput
