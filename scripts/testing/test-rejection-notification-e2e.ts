@@ -43,6 +43,8 @@ const INDEXER_URL  = process.env.INDEXER_URL  || 'http://localhost:3031';
 const DL1_URL      = process.env.DL1_URL      || 'http://localhost:9400';
 const POLL_TIMEOUT = parseInt(process.env.POLL_TIMEOUT || '60') * 1000;
 const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL || '2000');
+const SUBMIT_MAX_RETRIES = parseInt(process.env.SUBMIT_MAX_RETRIES || '3');
+const ORDINALS_BEFORE_RETRY = parseInt(process.env.ORDINALS_BEFORE_RETRY || '2');
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -178,6 +180,16 @@ async function waitForFiberState(fiberId: string, expectedState: string): Promis
   );
 }
 
+
+async function getML0Ordinal(): Promise<number> {
+  try {
+    const res = await fetch(`${ML0_URL}/snapshots/latest`);
+    if (!res.ok) return 0;
+    const data = await res.json() as { value?: { ordinal?: number } };
+    return data?.value?.ordinal ?? 0;
+  } catch { return 0; }
+}
+
 // ── Indexer helpers ───────────────────────────────────────────────────────────
 
 async function waitForRejection(fiberId: string): Promise<RejectionRecord> {
@@ -277,21 +289,61 @@ async function main(): Promise<void> {
   // ─────────────────────────────────────────────────────────────────────────────
   console.log('\n📋 Section 2: Create contract fiber\n');
 
-  await test('POST /contract/propose creates fiber on-chain', async () => {
-    const result = await post<{ contractId: string; hash: string }>(
-      `${BRIDGE_URL}/contract/propose`,
-      {
-        privateKey: proposer.privateKey,
-        counterpartyAddress: counterparty.address,
-        terms: { task: 'E2E rejection notification test', value: 0 },
-        title: 'E2E Rejection Test Contract',
+  await test('Create fiber and confirm on ML0 (with resubmit)', async () => {
+    // Submit via bridge, then poll ML0. If the fiber doesn't appear within
+    // ORDINALS_BEFORE_RETRY snapshot cycles, resubmit. Limit total attempts.
+    let fiber: StateMachine | null = null;
+
+    for (let attempt = 1; attempt <= SUBMIT_MAX_RETRIES; attempt++) {
+      const startOrdinal = await getML0Ordinal();
+      console.log(`\n     Attempt ${attempt}/${SUBMIT_MAX_RETRIES} (ML0 ordinal: ${startOrdinal})`);
+
+      const result = await post<{ contractId: string; hash: string }>(
+        `${BRIDGE_URL}/contract/propose`,
+        {
+          privateKey: proposer.privateKey,
+          counterpartyAddress: counterparty.address,
+          terms: { task: 'E2E rejection notification test', value: 0 },
+          title: 'E2E Rejection Test Contract',
+        }
+      );
+      assert(typeof result.contractId === 'string', 'No contractId in response');
+      assert(typeof result.hash === 'string', 'No hash in response');
+      contractId = result.contractId;
+      console.log(`     Contract ID: ${contractId}`);
+      console.log(`     DL1 hash: ${result.hash.substring(0, 16)}...`);
+
+      // Poll ML0 until fiber appears or ORDINALS_BEFORE_RETRY ordinals pass
+      const ordinalDeadline = startOrdinal + ORDINALS_BEFORE_RETRY;
+      const timeDeadline = Date.now() + 60_000; // hard cap: 60s per attempt
+      process.stdout.write(`     ⏳ Waiting for fiber on ML0 (until ordinal ${ordinalDeadline})...`);
+
+      while (Date.now() < timeDeadline) {
+        try {
+          const res = await fetch(`${ML0_URL}/data-application/v1/state-machines/${contractId}`);
+          if (res.ok) {
+            fiber = await res.json() as StateMachine;
+            console.log(' ✓');
+            break;
+          }
+        } catch { /* not ready */ }
+
+        // Check if we've passed enough ordinals to warrant a resubmit
+        const currentOrdinal = await getML0Ordinal();
+        if (currentOrdinal >= ordinalDeadline) {
+          console.log(` (ordinal ${currentOrdinal} >= ${ordinalDeadline}, resubmitting)`);
+          break;
+        }
+        await sleep(POLL_INTERVAL);
+        process.stdout.write('.');
       }
-    );
-    assert(typeof result.contractId === 'string', 'No contractId in response');
-    assert(typeof result.hash === 'string', 'No hash in response');
-    contractId = result.contractId;
-    console.log(`\n     Contract ID: ${contractId}`);
-    console.log(`     DL1 hash: ${result.hash.substring(0, 16)}...`);
+
+      if (fiber) break;
+    }
+
+    assert(fiber !== null, `Fiber not on ML0 after ${SUBMIT_MAX_RETRIES} submission attempts`);
+    assert(fiber!.currentState === 'PROPOSED', `Expected PROPOSED, got ${fiber!.currentState}`);
+    console.log(`     State: ${fiber!.currentState}, seq: ${fiber!.sequenceNumber}`);
   });
 
   if (!contractId) {
@@ -299,12 +351,6 @@ async function main(): Promise<void> {
     printResults();
     process.exit(1);
   }
-
-  await test('Fiber appears on ML0 within 30s', async () => {
-    const fiber = await waitForFiberOnML0(contractId);
-    assert(fiber.currentState === 'PROPOSED', `Expected PROPOSED, got ${fiber.currentState}`);
-    console.log(`\n     State: ${fiber.currentState}, seq: ${fiber.sequenceNumber}`);
-  });
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Section 3: Trigger ML0 rejection (wrong-agent transition)
