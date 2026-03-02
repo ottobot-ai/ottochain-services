@@ -509,6 +509,26 @@ export class HealthCollector {
     if (this.config.trafficGenUrl) {
       services.push(await checkTrafficGen(this.config.trafficGenUrl, this.config.timeoutMs));
     }
+
+    if (this.config.explorerUrl) {
+      services.push(await checkExplorer(this.config.explorerUrl, this.config.timeoutMs));
+    }
+
+    if (this.config.prometheusUrl) {
+      services.push(await checkPrometheus(this.config.prometheusUrl, this.config.timeoutMs));
+    }
+
+    if (this.config.alertmanagerUrl) {
+      services.push(await checkAlertmanager(this.config.alertmanagerUrl, this.config.timeoutMs));
+    }
+
+    if (this.config.grafanaUrl) {
+      services.push(await checkGrafana(this.config.grafanaUrl, this.config.timeoutMs));
+    }
+
+    if (this.config.lokiUrl) {
+      services.push(await checkLoki(this.config.lokiUrl, this.config.timeoutMs));
+    }
     
     // Metagraph metrics (use first healthy nodes of each type)
     const healthyMl0 = nodes.find(n => n.type === 'ml0' && n.status === 'healthy');
@@ -529,5 +549,107 @@ export class HealthCollector {
   
   getHealth() {
     return this.latestHealth;
+  }
+}
+
+// =============================================================================
+// =============================================================================
+// Observability Stack Checkers
+// =============================================================================
+
+type ServiceType = ServiceHealth['type'];
+
+/**
+ * Generic HTTP health check helper.
+ * Reduces duplication across simple health endpoint checkers.
+ */
+async function checkHttpService(
+  name: string,
+  type: ServiceType,
+  url: string,
+  healthPath: string,
+  timeoutMs: number,
+): Promise<ServiceHealth> {
+  const startTime = Date.now();
+  const fullUrl = healthPath ? `${url}${healthPath}` : url;
+  try {
+    const res = await fetchWithTimeout(fullUrl, timeoutMs);
+    const latencyMs = Date.now() - startTime;
+    return {
+      name,
+      type,
+      url,
+      status: res.ok ? 'healthy' : 'degraded',
+      lastCheck: startTime + latencyMs,
+      latencyMs,
+      ...(res.ok ? {} : { error: `HTTP ${res.status}` }),
+    };
+  } catch (err) {
+    const latencyMs = Date.now() - startTime;
+    return {
+      name,
+      type,
+      url,
+      status: 'unhealthy',
+      lastCheck: startTime + latencyMs,
+      latencyMs,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export const checkExplorer = (url: string, timeoutMs: number) =>
+  checkHttpService('Explorer', 'explorer', url, '', timeoutMs);
+
+export const checkPrometheus = (url: string, timeoutMs: number) =>
+  checkHttpService('Prometheus', 'prometheus', url, '/-/healthy', timeoutMs);
+
+export const checkAlertmanager = (url: string, timeoutMs: number) =>
+  checkHttpService('Alertmanager', 'alertmanager', url, '/-/healthy', timeoutMs);
+
+export const checkLoki = (url: string, timeoutMs: number) =>
+  checkHttpService('Loki', 'loki', url, '/ready', timeoutMs);
+
+/**
+ * Grafana requires special handling — parses JSON body to check database status.
+ */
+export async function checkGrafana(url: string, timeoutMs: number): Promise<ServiceHealth> {
+  const startTime = Date.now();
+  try {
+    const res = await fetchWithTimeout(`${url}/api/health`, timeoutMs);
+    const latencyMs = Date.now() - startTime;
+    if (!res.ok) {
+      return {
+        name: 'Grafana',
+        type: 'grafana',
+        url,
+        status: 'degraded',
+        lastCheck: startTime + latencyMs,
+        latencyMs,
+        error: `HTTP ${res.status}`,
+      };
+    }
+    const data = await res.json() as { database?: string };
+    const status = data.database === 'ok' ? 'healthy' : 'degraded';
+    return {
+      name: 'Grafana',
+      type: 'grafana',
+      url,
+      status,
+      lastCheck: startTime + latencyMs,
+      latencyMs,
+      ...(status === 'degraded' ? { error: `database: ${data.database ?? 'unknown'}` } : {}),
+    };
+  } catch (err) {
+    const latencyMs = Date.now() - startTime;
+    return {
+      name: 'Grafana',
+      type: 'grafana',
+      url,
+      status: 'unhealthy',
+      lastCheck: startTime + latencyMs,
+      latencyMs,
+      error: err instanceof Error ? err.message : String(err),
+    };
   }
 }
