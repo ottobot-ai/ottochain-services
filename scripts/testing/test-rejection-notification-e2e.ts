@@ -184,10 +184,16 @@ async function waitForFiberState(fiberId: string, expectedState: string): Promis
 async function getML0Ordinal(): Promise<number> {
   try {
     const res = await fetch(`${ML0_URL}/snapshots/latest`);
-    if (!res.ok) return 0;
+    if (!res.ok) {
+      console.warn(`     ⚠ ML0 returned ${res.status} for /snapshots/latest`);
+      return -1;
+    }
     const data = await res.json() as { value?: { ordinal?: number } };
     return data?.value?.ordinal ?? 0;
-  } catch { return 0; }
+  } catch (err) {
+    console.warn(`     ⚠ ML0 unreachable: ${(err as Error).message}`);
+    return -1;
+  }
 }
 
 // ── Indexer helpers ───────────────────────────────────────────────────────────

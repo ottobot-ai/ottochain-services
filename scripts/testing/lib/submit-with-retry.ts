@@ -17,10 +17,16 @@ async function sleep(ms: number): Promise<void> {
 async function getML0Ordinal(ml0Url: string): Promise<number> {
   try {
     const res = await fetch(`${ml0Url}/snapshots/latest`);
-    if (!res.ok) return 0;
+    if (!res.ok) {
+      console.warn(`  [submit] ⚠ ML0 returned ${res.status} for /snapshots/latest`);
+      return -1;
+    }
     const data = await res.json() as { value?: { ordinal?: number } };
     return data?.value?.ordinal ?? 0;
-  } catch { return 0; }
+  } catch (err) {
+    console.warn(`  [submit] ⚠ ML0 unreachable: ${(err as Error).message}`);
+    return -1;
+  }
 }
 
 export interface SubmitOptions {
@@ -92,6 +98,12 @@ export async function submitWithRetry(opts: SubmitOptions): Promise<SubmitResult
       } catch { /* not ready */ }
 
       const currentOrdinal = await getML0Ordinal(ml0Url);
+      if (currentOrdinal < 0) {
+        // ML0 unreachable — fall through to time deadline only
+        await sleep(POLL_INTERVAL);
+        process.stdout.write('!');
+        continue;
+      }
       if (currentOrdinal >= ordinalDeadline) {
         console.log(` (ordinal ${currentOrdinal} >= ${ordinalDeadline}, resubmitting)`);
         break;
