@@ -12,8 +12,8 @@ importers:
   .:
     dependencies:
       '@prisma/client':
-        specifier: ^5.9.0
-        version: 5.22.0(prisma@5.22.0)
+        specifier: ^7.4.2
+        version: 7.4.2(prisma@5.22.0)(typescript@5.9.3)
       ioredis:
         specifier: ^5.9.3
         version: 5.9.3
@@ -86,8 +86,8 @@ importers:
         specifier: workspace:*
         version: link:../shared
       '@prisma/client':
-        specifier: ^5.9.0
-        version: 5.22.0(prisma@5.22.0)
+        specifier: ^7.4.2
+        version: 7.4.2(prisma@5.22.0)(typescript@5.9.3)
       body-parser:
         specifier: ^2.2.2
         version: 2.2.2
@@ -147,8 +147,8 @@ importers:
         specifier: workspace:*
         version: link:../shared
       '@prisma/client':
-        specifier: ^5.9.0
-        version: 5.22.0(prisma@5.22.0)
+        specifier: ^7.4.2
+        version: 7.4.2(prisma@5.22.0)(typescript@5.9.3)
       express:
         specifier: ^4.18.0
         version: 4.22.1
@@ -175,8 +175,8 @@ importers:
         specifier: workspace:*
         version: link:../shared
       '@prisma/client':
-        specifier: ^5.22.0
-        version: 5.22.0(prisma@5.22.0)
+        specifier: ^7.4.2
+        version: 7.4.2(prisma@5.22.0)(typescript@5.9.3)
       express:
         specifier: ^5.2.1
         version: 5.2.1
@@ -209,8 +209,8 @@ importers:
         specifier: 1.1.1
         version: 1.1.1(@stardust-collective/dag4@2.8.1)
       '@prisma/client':
-        specifier: ^5.9.0
-        version: 5.22.0(prisma@5.22.0)
+        specifier: ^7.4.2
+        version: 7.4.2(prisma@5.22.0)(typescript@5.9.3)
       ioredis:
         specifier: ^5.9.3
         version: 5.9.3
@@ -588,13 +588,19 @@ packages:
     peerDependencies:
       '@stardust-collective/dag4': ^2.6.0
 
-  '@prisma/client@5.22.0':
-    resolution: {integrity: sha512-M0SVXfyHnQREBKxCgyo7sffrKttwE6R8PMq330MIUF0pTwjUhLbW84pFDlf06B27XyCR++VtjugEnIHdr07SVA==}
-    engines: {node: '>=16.13'}
+  '@prisma/client-runtime-utils@7.4.2':
+    resolution: {integrity: sha512-cID+rzOEb38VyMsx5LwJMEY4NGIrWCNpKu/0ImbeooQ2Px7TI+kOt7cm0NelxUzF2V41UVVXAmYjANZQtCu1/Q==}
+
+  '@prisma/client@7.4.2':
+    resolution: {integrity: sha512-ts2mu+cQHriAhSxngO3StcYubBGTWDtu/4juZhXCUKOwgh26l+s4KD3vT2kMUzFyrYnll9u/3qWrtzRv9CGWzA==}
+    engines: {node: ^20.19 || ^22.12 || >=24.0}
     peerDependencies:
       prisma: '*'
+      typescript: '>=5.4.0'
     peerDependenciesMeta:
       prisma:
+        optional: true
+      typescript:
         optional: true
 
   '@prisma/debug@5.22.0':
@@ -2491,9 +2497,14 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@prisma/client@5.22.0(prisma@5.22.0)':
+  '@prisma/client-runtime-utils@7.4.2': {}
+
+  '@prisma/client@7.4.2(prisma@5.22.0)(typescript@5.9.3)':
+    dependencies:
+      '@prisma/client-runtime-utils': 7.4.2
     optionalDependencies:
       prisma: 5.22.0
+      typescript: 5.9.3
 
   '@prisma/debug@5.22.0': {}
 
