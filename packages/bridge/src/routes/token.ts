@@ -27,14 +27,14 @@ import {
 // Inlined TDEG helpers (source: @ottochain/sdk src/apps/token/)
 // ============================================================================
 
-const TOKEN_BEHAVIOR_FLAGS = {
+export const TOKEN_BEHAVIOR_FLAGS = {
   TRANSFERABLE: 0b1000,
   DIVISIBLE:    0b0100,
   EXPIRABLE:    0b0010,
   GOVERNABLE:   0b0001,
 } as const;
 
-const TOKEN_BEHAVIOR_NAMES: Record<number, string> = {
+export const TOKEN_BEHAVIOR_NAMES: Record<number, string> = {
   0:  'SOULBOUND_RECEIPT',
   1:  'GOVERNED_BADGE',
   2:  'EXPIRABLE_CREDENTIAL',
@@ -53,10 +53,10 @@ const TOKEN_BEHAVIOR_NAMES: Record<number, string> = {
   15: 'GOVERNED_EXPIRABLE_FUNGIBLE',
 };
 
-function isTransferable(b: number): boolean { return (b & TOKEN_BEHAVIOR_FLAGS.TRANSFERABLE) !== 0; }
-function isDivisible(b: number): boolean     { return (b & TOKEN_BEHAVIOR_FLAGS.DIVISIBLE)    !== 0; }
-function isExpirable(b: number): boolean     { return (b & TOKEN_BEHAVIOR_FLAGS.EXPIRABLE)    !== 0; }
-function isGovernable(b: number): boolean    { return (b & TOKEN_BEHAVIOR_FLAGS.GOVERNABLE)   !== 0; }
+export function isTransferable(b: number): boolean { return (b & TOKEN_BEHAVIOR_FLAGS.TRANSFERABLE) !== 0; }
+export function isDivisible(b: number): boolean     { return (b & TOKEN_BEHAVIOR_FLAGS.DIVISIBLE)    !== 0; }
+export function isExpirable(b: number): boolean     { return (b & TOKEN_BEHAVIOR_FLAGS.EXPIRABLE)    !== 0; }
+export function isGovernable(b: number): boolean    { return (b & TOKEN_BEHAVIOR_FLAGS.GOVERNABLE)   !== 0; }
 
 type WireStateId = { value: string };
 function sid(name: string): WireStateId { return { value: name }; }
@@ -65,14 +65,14 @@ const GOVERNANCE_GUARD = { var: 'delegation.isAuthorized' };
 const EXPIRY_GUARD     = { '<': [{ var: '$ordinal' }, { var: 'state.expiresAtOrdinal' }] };
 const SPLIT_GUARD      = { '<=': [{ var: 'event.amount' }, { var: 'state.balance' }] };
 
-function transferGuard(g: boolean, e: boolean): unknown {
+export function transferGuard(g: boolean, e: boolean): unknown {
   if (g && e) return { and: [GOVERNANCE_GUARD, EXPIRY_GUARD] };
   if (g)      return GOVERNANCE_GUARD;
   if (e)      return EXPIRY_GUARD;
   return null;
 }
 
-function createTokenStateMachine(behavior: number) {
+export function createTokenStateMachine(behavior: number) {
   const t = isTransferable(behavior);
   const d = isDivisible(behavior);
   const e = isExpirable(behavior);
@@ -166,7 +166,7 @@ const ExpireTokenRequestSchema = z.object({
 // Helper: fetch token state + validate behavior flag
 // ============================================================================
 
-type TokenState = {
+export type TokenState = {
   sequenceNumber?: number;
   currentState?: string;
   stateData?: {
@@ -183,7 +183,7 @@ async function getTokenState(tokenId: string): Promise<TokenState | null> {
   return (await getStateMachine(tokenId)) as TokenState | null;
 }
 
-function requireBehaviorFlag(
+export function requireBehaviorFlag(
   state: TokenState,
   flag: (b: number) => boolean,
   flagName: string,
@@ -195,7 +195,7 @@ function requireBehaviorFlag(
   return {};
 }
 
-function requireActiveState(state: TokenState): { error?: string } {
+export function requireActiveState(state: TokenState): { error?: string } {
   const current = state.currentState;
   if (current !== 'ACTIVE') {
     return { error: `Token is not in ACTIVE state (current: ${current})` };
