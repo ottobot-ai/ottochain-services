@@ -325,6 +325,9 @@ tokenRoutes.post('/split', async (req, res) => {
     const input = SplitTokenRequestSchema.parse(req.body);
     const keyPair = keyPairFromPrivateKey(input.privateKey);
 
+    const visible = await waitForFiber(input.tokenId, 30, 1000);
+    if (!visible) return res.status(503).json({ error: 'Token not yet synced', tokenId: input.tokenId });
+
     const state = await getTokenState(input.tokenId);
     if (!state) return res.status(404).json({ error: 'Token not found' });
 
@@ -381,6 +384,13 @@ tokenRoutes.post('/merge', async (req, res) => {
     const input = MergeTokenRequestSchema.parse(req.body);
     const keyPair = keyPairFromPrivateKey(input.privateKey);
 
+    const [targetVisible, sourceVisible] = await Promise.all([
+      waitForFiber(input.tokenId, 30, 1000),
+      waitForFiber(input.sourceTokenId, 30, 1000),
+    ]);
+    if (!targetVisible) return res.status(503).json({ error: 'Target token not yet synced', tokenId: input.tokenId });
+    if (!sourceVisible) return res.status(503).json({ error: 'Source token not yet synced', tokenId: input.sourceTokenId });
+
     const [targetState, sourceState] = await Promise.all([
       getTokenState(input.tokenId),
       getTokenState(input.sourceTokenId),
@@ -391,6 +401,9 @@ tokenRoutes.post('/merge', async (req, res) => {
 
     const flagCheck = requireBehaviorFlag(targetState, isDivisible, 'merge (D=1)');
     if (flagCheck.error) return res.status(400).json(flagCheck);
+
+    const sourceFlagCheck = requireBehaviorFlag(sourceState, isDivisible, 'merge source (D=1)');
+    if (sourceFlagCheck.error) return res.status(400).json(sourceFlagCheck);
 
     const stateCheck = requireActiveState(targetState);
     if (stateCheck.error) return res.status(400).json({ error: `Target token: ${stateCheck.error}` });
@@ -421,7 +434,7 @@ tokenRoutes.post('/merge', async (req, res) => {
       targetTokenId: input.tokenId,
       sourceTokenId: input.sourceTokenId,
       mergedAmount: input.amount,
-      newBalance: (targetState.stateData?.balance ?? 0) + input.amount,
+      estimatedNewBalance: (targetState.stateData?.balance ?? 0) + input.amount,
     });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: 'Invalid request', details: err.errors });
