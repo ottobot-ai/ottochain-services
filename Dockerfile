@@ -45,8 +45,8 @@ ENV npm_package_version=$VERSION
 
 WORKDIR /app
 
-# Install pnpm, netcat for health checks, and OpenSSL for Prisma
-RUN apt-get update && apt-get install -y openssl netcat-openbsd && rm -rf /var/lib/apt/lists/*
+# Install pnpm, curl/netcat for health checks, and OpenSSL for Prisma
+RUN apt-get update && apt-get install -y openssl curl netcat-openbsd && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@8 --activate
 
 # Copy built artifacts
