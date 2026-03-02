@@ -2,12 +2,10 @@
 /**
  * Test with the FULL contract definition extracted from bridge
  */
-import { batchSign, generateKeyPair, HttpClient } from '@ottochain/sdk';
+import { generateKeyPair } from '@ottochain/sdk';
 import { randomUUID } from 'crypto';
+import { submitWithRetry } from './lib/submit-with-retry.js';
 
-const DL1_URL = 'http://localhost:9400';
-
-// Import the actual definition from bridge
 const CONTRACT_DEFINITION = {
   states: {
     Proposed: { id: { value: 'PROPOSED' }, isFinal: false, metadata: null },
@@ -72,36 +70,34 @@ async function main() {
   console.log('Counterparty:', counterparty.address);
 
   const fiberId = randomUUID();
-  const message = {
-    CreateStateMachine: {
-      fiberId,
-      definition: CONTRACT_DEFINITION,
-      initialData: {
-        schema: 'Contract',
-        title: 'Test Contract',
-        description: '',
-        proposer: keyPair.address,
-        counterparty: counterparty.address,
-        terms: { task: 'Test', value: 100 },
-        completions: [],
-        status: 'PROPOSED',
-        proposedAt: new Date().toISOString(),
-      },
-      parentFiberId: null,
-    },
-  };
 
-  console.log('\nSubmitting to DL1...');
-  const signed = await batchSign(message, [keyPair.privateKey], { isDataUpdate: true });
-  const client = new HttpClient(DL1_URL);
-  
   try {
-    const result = await client.post<{ hash: string }>('/data', signed);
-    console.log('✅ Success:', result);
+    const result = await submitWithRetry({
+      message: {
+        CreateStateMachine: {
+          fiberId,
+          definition: CONTRACT_DEFINITION,
+          initialData: {
+            schema: 'Contract',
+            title: 'Test Contract',
+            description: '',
+            proposer: keyPair.address,
+            counterparty: counterparty.address,
+            terms: { task: 'Test', value: 100 },
+            completions: [],
+            status: 'PROPOSED',
+            proposedAt: new Date().toISOString(),
+          },
+          parentFiberId: null,
+        },
+      },
+      privateKeys: [keyPair.privateKey],
+      fiberId,
+    });
+    console.log(`✅ Success: ${result.hash} (attempt ${result.attempt})`);
   } catch (err) {
-    const error = err as Error & { response?: string };
+    const error = err as Error;
     console.log('❌ Failed:', error.message);
-    if (error.response) console.log('Response:', error.response);
   }
 }
 

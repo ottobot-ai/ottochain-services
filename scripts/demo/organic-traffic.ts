@@ -9,8 +9,8 @@
  * - Respects metagraph sync delays
  */
 
-const BRIDGE_URL = process.env.BRIDGE_URL || 'http://5.78.121.248:3030';
-const ML0_URL = process.env.ML0_URL || 'http://5.78.90.207:9200';
+const BRIDGE_URL = process.env.BRIDGE_URL || 'http://localhost:3030';
+const ML0_URL = process.env.ML0_URL || 'http://localhost:9200';
 const TARGET_TPS = parseFloat(process.env.TPS || '10');
 
 // Sync delay before transitions can succeed

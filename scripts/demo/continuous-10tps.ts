@@ -6,7 +6,7 @@
 
 import { dag4 } from '@stardust-collective/dag4';
 
-const ML0_URL = process.env.ML0_URL || 'http://5.78.90.207:9200';
+const ML0_URL = process.env.ML0_URL || 'http://localhost:9200';
 const TPS = 10;
 const INTERVAL_MS = 1000 / TPS; // 100ms between transactions
 
