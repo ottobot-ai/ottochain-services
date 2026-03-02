@@ -2,7 +2,7 @@
 // GraphQL server with subscriptions for real-time updates
 
 import { ApolloServer } from '@apollo/server';
-import { expressMiddleware } from '@apollo/server/express4';
+import { expressMiddleware } from '@as-integrations/express4';
 import { ApolloServerPluginDrainHttpServer } from '@apollo/server/plugin/drainHttpServer';
 import { makeExecutableSchema } from '@graphql-tools/schema';
 import { WebSocketServer } from 'ws';
@@ -10,7 +10,6 @@ import { useServer } from 'graphql-ws/use/ws';
 import { createServer } from 'http';
 import express from 'express';
 import cors from 'cors';
-import bodyParser from 'body-parser';
 
 import { typeDefs } from './schema.js';
 import { resolvers } from './resolvers.js';
@@ -55,7 +54,6 @@ async function main() {
   app.use(
     '/graphql',
     cors<cors.CorsRequest>(),
-    bodyParser.json(),
     expressMiddleware(server, {
       context: createContext,
     }),
