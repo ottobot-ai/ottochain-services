@@ -83,6 +83,13 @@ function loadConfig(): MonitorConfig {
     trafficGenUrl: process.env.TRAFFIC_GEN_URL,
     redisUrl: process.env.REDIS_URL ?? 'redis://localhost:6379',
     postgresUrl: process.env.DATABASE_URL,
+
+    // Observability stack
+    explorerUrl: process.env.EXPLORER_URL,
+    prometheusUrl: process.env.PROMETHEUS_URL,
+    alertmanagerUrl: process.env.ALERTMANAGER_URL,
+    grafanaUrl: process.env.GRAFANA_URL,
+    lokiUrl: process.env.LOKI_URL,
     
     // Polling
     pollIntervalMs: parseInt(process.env.POLL_INTERVAL_MS ?? '5000', 10),

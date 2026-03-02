@@ -40,7 +40,7 @@ export interface MetagraphMetrics {
 
 export interface ServiceHealth {
   name: string;
-  type: 'bridge' | 'indexer' | 'gateway' | 'redis' | 'postgres' | 'traffic-generator';
+  type: 'bridge' | 'indexer' | 'gateway' | 'redis' | 'postgres' | 'traffic-generator' | 'explorer' | 'prometheus' | 'alertmanager' | 'grafana' | 'loki';
   url?: string;
   status: ServiceStatus;
   lastCheck: number;
@@ -71,6 +71,13 @@ export interface MonitorConfig {
   trafficGenUrl?: string;
   redisUrl?: string;
   postgresUrl?: string;
+
+  // Observability stack
+  explorerUrl?: string;
+  prometheusUrl?: string;
+  alertmanagerUrl?: string;
+  grafanaUrl?: string;
+  lokiUrl?: string;
   
   // Polling
   pollIntervalMs: number;

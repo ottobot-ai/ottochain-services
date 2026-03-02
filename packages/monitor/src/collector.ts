@@ -509,6 +509,26 @@ export class HealthCollector {
     if (this.config.trafficGenUrl) {
       services.push(await checkTrafficGen(this.config.trafficGenUrl, this.config.timeoutMs));
     }
+
+    if (this.config.explorerUrl) {
+      services.push(await checkExplorer(this.config.explorerUrl, this.config.timeoutMs));
+    }
+
+    if (this.config.prometheusUrl) {
+      services.push(await checkPrometheus(this.config.prometheusUrl, this.config.timeoutMs));
+    }
+
+    if (this.config.alertmanagerUrl) {
+      services.push(await checkAlertmanager(this.config.alertmanagerUrl, this.config.timeoutMs));
+    }
+
+    if (this.config.grafanaUrl) {
+      services.push(await checkGrafana(this.config.grafanaUrl, this.config.timeoutMs));
+    }
+
+    if (this.config.lokiUrl) {
+      services.push(await checkLoki(this.config.lokiUrl, this.config.timeoutMs));
+    }
     
     // Metagraph metrics (use first healthy nodes of each type)
     const healthyMl0 = nodes.find(n => n.type === 'ml0' && n.status === 'healthy');
@@ -529,5 +549,143 @@ export class HealthCollector {
   
   getHealth() {
     return this.latestHealth;
+  }
+}
+
+// =============================================================================
+// Observability Stack Checkers
+// =============================================================================
+
+export async function checkExplorer(url: string, timeoutMs: number): Promise<ServiceHealth> {
+  const startTime = Date.now();
+  try {
+    // Explorer serves HTML — a 200 on the root is sufficient
+    const res = await fetchWithTimeout(url, timeoutMs);
+    const latencyMs = Date.now() - startTime;
+    return {
+      name: 'Explorer',
+      type: 'explorer',
+      url,
+      status: res.ok ? 'healthy' : 'degraded',
+      lastCheck: Date.now(),
+      latencyMs,
+    };
+  } catch (err) {
+    return {
+      name: 'Explorer',
+      type: 'explorer',
+      url,
+      status: 'unhealthy',
+      lastCheck: Date.now(),
+      latencyMs: Date.now() - startTime,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export async function checkPrometheus(url: string, timeoutMs: number): Promise<ServiceHealth> {
+  const startTime = Date.now();
+  try {
+    const res = await fetchWithTimeout(`${url}/-/healthy`, timeoutMs);
+    const latencyMs = Date.now() - startTime;
+    return {
+      name: 'Prometheus',
+      type: 'prometheus',
+      url,
+      status: res.ok ? 'healthy' : 'degraded',
+      lastCheck: Date.now(),
+      latencyMs,
+    };
+  } catch (err) {
+    return {
+      name: 'Prometheus',
+      type: 'prometheus',
+      url,
+      status: 'unhealthy',
+      lastCheck: Date.now(),
+      latencyMs: Date.now() - startTime,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export async function checkAlertmanager(url: string, timeoutMs: number): Promise<ServiceHealth> {
+  const startTime = Date.now();
+  try {
+    const res = await fetchWithTimeout(`${url}/-/healthy`, timeoutMs);
+    const latencyMs = Date.now() - startTime;
+    return {
+      name: 'Alertmanager',
+      type: 'alertmanager',
+      url,
+      status: res.ok ? 'healthy' : 'degraded',
+      lastCheck: Date.now(),
+      latencyMs,
+    };
+  } catch (err) {
+    return {
+      name: 'Alertmanager',
+      type: 'alertmanager',
+      url,
+      status: 'unhealthy',
+      lastCheck: Date.now(),
+      latencyMs: Date.now() - startTime,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export async function checkGrafana(url: string, timeoutMs: number): Promise<ServiceHealth> {
+  const startTime = Date.now();
+  try {
+    const res = await fetchWithTimeout(`${url}/api/health`, timeoutMs);
+    const latencyMs = Date.now() - startTime;
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json() as { database?: string };
+    const status = data.database === 'ok' ? 'healthy' : 'degraded';
+    return {
+      name: 'Grafana',
+      type: 'grafana',
+      url,
+      status,
+      lastCheck: Date.now(),
+      latencyMs,
+    };
+  } catch (err) {
+    return {
+      name: 'Grafana',
+      type: 'grafana',
+      url,
+      status: 'unhealthy',
+      lastCheck: Date.now(),
+      latencyMs: Date.now() - startTime,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export async function checkLoki(url: string, timeoutMs: number): Promise<ServiceHealth> {
+  const startTime = Date.now();
+  try {
+    const res = await fetchWithTimeout(`${url}/ready`, timeoutMs);
+    const latencyMs = Date.now() - startTime;
+    return {
+      name: 'Loki',
+      type: 'loki',
+      url,
+      status: res.ok ? 'healthy' : 'degraded',
+      lastCheck: Date.now(),
+      latencyMs,
+    };
+  } catch (err) {
+    return {
+      name: 'Loki',
+      type: 'loki',
+      url,
+      status: 'unhealthy',
+      lastCheck: Date.now(),
+      latencyMs: Date.now() - startTime,
+      error: err instanceof Error ? err.message : String(err),
+    };
   }
 }
