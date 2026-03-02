@@ -320,8 +320,8 @@ async function main(): Promise<void> {
     for (let attempt = 1; attempt <= SUBMIT_MAX_RETRIES; attempt++) {
       if (attempt > 1) {
         console.log(`\n     Resubmitting (attempt ${attempt}/${SUBMIT_MAX_RETRIES})...`);
-        // Resubmit same contract — bridge uses contractId as fiberId
-        await post<{ contractId: string; hash: string }>(
+        // Re-propose and update contractId — bridge generates new UUID each call
+        const retry = await post<{ contractId: string; hash: string }>(
           `${BRIDGE_URL}/contract/propose`,
           {
             privateKey: proposer.privateKey,
@@ -330,6 +330,8 @@ async function main(): Promise<void> {
             title: 'E2E Rejection Test Contract',
           }
         );
+        contractId = retry.contractId;
+        console.log(`     New contract ID: ${contractId}`);
       }
 
       const startOrdinal = await getML0Ordinal();
