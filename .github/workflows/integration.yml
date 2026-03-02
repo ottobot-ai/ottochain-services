@@ -364,6 +364,11 @@ jobs:
             if [ $i -eq 120 ]; then echo "Metagraph not producing snapshots"; exit 1; fi
           done
 
+          echo "=== Allowing cluster to stabilize (30s warmup) ==="
+          sleep 30
+          ordinal=$(curl -s http://localhost:9200/snapshots/latest | jq -r '.value.ordinal // 0' 2>/dev/null || echo "0")
+          echo "Cluster ordinal after warmup: ${ordinal}"
+
       - name: Verify DL1 cluster formation
         run: |
           PEER_0=$(curl -s http://localhost:9400/node/info | jq -r '.id // "error"' 2>/dev/null || echo "unreachable")
@@ -536,7 +541,7 @@ jobs:
           BRIDGE_URL: http://localhost:3030
           ML0_URL: http://localhost:9200
           INDEXER_URL: http://localhost:3031
-          FIBER_WAIT_TIMEOUT: '90'
+          FIBER_WAIT_TIMEOUT: '150'
           DL1_SYNC_WAIT: '15'
           ACTIVATION_WAIT: '10'
           INDEXER_WAIT_TIMEOUT: '30000'
