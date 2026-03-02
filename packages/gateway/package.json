@@ -21,7 +21,7 @@
     "graphql-redis-subscriptions": "^2.7.0",
     "graphql-subscriptions": "^3.0.0",
     "graphql-ws": "^6.0.7",
-    "ioredis": "^5.9.3",
+    "ioredis": "^5.10.0",
     "ws": "^8.16.0",
     "zod": "^3.22.0"
   },

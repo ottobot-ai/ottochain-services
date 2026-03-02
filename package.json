@@ -39,7 +39,7 @@
   },
   "dependencies": {
     "@prisma/client": "^5.9.0",
-    "ioredis": "^5.9.3"
+    "ioredis": "^5.10.0"
   },
   "pnpm": {
     "overrides": {
