@@ -319,17 +319,41 @@ async function main(): Promise<void> {
 
     for (let attempt = 1; attempt <= SUBMIT_MAX_RETRIES; attempt++) {
       if (attempt > 1) {
-        console.log(`\n     Resubmitting (attempt ${attempt}/${SUBMIT_MAX_RETRIES})...`);
-        // Resubmit same contract — bridge uses contractId as fiberId
-        await post<{ contractId: string; hash: string }>(
-          `${BRIDGE_URL}/contract/propose`,
-          {
-            privateKey: proposer.privateKey,
-            counterpartyAddress: counterparty.address,
-            terms: { task: 'E2E rejection notification test', value: 0 },
-            title: 'E2E Rejection Test Contract',
-          }
-        );
+        console.log(`\n     Resubmitting same fiber ${contractId} (attempt ${attempt}/${SUBMIT_MAX_RETRIES})...`);
+        // Resubmit the SAME CreateStateMachine to all DL1 nodes directly
+        // Bridge always generates a new UUID — we need to keep the original fiberId
+        const retryMsg = {
+          CreateStateMachine: {
+            fiberId: contractId,
+            definition: (await import('@ottochain/sdk/apps/contracts')).getContractDefinition(),
+            initialData: {
+              schema: 'Contract',
+              title: 'E2E Rejection Test Contract',
+              description: '',
+              proposer: proposer.address,
+              counterparty: counterparty.address,
+              terms: { task: 'E2E rejection notification test', value: 0 },
+              completions: [],
+              status: 'PROPOSED',
+              proposedAt: new Date().toISOString(),
+            },
+            parentFiberId: null,
+          },
+        };
+        const signed = await batchSign(retryMsg, [proposer.privateKey], { isDataUpdate: true });
+        const payload = { data: signed, fee: null };
+        // Fan out to all DL1 nodes
+        const dl1Urls = (process.env.DL1_URLS || DL1_URL).split(',').map(u => u.trim());
+        await Promise.allSettled(dl1Urls.map(url =>
+          fetch(`${url}/data`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          }).then(r => {
+            console.log(`     DL1 ${url}: ${r.status}`);
+            return r;
+          }).catch(e => console.log(`     DL1 ${url}: ${e.message}`))
+        ));
       }
 
       const startOrdinal = await getML0Ordinal();

@@ -128,7 +128,7 @@ jobs:
 
       - name: Set up Java
         if: steps.mode.outputs.from_source == 'true'
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '21'
@@ -290,7 +290,7 @@ jobs:
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
 
       - name: Cache pnpm
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.STORE_PATH }}
           key: pnpm-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
@@ -390,8 +390,33 @@ jobs:
           fi
           echo "✓ All DL1 nodes have unique peer IDs"
 
-          cluster_size=$(curl -s http://localhost:9400/cluster/info | jq 'length' 2>/dev/null || echo "0")
-          echo "DL1 cluster size: $cluster_size"
+          # Verify DL1 cluster formed with all 3 nodes (retry up to 60s)
+          echo "Waiting for DL1 cluster to reach size 3..."
+          for i in $(seq 1 30); do
+            cluster_size=$(curl -s http://localhost:9400/cluster/info | jq 'length' 2>/dev/null || echo "0")
+            echo "  DL1 cluster size: $cluster_size (attempt $i/30)"
+            if [ "$cluster_size" -ge 3 ] 2>/dev/null; then
+              break
+            fi
+            # Re-trigger join for nodes not yet in cluster
+            if [ "$i" -gt 1 ] && [ $(( i % 5 )) -eq 0 ]; then
+              echo "  Retrying DL1 join..."
+              for port in 9410 9420; do
+                cli_port=$((port + 2))
+                curl -s -X POST "http://localhost:${cli_port}/cluster/join" \
+                  -H 'Content-Type: application/json' \
+                  -d "{\"id\":\"${PEER_0}\",\"ip\":\"dl1-0\",\"p2pPort\":9401}" 2>/dev/null || true
+              done
+            fi
+            sleep 2
+          done
+          if [ "$cluster_size" -lt 3 ] 2>/dev/null; then
+            echo "❌ DL1 cluster size is $cluster_size, expected 3. Data consensus will not work!"
+            echo "DL1-0 cluster info:"
+            curl -s http://localhost:9400/cluster/info | jq '.' 2>/dev/null || true
+            exit 1
+          fi
+          echo "✓ DL1 cluster size: $cluster_size"
 
       - name: Start Redis
         run: |
@@ -508,7 +533,7 @@ jobs:
 
       - name: Upload node logs
         if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: integration-test-logs-${{ github.run_number }}
           path: /tmp/ci-logs/
