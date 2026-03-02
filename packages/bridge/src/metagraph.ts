@@ -48,6 +48,24 @@ const sequenceCache = new Map<string, number>();
  * Evict oldest entries if cache exceeds max size.
  * Uses Map's insertion-order iteration for FIFO eviction.
  */
+// ── Test-only exports (prefixed with _) ───────────────────────────────────────
+
+/** @internal Clear the sequence cache; use only in test teardown. */
+export function _clearSequenceCacheForTesting(): void {
+  sequenceCache.clear();
+}
+
+/** @internal Read-only view of the sequence cache for assertions. */
+export function _getSequenceCacheForTesting(): ReadonlyMap<string, number> {
+  return sequenceCache;
+}
+
+/** Resolve the effective sequence number: max(DL1 value, cached optimistic value). */
+export function resolveSequence(fiberId: string, dl1Seq: number): number {
+  const cached = sequenceCache.get(fiberId) ?? 0;
+  return Math.max(dl1Seq, cached);
+}
+
 function evictOldestIfNeeded(): void {
   while (sequenceCache.size >= SEQUENCE_CACHE_MAX_SIZE) {
     const oldestKey = sequenceCache.keys().next().value;
@@ -65,7 +83,7 @@ function evictOldestIfNeeded(): void {
  * nextSeq = submittedSeq + 1.
  * Only advances — never goes backwards.
  */
-function advanceSequenceCache(fiberId: string, submittedSeq: number): void {
+export function advanceSequenceCache(fiberId: string, submittedSeq: number): void {
   const next = submittedSeq + 1;
   const cached = sequenceCache.get(fiberId) ?? 0;
   if (next > cached) {
