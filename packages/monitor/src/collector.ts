@@ -338,11 +338,13 @@ export async function checkTrafficGen(url: string, timeoutMs: number): Promise<S
     
     const data = await res.json() as TrafficGenStatus;
     
+    // Traffic gen being disabled is a valid operational state, not degraded
+    // Only report unhealthy if unreachable (caught by the catch block)
     return {
       name: 'Traffic Generator',
       type: 'traffic-generator',
       url,
-      status: data.enabled ? 'healthy' : 'degraded',
+      status: 'healthy',
       lastCheck: Date.now(),
       latencyMs,
       trafficGen: data,
