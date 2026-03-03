@@ -51,7 +51,9 @@ function basicAuthMiddleware(auth: AuthConfig) {
     }
     
     const credentials = Buffer.from(authHeader.slice(6), 'base64').toString();
-    const [user, pass] = credentials.split(':');
+    const colonIdx = credentials.indexOf(':');
+    const user = credentials.slice(0, colonIdx);
+    const pass = credentials.slice(colonIdx + 1);
     
     if (user === auth.username && pass === auth.password) {
       return next();
