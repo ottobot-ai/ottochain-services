@@ -47,28 +47,6 @@ function peers(): PeerConfig[] {
   return ML0_PEERS;
 }
 
-function getML0Peers(): Array<{ name: string; url: string }> {
-  const envPeers = process.env.ML0_PEER_URLS;
-  if (envPeers) {
-    return envPeers.split(',').map((url, i) => ({
-      name: `peer${i}`,
-      url: url.trim(),
-    }));
-  }
-  // Fall back to METAGRAPH_ML0_URL as single peer (CI, dev)
-  const config = getConfig();
-  if (config.METAGRAPH_ML0_URL && !config.METAGRAPH_ML0_URL.includes('5.78.')) {
-    return [{ name: 'primary', url: config.METAGRAPH_ML0_URL }];
-  }
-  return DEFAULT_PEERS;
-}
-
-let ML0_PEERS: Array<{ name: string; url: string }> | null = null;
-function peers(): Array<{ name: string; url: string }> {
-  if (!ML0_PEERS) ML0_PEERS = getML0Peers();
-  return ML0_PEERS;
-}
-
 interface PeerSnapshot {
   ordinal: number;
   hash: string;
