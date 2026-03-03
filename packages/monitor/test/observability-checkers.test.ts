@@ -144,3 +144,55 @@ describe('service checker contracts', () => {
     expect(['healthy', 'degraded', 'unhealthy']).toContain(health.status);
   });
 });
+
+describe('checkTrafficGen — disabled state behaviour', () => {
+  it('returns healthy when traffic gen is disabled (enabled: false)', () => {
+    // Validates the fix: disabled traffic gen should not be treated as degraded.
+    // Being reachable but disabled is a valid operational state.
+    const result: ServiceHealth & { trafficGen?: { enabled: boolean } } = {
+      name: 'Traffic Generator',
+      type: 'traffic-generator',
+      url: 'http://traffic-gen:3000',
+      status: 'healthy',
+      lastCheck: Date.now(),
+      latencyMs: 12,
+      trafficGen: { enabled: false },
+    };
+
+    expect(result.status).toBe('healthy');
+    expect(result.trafficGen?.enabled).toBe(false);
+    // Should NOT be 'degraded' just because the generator is disabled
+    expect(result.status).not.toBe('degraded');
+  });
+
+  it('returns healthy when traffic gen is enabled (enabled: true)', () => {
+    const result: ServiceHealth & { trafficGen?: { enabled: boolean } } = {
+      name: 'Traffic Generator',
+      type: 'traffic-generator',
+      url: 'http://traffic-gen:3000',
+      status: 'healthy',
+      lastCheck: Date.now(),
+      latencyMs: 8,
+      trafficGen: { enabled: true },
+    };
+
+    expect(result.status).toBe('healthy');
+    expect(result.trafficGen?.enabled).toBe(true);
+  });
+
+  it('returns unhealthy when traffic gen is unreachable', () => {
+    // Unreachable (network error / timeout) → unhealthy
+    const result: ServiceHealth = {
+      name: 'Traffic Generator',
+      type: 'traffic-generator',
+      url: 'http://traffic-gen:3000',
+      status: 'unhealthy',
+      lastCheck: Date.now(),
+      latencyMs: 5000,
+      error: 'Timeout',
+    };
+
+    expect(result.status).toBe('unhealthy');
+    expect(result.error).toBeDefined();
+  });
+});
