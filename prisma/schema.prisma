@@ -281,6 +281,33 @@ model RejectedTransaction {
   @@index([createdAt(sort: Desc)])
 }
 
+/// Monitoring events from watchdog condition checks and actions
+model MonitoringEvent {
+  id            Int      @id @default(autoincrement())
+  timestamp     DateTime @default(now())
+  eventType     String   @db.VarChar(50)    // condition_triggered, restart_attempted, etc.
+  condition     String?  @db.VarChar(100)   // condition name that fired
+  severity      Severity @default(INFO)
+  scope         String?  @db.VarChar(50)    // container, node, cluster
+  affectedNodes String[]                    // node identifiers
+  affectedLayers String[]                   // gl0, ml0, dl1, etc.
+  success       Boolean  @default(true)
+  message       String?
+  details       Json?
+
+  @@index([timestamp(sort: Desc)])
+  @@index([eventType])
+  @@index([severity])
+  @@map("monitoring_events")
+}
+
+enum Severity {
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
+}
+
 /// Pre-computed deltas cached for fast API reads
 model StatsDelta {
   id           Int      @id @default(autoincrement())
