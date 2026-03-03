@@ -90,7 +90,7 @@ buildRoutes.post('/sm/transition', async (req, res) => {
     // Fetch current fiber state and sequence number
     const [fiber, seqResult] = await Promise.all([
       getStateMachine(body.fiberId).catch(() => null),
-      getFiberSequenceNumber(body.fiberId).catch(() => ({ sequenceNumber: 0 })),
+      getFiberSequenceNumber(body.fiberId).catch(() => 0),
     ]);
 
     if (!fiber) {
@@ -98,7 +98,7 @@ buildRoutes.post('/sm/transition', async (req, res) => {
       return;
     }
 
-    const targetSequenceNumber = seqResult.sequenceNumber + 1;
+    const targetSequenceNumber = seqResult + 1;
 
     const unsigned = {
       TransitionStateMachine: {
@@ -109,9 +109,10 @@ buildRoutes.post('/sm/transition', async (req, res) => {
       },
     };
 
+    const fiberRecord = fiber as Record<string, unknown>;
     res.json({
       unsigned,
-      currentState: fiber.currentState ?? fiber.state,
+      currentState: fiberRecord['currentState'] ?? fiberRecord['state'],
       targetSequenceNumber,
     });
   } catch (err) {
