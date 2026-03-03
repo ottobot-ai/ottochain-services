@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.8.0](https://github.com/ottobot-ai/ottochain-services/compare/v0.7.1...v0.8.0) (2026-03-03)
+
+
+### Features
+
+* **monitor:** extend stack coverage to explorer and observability services ([#199](https://github.com/ottobot-ai/ottochain-services/issues/199)) ([fb25b80](https://github.com/ottobot-ai/ottochain-services/commit/fb25b80f9eacd7ff1babac35fbd53be4ac74e107))
+
+
+### Bug Fixes
+
+* add curl to production Docker image ([#201](https://github.com/ottobot-ai/ottochain-services/issues/201)) ([64e43c2](https://github.com/ottobot-ai/ottochain-services/commit/64e43c21e3fca8936c1f772a911b48876e596bb6))
+* align deploy token secret name with other repos ([#202](https://github.com/ottobot-ai/ottochain-services/issues/202)) ([fe0b2dd](https://github.com/ottobot-ai/ottochain-services/commit/fe0b2dde566be450978ce296a45dd64924970e88))
+* **ci:** trigger CI on develop-targeting PRs ([#184](https://github.com/ottobot-ai/ottochain-services/issues/184)) ([c701606](https://github.com/ottobot-ai/ottochain-services/commit/c70160625690a9db970e0a611bc0cbc498f94485))
+* **e2e:** retry fiber submission if not confirmed within N ordinals ([#187](https://github.com/ottobot-ai/ottochain-services/issues/187)) ([917b917](https://github.com/ottobot-ai/ottochain-services/commit/917b917c5a763c7d18bdcd28375d1906272709e2))
+* remove hardcoded production IPs from source code ([#188](https://github.com/ottobot-ai/ottochain-services/issues/188)) ([4526252](https://github.com/ottobot-ai/ottochain-services/commit/452625251853d902661602540489e089572d32e2))
+* sequential DL1 cluster join with clusterSession validation ([#203](https://github.com/ottobot-ai/ottochain-services/issues/203)) ([2fb5cbf](https://github.com/ottobot-ai/ottochain-services/commit/2fb5cbf4fae1cc5b706329b58352979ed76e8be8))
+
 ## [0.7.1](https://github.com/ottobot-ai/ottochain-services/compare/v0.7.0...v0.7.1) (2026-02-28)
 
 
