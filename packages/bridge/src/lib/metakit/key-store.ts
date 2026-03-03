@@ -9,9 +9,18 @@
  */
 
 import { PrismaClient, SigningMode as PrismaSigningMode } from '@prisma/client';
-import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 import { generateKeyPair, keyPairFromPrivateKey } from '../../metagraph.js';
 import type { KeyPair } from '../../metagraph.js';
+import {
+  encryptKey,
+  decryptKey,
+  normalizePublicKey,
+  UNCOMPRESSED_PUBLIC_KEY_HEX_LENGTH,
+  NORMALIZED_PUBLIC_KEY_HEX_LENGTH,
+} from './crypto.js';
+
+// Re-export constants and crypto utilities for consumers
+export { encryptKey, decryptKey, UNCOMPRESSED_PUBLIC_KEY_HEX_LENGTH, NORMALIZED_PUBLIC_KEY_HEX_LENGTH };
 
 // Lazy-init Prisma client (shared across requests)
 let prismaClient: PrismaClient | null = null;
@@ -21,80 +30,6 @@ function getPrisma(): PrismaClient {
     prismaClient = new PrismaClient();
   }
   return prismaClient;
-}
-
-// Encryption configuration
-const ALGORITHM = 'aes-256-gcm';
-const IV_LENGTH = 12;
-const TAG_LENGTH = 16;
-
-/**
- * Get the encryption key from environment.
- * Returns null if not configured (development mode - keys stored unencrypted).
- */
-function getEncryptionKey(): Buffer | null {
-  const keyHex = process.env.BRIDGE_KEY_ENCRYPTION_KEY;
-  if (!keyHex) {
-    return null;
-  }
-  // Expect 64-char hex string (32 bytes)
-  if (keyHex.length !== 64) {
-    throw new Error('BRIDGE_KEY_ENCRYPTION_KEY must be 64 hex characters (32 bytes)');
-  }
-  return Buffer.from(keyHex, 'hex');
-}
-
-/**
- * Encrypt a private key for storage.
- */
-function encryptKey(privateKey: string): { encrypted: string; iv: string; tag: string } {
-  const encryptionKey = getEncryptionKey();
-  
-  if (!encryptionKey) {
-    // Development mode - store as-is with marker
-    console.warn('[key-store] WARNING: BRIDGE_KEY_ENCRYPTION_KEY not set. Storing keys unencrypted.');
-    return {
-      encrypted: `UNENCRYPTED:${privateKey}`,
-      iv: '',
-      tag: '',
-    };
-  }
-  
-  const iv = randomBytes(IV_LENGTH);
-  const cipher = createCipheriv(ALGORITHM, encryptionKey, iv);
-  
-  let encrypted = cipher.update(privateKey, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  const tag = cipher.getAuthTag();
-  
-  return {
-    encrypted,
-    iv: iv.toString('hex'),
-    tag: tag.toString('hex'),
-  };
-}
-
-/**
- * Decrypt a private key from storage.
- */
-function decryptKey(encrypted: string, iv: string, tag: string): string {
-  // Check for unencrypted marker (development mode)
-  if (encrypted.startsWith('UNENCRYPTED:')) {
-    return encrypted.slice('UNENCRYPTED:'.length);
-  }
-  
-  const encryptionKey = getEncryptionKey();
-  if (!encryptionKey) {
-    throw new Error('Cannot decrypt key: BRIDGE_KEY_ENCRYPTION_KEY not set');
-  }
-  
-  const decipher = createDecipheriv(ALGORITHM, encryptionKey, Buffer.from(iv, 'hex'));
-  decipher.setAuthTag(Buffer.from(tag, 'hex'));
-  
-  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
-  
-  return decrypted;
 }
 
 export type SigningMode = 'server' | 'self';
@@ -139,7 +74,7 @@ class PrismaKeyStore implements KeyStore {
     await prisma.signingKey.update({
       where: { fiberId },
       data: { lastUsedAt: new Date() },
-    }).catch(() => {}); // Non-critical, don't fail on update error
+    }).catch((err: Error) => { console.debug('[key-store] Non-critical lastUsedAt update failed:', err.message); });
     
     return decryptKey(record.encryptedKey, record.keyIv ?? '', record.keyTag ?? '');
   }
@@ -150,7 +85,7 @@ class PrismaKeyStore implements KeyStore {
     const keyPair = keyPairFromPrivateKey(privateKey);
     
     // Normalize public key to 128 chars (no 04 prefix)
-    const publicKey = keyPair.publicKey.length === 130 
+    const publicKey = keyPair.publicKey.length === UNCOMPRESSED_PUBLIC_KEY_HEX_LENGTH 
       ? keyPair.publicKey.slice(2) 
       : keyPair.publicKey;
     
@@ -179,7 +114,7 @@ class PrismaKeyStore implements KeyStore {
     const prisma = getPrisma();
     await prisma.signingKey.delete({
       where: { fiberId },
-    }).catch(() => {}); // Ignore if not found
+    }).catch((err: Error) => { console.debug('[key-store] Delete skipped (not found):', err.message); });
     
     console.log(`[key-store] Deleted key for fiber ${fiberId}`);
   }
@@ -208,7 +143,7 @@ class PrismaKeyStore implements KeyStore {
     const prisma = getPrisma();
     
     // Normalize public key to 128 chars
-    const publicKey = metadata.publicKey.length === 130 
+    const publicKey = metadata.publicKey.length === UNCOMPRESSED_PUBLIC_KEY_HEX_LENGTH 
       ? metadata.publicKey.slice(2) 
       : metadata.publicKey;
     
@@ -310,7 +245,7 @@ export async function registerSelfSigned(
 ): Promise<SelfKeyRegistration> {
   // Derive address from public key
   // dag4 expects 130-char key with 04 prefix
-  const fullPublicKey = publicKey.length === 128 ? `04${publicKey}` : publicKey;
+  const fullPublicKey = publicKey.length === NORMALIZED_PUBLIC_KEY_HEX_LENGTH ? `04${publicKey}` : publicKey;
   
   // Import dag4 to derive address
   const { dag4 } = await import('@stardust-collective/dag4');
@@ -319,7 +254,7 @@ export async function registerSelfSigned(
   const store = getKeyStore();
   await store.setMetadata(fiberId, {
     signingMode: 'self',
-    publicKey: publicKey.length === 128 ? publicKey : publicKey.slice(2),
+    publicKey: publicKey.length === NORMALIZED_PUBLIC_KEY_HEX_LENGTH ? publicKey : publicKey.slice(2),
     address,
     createdAt: new Date(),
   });
@@ -367,11 +302,11 @@ export async function validateSelfSignedOwnership(
     return { valid: false, error: 'Fiber is not in self-signed mode' };
   }
   
-  // Normalize both keys to 128-char format for comparison
-  const normalizedSigner = signerPublicKeyId.length === 130 
+  // Normalize both keys to 128-char format (no 04 prefix) for comparison
+  const normalizedSigner = signerPublicKeyId.length === UNCOMPRESSED_PUBLIC_KEY_HEX_LENGTH 
     ? signerPublicKeyId.slice(2) 
     : signerPublicKeyId;
-  const normalizedRegistered = metadata.publicKey.length === 130 
+  const normalizedRegistered = metadata.publicKey.length === UNCOMPRESSED_PUBLIC_KEY_HEX_LENGTH 
     ? metadata.publicKey.slice(2) 
     : metadata.publicKey;
   
