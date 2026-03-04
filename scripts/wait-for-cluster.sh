@@ -6,11 +6,18 @@
 #
 # Strategy:
 #   1. Genesis node (first port): wait for Ready
-#   2. Each subsequent node: wait for Ready → join → verify clusterSession matches genesis
+#   2. Each subsequent node: wait for responsive + joinable state, send join, wait for Ready
 #   3. Only proceed to next node after clusterSession confirmed
 #
 # clusterSession is the source of truth — if all nodes share the same
 # session, they're in the same cluster. Size is secondary.
+#
+# Fix (2026-03-04): Non-genesis nodes were waiting for Ready BEFORE sending join,
+# but in Tessellation, SessionStarted requires a join request to advance to Ready.
+# The old order (wait_ready → join_and_verify) was a chicken-and-egg deadlock.
+# New order: wait_responsive → join_and_verify → wait_ready.
+# Also removed the incorrect "skip join if SessionStarted" guard — SessionStarted
+# IS the correct state to send a join request.
 
 set -euo pipefail
 
@@ -19,9 +26,9 @@ PORTS="${2:-}"
 JOIN_TARGET_PORT="${3:-}"
 
 MAX_RESPONSIVE_WAIT=120   # seconds waiting for HTTP
-MAX_READY_WAIT=180        # seconds waiting for Ready state
+MAX_READY_WAIT=240        # seconds waiting for Ready state (increased for CI)
 JOIN_RETRY_DELAY=5        # seconds between join attempts
-MAX_JOIN_ATTEMPTS=10      # join retries per node
+MAX_JOIN_ATTEMPTS=20      # join retries per node (increased)
 
 log() { echo "[$(date '+%H:%M:%S')] $*"; }
 error() { echo "[$(date '+%H:%M:%S')] ERROR: $*" >&2; }
@@ -89,15 +96,18 @@ join_and_verify() {
             return 0
         fi
 
-        # Check node state — skip join attempt if not in a joinable state
+        # Check node state — only skip join if node is in a transient state that will resolve itself
         local state
         state=$(curl -sf "http://localhost:$port/node/info" | jq -r '.state' 2>/dev/null || echo "unknown")
 
-        if [ "$state" = "SessionStarted" ]; then
-            log "  $name in SessionStarted, waiting... (attempt $attempt, session=$node_session)"
+        if [ "$state" = "WaitingForReady" ] || [ "$state" = "Leaving" ]; then
+            log "  $name in transient state '$state', waiting... (attempt $attempt)"
             sleep $JOIN_RETRY_DELAY
             continue
         fi
+
+        # NOTE: SessionStarted IS a valid state to send join request — do NOT skip it.
+        # In Tessellation, SessionStarted means the node is waiting to join a cluster.
 
         # Attempt join
         log "  $name join attempt $attempt (state=$state, session=$node_session)..."
@@ -159,9 +169,11 @@ for idx in "${!PORT_LIST[@]}"; do
         GENESIS_SESSION=$(get_cluster_session "$port")
         log "$node_name clusterSession: $GENESIS_SESSION"
     else
-        # Joining node — wait for Ready, then join + verify clusterSession
-        wait_ready "$port" "$node_name" || exit 1
+        # Joining node — send join request first (node may be in SessionStarted waiting for join),
+        # then wait for Ready. The old order (wait_ready then join) caused a deadlock because
+        # SessionStarted nodes need a join request before they can advance to Ready.
         join_and_verify "$port" "$cli_port" "$JOIN_TARGET_PORT" "$node_name" || exit 1
+        wait_ready "$port" "$node_name" || exit 1
     fi
 done
 
