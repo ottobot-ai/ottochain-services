@@ -450,6 +450,17 @@ export class FiberOrchestrator {
         );
         fiberId = result.contractId;
         console.log(`  ✅ Proposed ${def.name}: ${fiberId.slice(0, 12)}... (${proposer.address.slice(0, 10)} → ${counterparty.address.slice(0, 10)})`);
+      } else if (def.workflowType === 'Token') {
+        // Use Token-specific creation via POST /token/create
+        const tokenData = stateData as import('./fiber-definitions.js').TokenStateData;
+        const result = await this.bridge.createToken({
+          privateKey: proposer.privateKey,
+          behavior: def.tokenBehavior ?? tokenData.behavior ?? 12,
+          balance: tokenData.balance,
+          metadata: tokenData.metadata,
+        });
+        fiberId = result.tokenId;
+        console.log(`  ✅ Minted ${def.name}: ${fiberId.slice(0, 12)}... (${result.behaviorName}, balance: ${tokenData.balance})`);
       } else {
         // Use generic fiber creation for custom types
         const createResult = await this.bridge.createFiber(
@@ -535,6 +546,8 @@ export class FiberOrchestrator {
         await this.executeCorporateShareholdersTransition(fiber, transition, actorAgent);
       } else if (def.workflowType === 'CorporateSecurities') {
         await this.executeCorporateSecuritiesTransition(fiber, transition, actorAgent);
+      } else if (def.workflowType === 'Token') {
+        await this.executeTokenTransition(fiber, transition, actorAgent);
       } else {
         // Generic fiber transition
         await this.bridge.transitionFiber(
@@ -1229,6 +1242,54 @@ export class FiberOrchestrator {
         break;
       }
       default:
+        await this.bridge.transitionFiber(actor.privateKey, fiber.id, transition.event, { agent: actor.address });
+    }
+  }
+
+  /**
+   * Execute a Token domain transition via bridge token routes.
+   * Handles transfer, split, and burn events using TDEG semantics.
+   */
+  private async executeTokenTransition(
+    fiber: ActiveFiber,
+    transition: { event: string; actor: string; to: string },
+    actor: { address: string; privateKey: string }
+  ): Promise<void> {
+    const def = fiber.definition;
+    const behavior = def.tokenBehavior ?? 12; // Default to FUNGIBLE_TOKEN (12)
+    const isTransferable = (behavior & 8) !== 0;
+    const isDivisible    = (behavior & 4) !== 0;
+
+    switch (transition.event) {
+      case 'transfer': {
+        if (!isTransferable) {
+          console.log(`  ⚠️  Token ${fiber.id.slice(0, 8)} is not transferable (behavior=${behavior}), skipping`);
+          break;
+        }
+        // Pick a random other agent as recipient (not self)
+        const availableAgents = this.getAvailableAgents();
+        const others = availableAgents.filter(a => a.address !== actor.address);
+        const recipient = others.length > 0
+          ? others[Math.floor(Math.random() * others.length)].address
+          : actor.address; // Fallback: self-transfer (valid for balance tracking)
+        await this.bridge.transferToken(actor.privateKey, fiber.id, recipient);
+        break;
+      }
+      case 'split': {
+        if (!isDivisible) {
+          console.log(`  ⚠️  Token ${fiber.id.slice(0, 8)} is not divisible (behavior=${behavior}), skipping`);
+          break;
+        }
+        const splitAmount = Math.floor(Math.random() * 100) + 1;
+        await this.bridge.splitToken(actor.privateKey, fiber.id, splitAmount);
+        break;
+      }
+      case 'burn': {
+        await this.bridge.burnToken(actor.privateKey, fiber.id);
+        break;
+      }
+      default:
+        // Fallback for any other events
         await this.bridge.transitionFiber(actor.privateKey, fiber.id, transition.event, { agent: actor.address });
     }
   }

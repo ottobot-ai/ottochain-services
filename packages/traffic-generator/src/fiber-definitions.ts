@@ -21,7 +21,7 @@ export interface FiberDefinition {
   type: string;
   name: string;
   /** SDK workflowType - determines which UI view shows it */
-  workflowType: 'Contract' | 'AgentIdentity' | 'Custom' | 'Market' | 'DAO' | 'Governance' | 'CorporateEntity' | 'CorporateBoard' | 'CorporateShareholders' | 'CorporateSecurities' | 'TokenEscrow';
+  workflowType: 'Contract' | 'AgentIdentity' | 'Custom' | 'Market' | 'DAO' | 'Governance' | 'CorporateEntity' | 'CorporateBoard' | 'CorporateShareholders' | 'CorporateSecurities' | 'TokenEscrow' | 'Token';
   roles: string[];  // e.g., ['proposer', 'counterparty'] or ['playerX', 'playerO']
   isVariableParty: boolean;  // true for voting, multi-sig
   /** Contract states from SDK: PROPOSED → ACTIVE → COMPLETED/REJECTED/DISPUTED */
@@ -35,8 +35,13 @@ export interface FiberDefinition {
   daoType?: 'token' | 'multisig' | 'threshold';
   /** Corporate type for Corporate workflows */
   corporateType?: 'entity' | 'board' | 'shareholders' | 'securities';
+  /**
+   * Token TDEG behavior bitmask (0–15) for Token workflow types.
+   * Bit layout: T=8 D=4 E=2 G=1 (Transferable, Divisible, Expirable, Governable)
+   */
+  tokenBehavior?: number;
   /** Generate initial stateData for this fiber type */
-  generateStateData: (participants: Map<string, string>, context: FiberContext) => ContractStateData | CustomStateData | MarketStateData | DAOStateData | GovernanceStateData | CorporateEntityStateData | CorporateBoardStateData | CorporateShareholdersStateData | CorporateSecuritiesStateData | TokenEscrowStateData;
+  generateStateData: (participants: Map<string, string>, context: FiberContext) => ContractStateData | CustomStateData | MarketStateData | DAOStateData | GovernanceStateData | CorporateEntityStateData | CorporateBoardStateData | CorporateShareholdersStateData | CorporateSecuritiesStateData | TokenEscrowStateData | TokenStateData;
 }
 
 export interface FiberContext {
@@ -335,6 +340,26 @@ export interface CorporateSecuritiesStateData {
   }>;
   status: string;
   createdAt: number;
+}
+
+/**
+ * Token fiber stateData (TDEG model — Transferable, Divisible, Expirable, Governable).
+ * Corresponds to the bridge's POST /token/create payload response.
+ */
+export interface TokenStateData {
+  schema: 'Token';
+  /** TDEG behavior bitmask 0–15 */
+  behavior: number;
+  behaviorName: string;
+  owner: string;
+  balance: number;
+  metadata: {
+    name: string;
+    symbol?: string;
+    description?: string;
+    decimals?: number;
+  };
+  createdAt: string;
 }
 
 export interface TokenEscrowStateData {
@@ -1469,6 +1494,174 @@ export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
         releaseConditions: `Release upon delivery confirmation by ${beneficiary.slice(0, 8)}...`,
         status: 'PROPOSED',
         createdAt: Date.now(),
+      };
+    },
+  },
+
+  // ==========================================================================
+  // Token Domain — TDEG 16-type behavior model
+  // Bridge routes: POST /token/create  /token/transfer  /token/burn  /token/split
+  // Behavior bitmask: T=8 D=4 E=2 G=1
+  // ==========================================================================
+
+  /**
+   * Fungible Token (TDEG 1100 = behavior 12): Transferable + Divisible.
+   * Lifecycle: ACTIVE → (transfer*) → BURNED
+   * Realistic ratio: high — most common token type (ERC-20 equivalent).
+   */
+  FungibleToken: {
+    type: 'FungibleToken',
+    name: 'Fungible Token',
+    workflowType: 'Token',
+    tokenBehavior: 12, // T=1 D=1 E=0 G=0 → 1100
+    roles: ['owner'],
+    isVariableParty: false,
+    states: ['ACTIVE', 'BURNED'],
+    initialState: 'ACTIVE',
+    finalStates: ['BURNED'],
+    transitions: [
+      { from: 'ACTIVE', to: 'ACTIVE', event: 'transfer', actor: 'owner' },
+      { from: 'ACTIVE', to: 'ACTIVE', event: 'split', actor: 'owner' },
+      { from: 'ACTIVE', to: 'BURNED', event: 'burn', actor: 'owner' },
+    ],
+    generateStateData: (participants, context): TokenStateData => {
+      const owner = participants.get('owner')!;
+      const TOKENS = [
+        { name: 'OttoToken', symbol: 'OTTO', decimals: 8 },
+        { name: 'StableOtto', symbol: 'STTO', decimals: 6 },
+        { name: 'GovernToken', symbol: 'GOTT', decimals: 8 },
+        { name: 'UtilityCredit', symbol: 'UCRD', decimals: 2 },
+        { name: 'ChainToken', symbol: 'CTKN', decimals: 8 },
+      ];
+      const tok = TOKENS[context.generation % TOKENS.length];
+      return {
+        schema: 'Token',
+        behavior: 12,
+        behaviorName: 'FUNGIBLE_TOKEN',
+        owner,
+        balance: Math.floor(Math.random() * 1_000_000) + 1_000,
+        metadata: { name: tok.name, symbol: tok.symbol, decimals: tok.decimals, description: 'Transferable fungible token' },
+        createdAt: new Date().toISOString(),
+      };
+    },
+  },
+
+  /**
+   * NFT (TDEG 1000 = behavior 8): Transferable, non-divisible, non-expirable, non-governable.
+   * Lifecycle: ACTIVE → (transfer*) → BURNED
+   * Realistic ratio: medium — digital collectibles, certificates of ownership.
+   */
+  NFT: {
+    type: 'NFT',
+    name: 'NFT',
+    workflowType: 'Token',
+    tokenBehavior: 8, // T=1 D=0 E=0 G=0 → 1000
+    roles: ['owner'],
+    isVariableParty: false,
+    states: ['ACTIVE', 'BURNED'],
+    initialState: 'ACTIVE',
+    finalStates: ['BURNED'],
+    transitions: [
+      { from: 'ACTIVE', to: 'ACTIVE', event: 'transfer', actor: 'owner' },
+      { from: 'ACTIVE', to: 'BURNED', event: 'burn', actor: 'owner' },
+    ],
+    generateStateData: (participants, context): TokenStateData => {
+      const owner = participants.get('owner')!;
+      const ITEMS = [
+        { name: 'OttoChain Genesis NFT', symbol: 'OTTO-GEN' },
+        { name: 'DAO Membership Badge', symbol: 'DAO-MBR' },
+        { name: 'Protocol Pioneer', symbol: 'PP-NFT' },
+        { name: 'Validator Certificate', symbol: 'VAL-CERT' },
+      ];
+      const item = ITEMS[context.generation % ITEMS.length];
+      return {
+        schema: 'Token',
+        behavior: 8,
+        behaviorName: 'NFT',
+        owner,
+        balance: 1,
+        metadata: { name: item.name, symbol: item.symbol, decimals: 0, description: 'Non-fungible digital asset' },
+        createdAt: new Date().toISOString(),
+      };
+    },
+  },
+
+  /**
+   * Soulbound Badge (TDEG 0000 = behavior 0): Non-transferable, identity-bound.
+   * Lifecycle: ACTIVE → BURNED  (no transfer)
+   * Realistic ratio: low — reputation badges, credentials, attestations.
+   */
+  SoulboundBadge: {
+    type: 'SoulboundBadge',
+    name: 'Soulbound Badge',
+    workflowType: 'Token',
+    tokenBehavior: 0, // T=0 D=0 E=0 G=0 → 0000
+    roles: ['owner'],
+    isVariableParty: false,
+    states: ['ACTIVE', 'BURNED'],
+    initialState: 'ACTIVE',
+    finalStates: ['BURNED'],
+    transitions: [
+      // No transfer — soulbound
+      { from: 'ACTIVE', to: 'BURNED', event: 'burn', actor: 'owner' },
+    ],
+    generateStateData: (participants, context): TokenStateData => {
+      const owner = participants.get('owner')!;
+      const BADGES = [
+        { name: 'Early Adopter Badge', symbol: 'EARLY' },
+        { name: 'Contributor Recognition', symbol: 'CONTRIB' },
+        { name: 'Verified Human', symbol: 'HUMAN' },
+        { name: 'Governance Participant', symbol: 'GOV-P' },
+      ];
+      const badge = BADGES[context.generation % BADGES.length];
+      return {
+        schema: 'Token',
+        behavior: 0,
+        behaviorName: 'SOULBOUND_RECEIPT',
+        owner,
+        balance: 1,
+        metadata: { name: badge.name, symbol: badge.symbol, decimals: 0, description: 'Non-transferable identity-bound badge' },
+        createdAt: new Date().toISOString(),
+      };
+    },
+  },
+
+  /**
+   * Governed Fungible Token (TDEG 1101 = behavior 13): Transferable + Divisible + Governable.
+   * Lifecycle: ACTIVE → (transfer*) → BURNED
+   * Realistic ratio: medium — DAO treasury tokens, protocol-governed assets.
+   */
+  GovernedFungibleToken: {
+    type: 'GovernedFungibleToken',
+    name: 'Governed Fungible Token',
+    workflowType: 'Token',
+    tokenBehavior: 13, // T=1 D=1 E=0 G=1 → 1101
+    roles: ['owner'],
+    isVariableParty: false,
+    states: ['ACTIVE', 'BURNED'],
+    initialState: 'ACTIVE',
+    finalStates: ['BURNED'],
+    transitions: [
+      { from: 'ACTIVE', to: 'ACTIVE', event: 'transfer', actor: 'owner' },
+      { from: 'ACTIVE', to: 'ACTIVE', event: 'split', actor: 'owner' },
+      { from: 'ACTIVE', to: 'BURNED', event: 'burn', actor: 'owner' },
+    ],
+    generateStateData: (participants, context): TokenStateData => {
+      const owner = participants.get('owner')!;
+      const TOKENS = [
+        { name: 'DAO Treasury Token', symbol: 'DTKN', decimals: 8 },
+        { name: 'Protocol Reserve', symbol: 'PRES', decimals: 6 },
+        { name: 'Governance Power', symbol: 'GOV', decimals: 4 },
+      ];
+      const tok = TOKENS[context.generation % TOKENS.length];
+      return {
+        schema: 'Token',
+        behavior: 13,
+        behaviorName: 'GOVERNED_FUNGIBLE_TOKEN',
+        owner,
+        balance: Math.floor(Math.random() * 500_000) + 5_000,
+        metadata: { name: tok.name, symbol: tok.symbol, decimals: tok.decimals, description: 'Governance-controlled fungible token' },
+        createdAt: new Date().toISOString(),
       };
     },
   },

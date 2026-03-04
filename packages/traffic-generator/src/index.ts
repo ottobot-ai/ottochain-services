@@ -87,32 +87,42 @@ function formatStats(stats: GenerationStats): string {
 
 function loadTrafficConfig(): TrafficConfig {
   // Parse fiber weights from env or use defaults
-  // Includes Contract/Custom, Market, DAO, Governance, and Corporate workflows
+  // Includes Contract/Custom, Market, DAO, Governance, Corporate, and Token workflows
+  // Weights are relative (normalized by totalWeight at selection time).
   const defaultWeights: Record<string, number> = {
-    // Contract workflows (27%)
+    // Contract workflows (~23%)
     escrow: 0.10,
     arbitratedEscrow: 0.07,
     simpleOrder: 0.06,
     approval: 0.04,
-    // Custom workflows (9%)
+    // Custom workflows (~8%)
     ticTacToe: 0.05,
     voting: 0.04,
-    // Market workflows (28%)
+    // Market workflows (~24%)
     predictionMarket: 0.08,
     auctionMarket: 0.07,
     crowdfundMarket: 0.07,
     groupBuyMarket: 0.06,
-    // DAO workflows (15%)
+    // DAO workflows (~13%)
     tokenDAO: 0.06,
     multisigDAO: 0.05,
     thresholdDAO: 0.04,
-    // Governance workflows (5%)
+    // Governance workflows (~4%)
     simpleGovernance: 0.05,
-    // Corporate Governance workflows (16%)
+    // Corporate Governance workflows (~14%)
     corporateEntity: 0.05,
     corporateBoard: 0.04,
     corporateShareholders: 0.04,
     corporateSecurities: 0.03,
+    // Token domain workflows (~14%) — TDEG 16-type behavior model
+    // Transferable+Divisible fungible token (most common)
+    FungibleToken: 0.07,
+    // Non-fungible token / digital collectible
+    NFT: 0.04,
+    // Non-transferable identity-bound badge/credential
+    SoulboundBadge: 0.02,
+    // Governance-controlled fungible token (DAO treasury)
+    GovernedFungibleToken: 0.04,
   };
   
   // Allow override via FIBER_WEIGHTS env var (JSON string)
