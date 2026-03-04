@@ -7,6 +7,8 @@
 
 import client from 'prom-client';
 import type { NodeHealth, ServiceHealth, MetagraphMetrics } from './types.js';
+import type express from 'express';
+
 
 // Use a custom registry so we don't pollute the global one
 const registry = new client.Registry();
@@ -142,6 +144,5 @@ export async function metricsHandler(_req: express.Request, res: express.Respons
 }
 
 // Need express types for the handler signature
-import type express from 'express';
 
 export { registry };
