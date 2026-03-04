@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.1](https://github.com/ottobot-ai/ottochain-services/compare/v0.8.0...v0.8.1) (2026-03-04)
+
+
+### Bug Fixes
+
+* **monitor:** treat disabled traffic gen as healthy, not degraded ([#205](https://github.com/ottobot-ai/ottochain-services/issues/205)) ([161dc5c](https://github.com/ottobot-ai/ottochain-services/commit/161dc5ca644714ba13b3ab5551d3d27737f2edfb))
+* move express type import to top of file in metrics.ts (issue [#169](https://github.com/ottobot-ai/ottochain-services/issues/169)) ([#209](https://github.com/ottobot-ai/ottochain-services/issues/209)) ([8da1af4](https://github.com/ottobot-ai/ottochain-services/commit/8da1af444c7eb0ed9fd52cbd74c624ebc0b505b7))
+
 ## [0.8.0](https://github.com/ottobot-ai/ottochain-services/compare/v0.7.1...v0.8.0) (2026-03-03)
 
 
