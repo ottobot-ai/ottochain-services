@@ -279,6 +279,7 @@ model RejectedTransaction {
   @@index([ordinal(sort: Desc)])
   @@index([updateType])
   @@index([createdAt(sort: Desc)])
+  @@index([timestamp(sort: Desc)])
 }
 
 /// Pre-computed deltas cached for fast API reads

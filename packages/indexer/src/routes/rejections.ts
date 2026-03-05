@@ -6,14 +6,16 @@
 //   GET /api/rejections/:updateHash  - single rejection by dedup hash
 //
 // Filters supported by GET /api/rejections:
-//   fiberId     - target fiber UUID
-//   updateType  - CreateStateMachine | TransitionStateMachine | ArchiveStateMachine | CreateScript | InvokeScript
-//   signer      - DAG address (array contains, via PostgreSQL `= ANY(signers)`)
-//   errorCode   - validation error code (JSONB contains, via PostgreSQL `@>`)
-//   fromOrdinal - ordinal >= value
-//   toOrdinal   - ordinal <= value
-//   limit       - max results (default 50, max 100)
-//   offset      - pagination offset (default 0)
+//   fiberId        - target fiber UUID
+//   updateType     - CreateStateMachine | TransitionStateMachine | ArchiveStateMachine | CreateScript | InvokeScript
+//   signer         - DAG address (array contains, via PostgreSQL `= ANY(signers)`)
+//   errorCode      - validation error code (JSONB contains, via PostgreSQL `@>`)
+//   fromOrdinal    - ordinal >= value
+//   toOrdinal      - ordinal <= value
+//   timestamp_from - ISO 8601 datetime: timestamp >= value
+//   timestamp_to   - ISO 8601 datetime: timestamp <= value
+//   limit          - max results (default 50, max 100)
+//   offset         - pagination offset (default 0)
 
 import express from 'express';
 import { prisma } from '@ottochain/shared';
@@ -59,10 +61,12 @@ function formatRejection(
 // ──────────────────────────────────────────────────────────────────────────────
 _router.get('/', async (req, res) => {
   try {
-    const fiberId     = req.query.fiberId    as string | undefined;
-    const updateType  = req.query.updateType as string | undefined;
-    const signer      = req.query.signer     as string | undefined;
-    const errorCode   = req.query.errorCode  as string | undefined;
+    const fiberId        = req.query.fiberId       as string | undefined;
+    const updateType     = req.query.updateType    as string | undefined;
+    const signer         = req.query.signer        as string | undefined;
+    const errorCode      = req.query.errorCode     as string | undefined;
+    const timestampFrom  = req.query.timestamp_from as string | undefined;
+    const timestampTo    = req.query.timestamp_to   as string | undefined;
     const fromOrdinal = req.query.fromOrdinal !== undefined
       ? parseInt(req.query.fromOrdinal as string, 10)
       : undefined;
@@ -92,6 +96,31 @@ _router.get('/', async (req, res) => {
       if (fromOrdinal !== undefined) ordinalFilter.gte = BigInt(fromOrdinal);
       if (toOrdinal   !== undefined) ordinalFilter.lte = BigInt(toOrdinal);
       where.ordinal = ordinalFilter;
+    }
+
+    // Timestamp range — ISO 8601 datetime strings
+    if (timestampFrom !== undefined || timestampTo !== undefined) {
+      const timestampFilter: Prisma.DateTimeFilter = {};
+
+      if (timestampFrom !== undefined) {
+        const d = new Date(timestampFrom);
+        if (isNaN(d.getTime())) {
+          res.status(400).json({ error: 'Invalid timestamp_from: must be ISO 8601' });
+          return;
+        }
+        timestampFilter.gte = d;
+      }
+
+      if (timestampTo !== undefined) {
+        const d = new Date(timestampTo);
+        if (isNaN(d.getTime())) {
+          res.status(400).json({ error: 'Invalid timestamp_to: must be ISO 8601' });
+          return;
+        }
+        timestampFilter.lte = d;
+      }
+
+      where.timestamp = timestampFilter;
     }
 
     const [rejections, total] = await Promise.all([
