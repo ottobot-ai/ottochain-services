@@ -26,13 +26,16 @@
 
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
+import { createRequire } from 'node:module';
 
-// SDK transaction helpers (from feat/signing-modes branch)
-import {
+// SDK transaction helpers — use createRequire to avoid ESM/CJS interop issue
+// (SDK dist/esm is compiled CJS, not true ESM; named imports fail in Node's ESM loader)
+const require = createRequire(import.meta.url);
+const {
   generateKeyPair,
   signTransaction,
   addTransactionSignature,
-} from '@ottochain/sdk';
+} = require('@ottochain/sdk') as typeof import('@ottochain/sdk');
 
 // ============================================================================
 // Config
