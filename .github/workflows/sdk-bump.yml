@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Determine version
         id: params
@@ -31,11 +31,15 @@ jobs:
             VERSION="${{ inputs.version }}"
           fi
           VERSION="${VERSION#v}"
+          if [ -z "$VERSION" ]; then
+            echo "Error: VERSION is empty — cannot bump SDK"
+            exit 1
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Bumping @ottochain/sdk to $VERSION"
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
 
@@ -52,7 +56,8 @@ jobs:
               # Use jq to update the version in dependencies or devDependencies
               for field in dependencies devDependencies peerDependencies; do
                 if jq -e ".$field[\"@ottochain/sdk\"]" "$pkg" > /dev/null 2>&1; then
-                  jq ".$field[\"@ottochain/sdk\"] = \"$VERSION\"" "$pkg" > tmp.json && mv tmp.json "$pkg"
+                  tmpfile=$(mktemp)
+                  jq ".$field[\"@ottochain/sdk\"] = \"$VERSION\"" "$pkg" > "$tmpfile" && mv "$tmpfile" "$pkg"
                   echo "  Updated .$field to $VERSION"
                 fi
               done
