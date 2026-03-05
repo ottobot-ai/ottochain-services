@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/ottobot-ai/ottochain-services/compare/v0.8.1...v0.9.0) (2026-03-05)
+
+
+### Features
+
+* **indexer:** add timestamp_from/to filters + Prisma migration for rejection queries ([#211](https://github.com/ottobot-ai/ottochain-services/issues/211)) ([53f2e0b](https://github.com/ottobot-ai/ottochain-services/commit/53f2e0b6ed93c3b5d2bc95156f9f4853289c852f))
+
 ## [0.8.1](https://github.com/ottobot-ai/ottochain-services/compare/v0.8.0...v0.8.1) (2026-03-04)
 
 
