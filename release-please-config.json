@@ -1,0 +1,16 @@
+{
+  "packages": {
+    ".": {
+      "changelog-sections": [
+        {"type": "feat", "section": "Features"},
+        {"type": "fix", "section": "Bug Fixes"},
+        {"type": "refactor", "section": "Refactoring"},
+        {"type": "perf", "section": "Performance"},
+        {"type": "docs", "section": "Documentation"},
+        {"type": "test", "section": "Tests", "hidden": true},
+        {"type": "chore", "section": "Miscellaneous", "hidden": true},
+        {"type": "ci", "section": "CI", "hidden": true}
+      ]
+    }
+  }
+}
