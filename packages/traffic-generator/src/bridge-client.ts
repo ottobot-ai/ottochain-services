@@ -296,13 +296,14 @@ export class BridgeClient {
   }
 
   // Legacy method for backward compatibility
+  // NOTE: /contract/transition does not exist; use generic /fiber/transition
   async transitionContract(
     privateKey: string,
     fiberId: string,
     event: string,
     payload: Record<string, unknown> = {}
   ): Promise<TransitionResponse> {
-    return this.post<TransitionResponse>('/contract/transition', {
+    return this.post<TransitionResponse>('/fiber/transition', {
       privateKey,
       fiberId,
       event,

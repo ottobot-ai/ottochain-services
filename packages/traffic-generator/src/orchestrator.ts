@@ -4,6 +4,37 @@ import { FIBER_DEFINITIONS, type FiberDefinition, type MarketStateData, type DAO
 import { MARKET_SM_DEFINITION } from './market-workflows.js';
 import { Agent } from './types.js';
 
+/**
+ * Build a CreateFiberRequest-compatible definition from a FiberDefinition.
+ * Converts the states string[] to the required Record<string, {id, isFinal}> format
+ * and maps TransitionDef.event -> eventName as required by CreateFiberRequestSchema.
+ */
+function buildSmDefinition(def: FiberDefinition): Record<string, unknown> {
+  const statesRecord: Record<string, { id: string; isFinal: boolean }> = {};
+  for (const s of def.states) {
+    statesRecord[s] = { id: s, isFinal: def.finalStates.includes(s) };
+  }
+  return {
+    workflowType: def.workflowType,
+    initialState: def.initialState,
+    states: statesRecord,
+    transitions: def.transitions.map(t => ({
+      from: t.from,
+      to: t.to,
+      eventName: t.event,
+      guard: null,
+      effect: null,
+    })),
+    metadata: {
+      name: def.name,
+      description: `${def.workflowType}: ${def.name}`,
+      ...(def.daoType ? { daoType: def.daoType } : {}),
+      ...(def.marketType ? { marketType: def.marketType } : {}),
+      ...(def.corporateType ? { corporateType: def.corporateType } : {}),
+    },
+  };
+}
+
 export interface TrafficConfig {
   generationIntervalMs: number;
   targetActiveFibers: number;
@@ -378,56 +409,61 @@ export class FiberOrchestrator {
         fiberId = result.fiberId;
         console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${marketData.marketType}, creator: ${proposer.address.slice(0, 10)})`);
       } else if (def.workflowType === 'DAO') {
-        // Use DAO-specific creation
+        // Use full SM definition so bridge validates states/transitions correctly (BUG-4)
         const daoData = stateData as DAOStateData;
-        const result = await this.bridge.createDAO(
+        const result = await this.bridge.createFiber(
           proposer.privateKey,
-          daoData.daoType,
+          buildSmDefinition(def),
           daoData as unknown as Record<string, unknown>
         );
         fiberId = result.fiberId;
         console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${daoData.daoType}, ${daoData.members.length} members)`);
       } else if (def.workflowType === 'Governance') {
-        // Use Governance-specific creation
+        // Use full SM definition so bridge validates states/transitions correctly (BUG-4)
         const govData = stateData as GovernanceStateData;
-        const result = await this.bridge.createGovernance(
+        const result = await this.bridge.createFiber(
           proposer.privateKey,
+          buildSmDefinition(def),
           govData as unknown as Record<string, unknown>
         );
         fiberId = result.fiberId;
         console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${Object.keys(govData.members).length} members)`);
       } else if (def.workflowType === 'CorporateEntity') {
-        // Use Corporate Entity-specific creation
+        // Use full SM definition so bridge validates states/transitions correctly (BUG-4)
         const entityData = stateData as CorporateEntityStateData;
-        const result = await this.bridge.createCorporateEntity(
+        const result = await this.bridge.createFiber(
           proposer.privateKey,
+          buildSmDefinition(def),
           entityData as unknown as Record<string, unknown>
         );
         fiberId = result.fiberId;
         console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${entityData.legalName}, ${entityData.entityType})`);
       } else if (def.workflowType === 'CorporateBoard') {
-        // Use Corporate Board-specific creation
+        // Use full SM definition so bridge validates states/transitions correctly (BUG-4)
         const boardData = stateData as CorporateBoardStateData;
-        const result = await this.bridge.createCorporateBoard(
+        const result = await this.bridge.createFiber(
           proposer.privateKey,
+          buildSmDefinition(def),
           boardData as unknown as Record<string, unknown>
         );
         fiberId = result.fiberId;
         console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${boardData.directors.length} directors, ${boardData.seats.authorized} seats)`);
       } else if (def.workflowType === 'CorporateShareholders') {
-        // Use Corporate Shareholders-specific creation
+        // Use full SM definition so bridge validates states/transitions correctly (BUG-4)
         const shareholdersData = stateData as CorporateShareholdersStateData;
-        const result = await this.bridge.createCorporateShareholders(
+        const result = await this.bridge.createFiber(
           proposer.privateKey,
+          buildSmDefinition(def),
           shareholdersData as unknown as Record<string, unknown>
         );
         fiberId = result.fiberId;
         console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${shareholdersData.meetingType}, ${shareholdersData.eligibleVoters.length} voters)`);
       } else if (def.workflowType === 'CorporateSecurities') {
-        // Use Corporate Securities-specific creation
+        // Use full SM definition so bridge validates states/transitions correctly (BUG-4)
         const securitiesData = stateData as CorporateSecuritiesStateData;
-        const result = await this.bridge.createCorporateSecurities(
+        const result = await this.bridge.createFiber(
           proposer.privateKey,
+          buildSmDefinition(def),
           securitiesData as unknown as Record<string, unknown>
         );
         fiberId = result.fiberId;
@@ -448,29 +484,11 @@ export class FiberOrchestrator {
         fiberId = result.contractId;
         console.log(`  ✅ Proposed ${def.name}: ${fiberId.slice(0, 12)}... (${proposer.address.slice(0, 10)} → ${counterparty.address.slice(0, 10)})`);
       } else {
-        // Use generic fiber creation for custom types
-        // Convert states array → Record<string, {id, isFinal}> as bridge schema requires
-        const statesRecord: Record<string, { id: string; isFinal: boolean }> = {};
-        for (const s of def.states) {
-          statesRecord[s] = { id: s, isFinal: def.finalStates.includes(s) };
-        }
+        // Generic fiber creation for Custom, TokenEscrow, and any other types
+        // buildSmDefinition handles states-as-object and eventName conversion (BUG-1/2)
         const createResult = await this.bridge.createFiber(
           proposer.privateKey,
-          {
-            initialState: def.initialState,
-            states: statesRecord,
-            transitions: def.transitions.map(t => ({
-              from: t.from,
-              to: t.to,
-              eventName: t.event,
-              guard: { '==': [1, 1] },       // always-true guard
-              effect: { 'var': 'state' },     // identity effect (pass-through)
-            })),
-            metadata: {
-              name: def.name,
-              description: `${def.workflowType}: ${def.name}`,
-            },
-          },
+          buildSmDefinition(def),
           stateData as Record<string, unknown>
         );
         fiberId = createResult.fiberId;
