@@ -29,7 +29,7 @@ export interface FiberContext {
 export interface FiberDefinition {
   type: string;
   name: string;
-  workflowType: 'Contract' | 'Market' | 'DAO' | 'Oracle' | 'AgentIdentity' | 'Governance' | 'CorporateEntity' | 'CorporateBoard' | 'CorporateShareholders' | 'CorporateSecurities';
+  workflowType: 'Contract' | 'Market' | 'DAO' | 'Oracle' | 'AgentIdentity' | 'Governance' | 'CorporateEntity' | 'CorporateBoard' | 'CorporateShareholders' | 'CorporateSecurities' | 'Custom';
   roles: string[];
   isVariableParty: boolean;
   states: string[];
@@ -399,4 +399,77 @@ export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
     false,
     generateIdentityData
   ),
+
+  // ---------------------------------------------------------------------------
+  // Custom fiber types (v2 weighted distribution engine — Cards 1-4)
+  // These use the generic /fiber/create path (no SDK state machine required).
+  // ---------------------------------------------------------------------------
+
+  ticTacToe: {
+    type: 'ticTacToe',
+    name: 'Tic-Tac-Toe Game',
+    workflowType: 'Custom',
+    roles: ['playerX', 'playerO'],
+    isVariableParty: false,
+    states: ['WAITING', 'PLAYING', 'FINISHED'],
+    initialState: 'WAITING',
+    finalStates: ['FINISHED'],
+    transitions: [
+      { from: 'WAITING', to: 'PLAYING', event: 'start', actor: 'playerX' },
+      { from: 'PLAYING', to: 'FINISHED', event: 'end', actor: 'playerO' },
+    ],
+    sdkDefinition: undefined,
+    generateInitialData: (participants, context) => ({
+      gameId: context.fiberId,
+      playerX: participants.get('playerX') || '',
+      playerO: participants.get('playerO') || '',
+      board: Array(9).fill(''),
+      generation: context.generation,
+    }),
+  },
+
+  simpleOrder: {
+    type: 'simpleOrder',
+    name: 'Simple Order',
+    workflowType: 'Custom',
+    roles: ['buyer', 'seller'],
+    isVariableParty: false,
+    states: ['PENDING', 'FILLED', 'CANCELLED'],
+    initialState: 'PENDING',
+    finalStates: ['FILLED', 'CANCELLED'],
+    transitions: [
+      { from: 'PENDING', to: 'FILLED', event: 'fill', actor: 'seller' },
+      { from: 'PENDING', to: 'CANCELLED', event: 'cancel', actor: 'buyer' },
+    ],
+    sdkDefinition: undefined,
+    generateInitialData: (participants, context) => ({
+      orderId: context.fiberId,
+      buyer: participants.get('buyer') || '',
+      seller: participants.get('seller') || '',
+      amount: Math.floor(Math.random() * 1000) + 100,
+      generation: context.generation,
+    }),
+  },
+
+  voting: {
+    type: 'voting',
+    name: 'Simple Vote',
+    workflowType: 'Custom',
+    roles: ['creator'],
+    isVariableParty: true,
+    states: ['OPEN', 'CLOSED'],
+    initialState: 'OPEN',
+    finalStates: ['CLOSED'],
+    transitions: [
+      { from: 'OPEN', to: 'CLOSED', event: 'close', actor: 'creator' },
+    ],
+    sdkDefinition: undefined,
+    generateInitialData: (participants, context) => ({
+      proposalId: context.fiberId,
+      creator: participants.get('creator') || '',
+      question: `Proposal ${context.generation}: approve initiative?`,
+      options: ['yes', 'no', 'abstain'],
+      generation: context.generation,
+    }),
+  },
 };
