@@ -337,6 +337,16 @@ async function registerWebhookSubscriber(ml0Url: string, callbackUrl: string): P
 const config = getConfig();
 const port = config.INDEXER_PORT;
 
+// Fail fast if required config is missing
+if (!config.METAGRAPH_ID) {
+  console.error('❌ METAGRAPH_ID is required for the indexer (DAG address of the metagraph)');
+  process.exit(1);
+}
+if (!config.GL0_URL) {
+  console.error('❌ GL0_URL is required for the indexer (GL0 endpoint for snapshot confirmation)');
+  process.exit(1);
+}
+
 app.listen(port, '0.0.0.0', async () => {
   console.log(`🔍 Indexer listening on port ${port} (0.0.0.0)`);
   console.log(`   Webhooks:`);
