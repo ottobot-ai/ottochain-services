@@ -6,6 +6,7 @@
  */
 
 import { prisma, getConfig, publishEvent, CHANNELS } from '@ottochain/shared';
+import { getIndexerRequired } from './config.js';
 
 interface GlobalSnapshot {
   value: {
@@ -28,9 +29,8 @@ let lastCheckedGl0Ordinal = 0;
  * Check GL0 for confirmed metagraph snapshots
  */
 async function checkConfirmations(): Promise<void> {
-  const config = getConfig();
-  const gl0Url = config.GL0_URL!;  // Guaranteed by startup validation
-  const metagraphId = config.METAGRAPH_ID!;  // Guaranteed by startup validation
+  getConfig(); // ensure shared config is initialized
+  const { GL0_URL: gl0Url, METAGRAPH_ID: metagraphId } = getIndexerRequired();
   
   try {
     // Fetch latest global snapshot
@@ -93,19 +93,29 @@ async function checkConfirmations(): Promise<void> {
     if (batchResult.count > 0) {
       console.log(`✅ Batch-confirmed ${batchResult.count} ML0 snapshots in GL0 ordinal ${gl0Ordinal} (hash: ${confirmedHash.slice(0, 12)}...)`);
       
-      // Backfill gl0Ordinal on fibers and transitions for all confirmed snapshots
-      await prisma.fiber.updateMany({
-        where: { createdGl0Ordinal: null },
-        data: { createdGl0Ordinal: gl0OrdinalBigInt }
-      });
-      await prisma.fiber.updateMany({
-        where: { updatedGl0Ordinal: null },
-        data: { updatedGl0Ordinal: gl0OrdinalBigInt }
-      });
-      await prisma.fiberTransition.updateMany({
-        where: { gl0Ordinal: null },
-        data: { gl0Ordinal: gl0OrdinalBigInt }
-      });
+      // Backfill gl0Ordinal on fibers/transitions — scoped to the snapshot ordinals
+      // we just confirmed, so in-flight (not-yet-confirmed) rows are never over-stamped.
+      const confirmedOrdinals = await prisma.indexedSnapshot
+        .findMany({
+          where: { status: 'CONFIRMED', gl0Ordinal: gl0OrdinalBigInt },
+          select: { ordinal: true },
+        })
+        .then((rows) => rows.map((r) => r.ordinal));
+
+      if (confirmedOrdinals.length > 0) {
+        await prisma.fiber.updateMany({
+          where: { createdGl0Ordinal: null, createdOrdinal: { in: confirmedOrdinals } },
+          data: { createdGl0Ordinal: gl0OrdinalBigInt },
+        });
+        await prisma.fiber.updateMany({
+          where: { updatedGl0Ordinal: null, updatedOrdinal: { in: confirmedOrdinals } },
+          data: { updatedGl0Ordinal: gl0OrdinalBigInt },
+        });
+        await prisma.fiberTransition.updateMany({
+          where: { gl0Ordinal: null, snapshotOrdinal: { in: confirmedOrdinals } },
+          data: { gl0Ordinal: gl0OrdinalBigInt },
+        });
+      }
       
       await publishEvent(CHANNELS.STATS_UPDATED, {
         event: 'SNAPSHOT_CONFIRMED',
@@ -114,7 +124,31 @@ async function checkConfirmations(): Promise<void> {
         hash: confirmedHash,
       });
     }
-    
+
+    // Detect orphaned snapshots (PENDING superseded by a confirmed chain).
+    // Runs on every ordinal advance so we don't silently lose visibility into
+    // snapshots that were skipped or fork-replaced.
+    const latestConfirmed = await prisma.indexedSnapshot.findFirst({
+      where: { status: 'CONFIRMED' },
+      orderBy: { ordinal: 'desc' },
+    });
+
+    if (latestConfirmed) {
+      const orphaned = await prisma.indexedSnapshot.updateMany({
+        where: {
+          status: 'PENDING',
+          ordinal: { lt: latestConfirmed.ordinal },
+        },
+        data: { status: 'ORPHANED' },
+      });
+
+      if (orphaned.count > 0) {
+        console.warn(
+          `⚠️ Marked ${orphaned.count} snapshot(s) as ORPHANED (superseded by confirmed ordinal ${latestConfirmed.ordinal})`
+        );
+      }
+    }
+
   } catch (err) {
     console.error('❌ Error checking GL0 confirmations:', err);
   }
