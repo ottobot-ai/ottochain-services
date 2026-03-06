@@ -29,17 +29,49 @@ export interface FiberContext {
 export interface FiberDefinition {
   type: string;
   name: string;
-  workflowType: 'Contract' | 'Market' | 'DAO' | 'Oracle' | 'AgentIdentity';
+  workflowType: 'Contract' | 'Market' | 'DAO' | 'Oracle' | 'AgentIdentity' | 'Governance' | 'CorporateEntity' | 'CorporateBoard' | 'CorporateShareholders' | 'CorporateSecurities';
   roles: string[];
   isVariableParty: boolean;
   states: string[];
   initialState: string;
   finalStates: string[];
   transitions: TransitionDef[];
-  /** The raw SDK definition - pass directly to bridge /fiber/create */
-  sdkDefinition: unknown;
+  /** The raw SDK definition - pass directly to bridge /fiber/create (optional for custom state machines) */
+  sdkDefinition?: unknown;
   generateInitialData: (participants: Map<string, string>, context: FiberContext) => Record<string, unknown>;
+  /** Optional: DAO sub-type (token, multisig, threshold) */
+  daoType?: 'token' | 'multisig' | 'threshold';
+  /** Optional: Market sub-type (prediction, auction, crowdfund, group_buy) */
+  marketType?: string;
 }
+
+// ---------------------------------------------------------------------------
+// State Data Types (used when casting generateInitialData return values)
+// ---------------------------------------------------------------------------
+
+export interface MarketStateData extends Record<string, unknown> {
+  marketType: string;
+}
+
+export interface DAOStateData extends Record<string, unknown> {
+  daoType: 'token' | 'multisig' | 'threshold';
+  members: string[];
+}
+
+export interface GovernanceStateData extends Record<string, unknown> {
+  members: Record<string, unknown>;
+}
+
+export interface CorporateEntityStateData extends Record<string, unknown> {}
+export interface CorporateBoardStateData extends Record<string, unknown> {
+  directors: unknown[];
+  seats: { authorized: number };
+}
+export interface CorporateShareholdersStateData extends Record<string, unknown> {
+  meetingType: string;
+  eligibleVoters: unknown[];
+}
+export interface CorporateSecuritiesStateData extends Record<string, unknown> {}
 
 // ---------------------------------------------------------------------------
 // SDK Definition Type
