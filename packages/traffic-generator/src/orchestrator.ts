@@ -584,30 +584,48 @@ export class FiberOrchestrator {
     transition: { event: string; actor: string },
     actor: { address: string; privateKey: string }
   ): Promise<void> {
-    // Use generic fiber/transition for all contract events.
-    // The SDK contract definition has guards checking event.agent,
-    // so we always include it in the payload.
-    const payload: Record<string, unknown> = { agent: actor.address };
-
-    // Add event-specific payload fields that guards/effects expect
+    // Route each contract event to its dedicated bridge method so tests and
+    // the bridge API receive the correct endpoint calls.
     switch (transition.event) {
-      case 'reject':
-        payload.reason = 'Declined by counterparty';
+      case 'accept':
+        await this.bridge.acceptContract(actor.privateKey, fiber.id);
         break;
-      case 'submit_completion':
-        payload.proof = `completion-${Date.now().toString(36)}`;
-        break;
-      case 'dispute':
-        payload.reason = 'Terms not met';
-        break;
-      case 'resolve':
-        payload.resolution = 'Mutual agreement';
-        payload.proposerApproves = true;
-        payload.counterpartyApproves = true;
-        break;
-    }
 
-    await this.bridge.transitionFiber(actor.privateKey, fiber.id, transition.event, payload);
+      case 'reject':
+        await this.bridge.rejectContract(actor.privateKey, fiber.id, 'Declined by counterparty');
+        break;
+
+      // 'deliver' is the escrow-flavoured submit-completion step (counterparty
+      // submits proof of delivery before the proposer confirms/finalises).
+      case 'deliver':
+      case 'submit_completion':
+        await this.bridge.submitCompletion(
+          actor.privateKey,
+          fiber.id,
+          `completion-${Date.now().toString(36)}`
+        );
+        break;
+
+      // 'confirm' is the proposer's finalisation step after delivery.
+      case 'confirm':
+        await this.bridge.finalizeContract(actor.privateKey, fiber.id);
+        break;
+
+      case 'dispute':
+        await this.bridge.disputeContract(actor.privateKey, fiber.id, 'Terms not met');
+        break;
+
+      default: {
+        // Generic fallback for any other contract events (e.g. 'resolve')
+        const payload: Record<string, unknown> = { agent: actor.address };
+        if (transition.event === 'resolve') {
+          payload.resolution = 'Mutual agreement';
+          payload.proposerApproves = true;
+          payload.counterpartyApproves = true;
+        }
+        await this.bridge.transitionFiber(actor.privateKey, fiber.id, transition.event, payload);
+      }
+    }
   }
 
   /**
