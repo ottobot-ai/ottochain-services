@@ -203,16 +203,11 @@ export class FiberOrchestrator {
           fibersToRemove.push(fiber.id);
           continue;
         } else if (verifyResult === 'timeout') {
-          // Exceeded max retries
-          fiber.pendingTransition.retries++;
-          const maxRetries = this.config.indexer?.maxRetries ?? 3;
-          if (fiber.pendingTransition.retries >= maxRetries) {
-            console.log(`  ⚠️  Fiber ${fiber.id.slice(0, 8)} exceeded max retries waiting for indexer`);
-            fiber.failed = true;
-            fiber.failureReason = 'Indexer confirmation timeout';
-            rejected++;
-            this.failedFibers++;
-            fibersToRemove.push(fiber.id);
+          // Long timeout (5 min) — transaction may have been lost. Retry the transition.
+          const elapsed = Date.now() - (fiber.pendingTransition.submittedAt ?? 0);
+          if (elapsed > 300_000) {
+            console.log(`  ⚠️  Fiber ${fiber.id.slice(0, 8)} pending for >5min, will retry transition`);
+            fiber.pendingTransition = undefined; // Clear pending, let driveFiber retry
           } else {
             pending++;
           }
@@ -454,19 +449,27 @@ export class FiberOrchestrator {
         console.log(`  ✅ Proposed ${def.name}: ${fiberId.slice(0, 12)}... (${proposer.address.slice(0, 10)} → ${counterparty.address.slice(0, 10)})`);
       } else {
         // Use generic fiber creation for custom types
+        // Convert states array → Record<string, {id, isFinal}> as bridge schema requires
+        const statesRecord: Record<string, { id: string; isFinal: boolean }> = {};
+        for (const s of def.states) {
+          statesRecord[s] = { id: s, isFinal: def.finalStates.includes(s) };
+        }
         const createResult = await this.bridge.createFiber(
           proposer.privateKey,
           {
-            workflowType: def.workflowType,
-            type: def.type,
-            name: def.name,
             initialState: def.initialState,
-            states: def.states,
+            states: statesRecord,
             transitions: def.transitions.map(t => ({
               from: t.from,
               to: t.to,
-              event: t.event,
+              eventName: t.event,
+              guard: { '==': [1, 1] },       // always-true guard
+              effect: { 'var': 'state' },     // identity effect (pass-through)
             })),
+            metadata: {
+              name: def.name,
+              description: `${def.workflowType}: ${def.name}`,
+            },
           },
           stateData as Record<string, unknown>
         );
@@ -581,28 +584,30 @@ export class FiberOrchestrator {
     transition: { event: string; actor: string },
     actor: { address: string; privateKey: string }
   ): Promise<void> {
+    // Use generic fiber/transition for all contract events.
+    // The SDK contract definition has guards checking event.agent,
+    // so we always include it in the payload.
+    const payload: Record<string, unknown> = { agent: actor.address };
+
+    // Add event-specific payload fields that guards/effects expect
     switch (transition.event) {
-      case 'accept':
-        await this.bridge.acceptContract(actor.privateKey, fiber.id);
-        break;
       case 'reject':
-        await this.bridge.rejectContract(actor.privateKey, fiber.id, 'Declined by counterparty');
+        payload.reason = 'Declined by counterparty';
         break;
-      case 'deliver':
-      case 'confirm':
       case 'submit_completion':
-        await this.bridge.submitCompletion(actor.privateKey, fiber.id, `Completed by ${actor.address.slice(0, 10)}`);
-        break;
-      case 'finalize':
-        await this.bridge.finalizeContract(actor.privateKey, fiber.id);
+        payload.proof = `completion-${Date.now().toString(36)}`;
         break;
       case 'dispute':
-        await this.bridge.disputeContract(actor.privateKey, fiber.id, 'Disputed by party');
+        payload.reason = 'Terms not met';
         break;
-      default:
-        // Fallback to generic transition
-        await this.bridge.transitionContract(actor.privateKey, fiber.id, transition.event, { agent: actor.address });
+      case 'resolve':
+        payload.resolution = 'Mutual agreement';
+        payload.proposerApproves = true;
+        payload.counterpartyApproves = true;
+        break;
     }
+
+    await this.bridge.transitionFiber(actor.privateKey, fiber.id, transition.event, payload);
   }
 
   /**
