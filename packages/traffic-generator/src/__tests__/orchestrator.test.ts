@@ -5,6 +5,79 @@
  * Verifies SDK-compliant contract and fiber flows without live cluster.
  */
 
+// Mock @ottochain/sdk/apps before any imports to avoid the CJS/ESM conflict in
+// the SDK's dist/esm build (exports used in an ESM context → ReferenceError).
+// fiber-definitions.ts uses these at module-init time, so the mock must be
+// hoisted (vi.mock is automatically hoisted by vitest).
+vi.mock('@ottochain/sdk/apps', () => {
+  // Minimal SDKDefinition factory that satisfies fiber-definitions.ts helpers:
+  //   extractStates / extractFinalStates / extractRoles / mapTransitions
+  const mkDef = (
+    name: string,
+    states: string[],
+    initial: string,
+    finals: string[],
+    transitions: { from: string; to: string; eventName: string; guard?: unknown }[] = []
+  ) => ({
+    metadata: { name },
+    states: Object.fromEntries(
+      states.map(s => [s, { id: s, isFinal: finals.includes(s) }])
+    ),
+    initialState: initial,
+    transitions,
+  });
+
+  // Counterparty-guard helper (actor derived via deriveActor)
+  const counterpartyGuard = { '===': [{ var: 'event.agent' }, { var: 'state.counterparty' }] };
+  const proposerGuard    = { '===': [{ var: 'event.agent' }, { var: 'state.proposer'    }] };
+
+  return {
+    contracts: {
+      getContractDefinition: () =>
+        mkDef('Contract', ['PROPOSED', 'ACTIVE', 'COMPLETED', 'REJECTED'], 'PROPOSED', ['COMPLETED', 'REJECTED'], [
+          { from: 'PROPOSED', to: 'ACTIVE',    eventName: 'accept',  guard: counterpartyGuard },
+          { from: 'ACTIVE',   to: 'COMPLETED', eventName: 'confirm', guard: proposerGuard    },
+          { from: 'PROPOSED', to: 'REJECTED',  eventName: 'reject',  guard: counterpartyGuard },
+        ]),
+      getEscrowDefinition: () =>
+        mkDef('Escrow Contract', ['PROPOSED', 'ACTIVE', 'DELIVERED', 'COMPLETED', 'REJECTED'], 'PROPOSED', ['COMPLETED', 'REJECTED'], [
+          { from: 'PROPOSED',  to: 'ACTIVE',    eventName: 'accept',  guard: counterpartyGuard },
+          { from: 'ACTIVE',    to: 'DELIVERED', eventName: 'deliver', guard: counterpartyGuard },
+          { from: 'DELIVERED', to: 'COMPLETED', eventName: 'confirm', guard: proposerGuard    },
+          { from: 'PROPOSED',  to: 'REJECTED',  eventName: 'reject',  guard: counterpartyGuard },
+        ]),
+    },
+    markets: {
+      getMarketDefinition: () =>
+        mkDef('Universal Market', ['OPEN', 'RESOLVED', 'CANCELLED'], 'OPEN', ['RESOLVED', 'CANCELLED'], [
+          { from: 'OPEN', to: 'RESOLVED',  eventName: 'resolve', guard: { '===': [{ var: 'event.agent' }, { var: 'state.creator' }] } },
+          { from: 'OPEN', to: 'CANCELLED', eventName: 'cancel',  guard: { '===': [{ var: 'event.agent' }, { var: 'state.creator' }] } },
+        ]),
+    },
+    governance: {
+      getDAODefinition: () =>
+        mkDef('DAO', ['PROPOSED', 'VOTING', 'EXECUTED', 'REJECTED'], 'PROPOSED', ['EXECUTED', 'REJECTED'], [
+          { from: 'PROPOSED', to: 'VOTING',   eventName: 'open_voting', guard: { '===': [{ var: 'event.agent' }, { var: 'state.creator' }] } },
+          { from: 'VOTING',   to: 'EXECUTED', eventName: 'execute',     guard: { '===': [{ var: 'event.agent' }, { var: 'state.creator' }] } },
+        ]),
+    },
+    oracles: {
+      getOracleDefinition: () =>
+        mkDef('Oracle', ['REGISTERED', 'ACTIVE', 'SUSPENDED'], 'REGISTERED', ['SUSPENDED'], [
+          { from: 'REGISTERED', to: 'ACTIVE',    eventName: 'activate',  guard: { '===': [{ var: 'event.agent' }, { var: 'state.creator' }] } },
+          { from: 'ACTIVE',     to: 'SUSPENDED', eventName: 'suspend',   guard: { '===': [{ var: 'event.agent' }, { var: 'state.creator' }] } },
+        ]),
+    },
+    identity: {
+      getIdentityDefinition: () =>
+        mkDef('Agent Identity', ['REGISTERED', 'ACTIVE', 'REVOKED'], 'REGISTERED', ['REVOKED'], [
+          { from: 'REGISTERED', to: 'ACTIVE',  eventName: 'activate', guard: { '===': [{ var: 'event.agent' }, { var: 'state.operator' }] } },
+          { from: 'ACTIVE',     to: 'REVOKED', eventName: 'revoke',   guard: { '===': [{ var: 'event.agent' }, { var: 'state.operator' }] } },
+        ]),
+    },
+  };
+});
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { FiberOrchestrator, TrafficConfig } from '../orchestrator.js';
 import { BridgeClient } from '../bridge-client.js';
