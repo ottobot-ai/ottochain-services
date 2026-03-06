@@ -230,6 +230,8 @@ export class FiberOrchestrator {
         } else if (result === 'completed') {
           completed++;
           this.completedFibers++;
+          // Vouch for successful counterparties before removal
+          await this.vouchForParticipants(fiber);
           fibersToRemove.push(fiber.id);
         }
         // 'waiting' means no action needed yet
@@ -1278,6 +1280,46 @@ export class FiberOrchestrator {
   }
 
   private tickCount = 0;
+
+  /**
+   * Vouch for all participants in a successfully completed fiber
+   * Each participant vouches for all other participants
+   */
+  private async vouchForParticipants(fiber: ActiveFiber): Promise<void> {
+    const participants = Array.from(fiber.participants.entries());
+    if (participants.length < 2) return; // Need at least 2 to vouch
+    
+    const vouchReason = `Completed ${fiber.definition.name} fiber ${fiber.id.slice(0, 8)}`;
+    let vouchCount = 0;
+    
+    for (const [fromRole, fromAgent] of participants) {
+      for (const [toRole, toAgent] of participants) {
+        if (fromAgent.address === toAgent.address) continue;
+        
+        try {
+          // Find the agent's identity fiber ID for vouching
+          // For now, use the address as a lookup - in practice we'd track fiber IDs
+          await this.bridge.vouchForAgent(
+            fromAgent.privateKey,
+            toAgent.address, // The bridge should resolve this to the identity fiber
+            fromAgent.address,
+            vouchReason
+          );
+          vouchCount++;
+        } catch (err) {
+          // Vouching failure is non-fatal - log and continue
+          const msg = (err as Error).message;
+          if (!msg.includes('already vouched') && !msg.includes('duplicate')) {
+            console.log(`  ⚠️  Vouch failed (${fromRole}→${toRole}): ${msg.slice(0, 40)}`);
+          }
+        }
+      }
+    }
+    
+    if (vouchCount > 0) {
+      console.log(`  🤝 ${fiber.type}[${fiber.id.slice(0, 8)}]: ${vouchCount} vouches recorded`);
+    }
+  }
 
   /**
    * Check if an agent is currently participating in any fiber
