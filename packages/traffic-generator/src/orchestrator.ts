@@ -355,7 +355,7 @@ export class FiberOrchestrator {
     const tempFiberId = `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     
     // Generate proper stateData using the definition's generator
-    const stateData = def.generateStateData(participantAddresses, {
+    const stateData = def.generateInitialData(participantAddresses, {
       fiberId: tempFiberId,
       generation: this.tickCount,
     });

@@ -44,7 +44,7 @@ export const DAO_GOVERNANCE_TEST_FIBERS: Record<string, FiberDefinition> = {
       { from: 'QUEUED', to: 'EXECUTED', event: 'execute', actor: 'proposer' },
       { from: 'QUEUED', to: 'REJECTED', event: 'cancel', actor: 'guardian' },
     ],
-    generateStateData: (participants: Map<string, string>, ctx: FiberContext): DAOStateData => {
+    generateInitialData: (participants: Map<string, string>, ctx: FiberContext): DAOStateData => {
       const proposer = participants.get('proposer')!;
       const voters = ['voter1', 'voter2', 'voter3'].map(role => participants.get(role)!);
       const guardian = participants.get('guardian')!;
@@ -121,7 +121,7 @@ export const DAO_GOVERNANCE_TEST_FIBERS: Record<string, FiberDefinition> = {
       { from: 'DELEGATED', to: 'DELEGATED', event: 'vote', actor: 'delegate1' },
       { from: 'DELEGATED', to: 'DELEGATED', event: 'vote', actor: 'delegate2' },
     ],
-    generateStateData: (participants: Map<string, string>, ctx: FiberContext): DAOStateData => {
+    generateInitialData: (participants: Map<string, string>, ctx: FiberContext): DAOStateData => {
       const delegator1 = participants.get('delegator1')!;
       const delegator2 = participants.get('delegator2')!;
       const delegate1 = participants.get('delegate1')!;
@@ -200,7 +200,7 @@ export const DAO_GOVERNANCE_TEST_FIBERS: Record<string, FiberDefinition> = {
       // Direct execution if no veto
       { from: 'VOTING', to: 'EXECUTED', event: 'execute', actor: 'proposer' },
     ],
-    generateStateData: (participants: Map<string, string>, ctx: FiberContext): DAOStateData => {
+    generateInitialData: (participants: Map<string, string>, ctx: FiberContext): DAOStateData => {
       const proposer = participants.get('proposer')!;
       const voter1 = participants.get('voter1')!;
       const voter2 = participants.get('voter2')!;
