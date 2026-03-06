@@ -11,7 +11,7 @@ import { createServer } from 'http';
 import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import type { StackHealth, ServiceStatus, MonitorConfig } from './types.js';
+import type { StackHealth, ServiceStatus, MonitorConfig, NodeHealth } from './types.js';
 import { HealthCollector } from './collector.js';
 import { MonitorCache } from './cache.js';
 import { CacheRefresher } from './refresher.js';
@@ -300,7 +300,55 @@ async function main(): Promise<void> {
       res.json(collector.getHealth().nodes);
     }
   });
-  
+
+  // Sync-status endpoint for traffic generator readiness check
+  app.get('/api/sync-status', async (_, res) => {
+    try {
+      const health = collector.getHealth();
+      const nodes = health.nodes;
+      const metagraph = health.metagraph;
+
+      const gl0Nodes = nodes.filter(n => n.type === 'gl0');
+      const ml0Nodes = nodes.filter(n => n.type === 'ml0');
+      const dl1Nodes = nodes.filter(n => n.type === 'dl1');
+
+      const isNodeReady = (n: NodeHealth) => n.state === 'Ready' && n.status === 'healthy';
+
+      const gl0AllReady = gl0Nodes.length > 0 && gl0Nodes.every(isNodeReady);
+      const ml0AllReady = ml0Nodes.length > 0 && ml0Nodes.every(isNodeReady);
+      const dl1AllReady = dl1Nodes.length > 0 && dl1Nodes.every(isNodeReady);
+
+      const allReady = gl0AllReady && ml0AllReady && dl1AllReady;
+      const allHealthy = metagraph?.isHealthy === true && allReady;
+
+      const syncStatus = {
+        ready: allReady,
+        allReady,
+        allHealthy,
+        gl0: {
+          nodes: gl0Nodes.map(n => ({ name: n.name, ordinal: n.ordinal, state: n.state ?? 'Unknown' })),
+          fork: false,
+          ordinal: metagraph?.gl0Ordinal,
+        },
+        ml0: {
+          nodes: ml0Nodes.map(n => ({ name: n.name, ordinal: n.ordinal, state: n.state ?? 'Unknown' })),
+          fork: false,
+          ordinal: metagraph?.ml0Ordinal,
+        },
+        dl1: {
+          nodes: dl1Nodes.map(n => ({ name: n.name, ordinal: n.ordinal, state: n.state ?? 'Unknown' })),
+          ordinal: metagraph?.snapshotOrdinal,
+          lag: metagraph?.dl1Lag,
+        },
+      };
+
+      res.json(syncStatus);
+    } catch (err) {
+      console.error('Sync-status endpoint error:', err);
+      res.status(500).json({ ready: false, error: (err as Error).message });
+    }
+  });
+
   app.get('/api/services', async (_, res) => {
     if (!cache) {
       return res.json(collector.getHealth().services);
