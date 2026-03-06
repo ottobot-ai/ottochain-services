@@ -1,0 +1,91 @@
+name: SDK Version Bump
+
+on:
+  repository_dispatch:
+    types: [sdk-bump]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'SDK version (without v prefix, e.g., 1.3.0)'
+        required: true
+        type: string
+
+jobs:
+  bump:
+    name: Bump @ottochain/sdk
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Determine version
+        id: params
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            VERSION="${{ github.event.client_payload.version }}"
+          else
+            VERSION="${{ inputs.version }}"
+          fi
+          VERSION="${VERSION#v}"
+          if [ -z "$VERSION" ]; then
+            echo "Error: VERSION is empty — cannot bump SDK"
+            exit 1
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Bumping @ottochain/sdk to $VERSION"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Update SDK version in all packages
+        run: |
+          VERSION="${{ steps.params.outputs.version }}"
+          # Find all package.json files that reference @ottochain/sdk
+          find . -name 'package.json' -not -path '*/node_modules/*' | while read pkg; do
+            if grep -q '"@ottochain/sdk"' "$pkg"; then
+              echo "Updating $pkg"
+              # Use jq to update the version in dependencies or devDependencies
+              for field in dependencies devDependencies peerDependencies; do
+                if jq -e ".$field[\"@ottochain/sdk\"]" "$pkg" > /dev/null 2>&1; then
+                  tmpfile=$(mktemp)
+                  jq ".$field[\"@ottochain/sdk\"] = \"$VERSION\"" "$pkg" > "$tmpfile" && mv "$tmpfile" "$pkg"
+                  echo "  Updated .$field to $VERSION"
+                fi
+              done
+            fi
+          done
+
+      - name: Update lockfile
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore(deps): bump @ottochain/sdk to v${{ steps.params.outputs.version }}"
+          title: "chore(deps): bump @ottochain/sdk to v${{ steps.params.outputs.version }}"
+          body: |
+            Automated SDK version bump triggered by `@ottochain/sdk` release.
+
+            ## Changes
+            - `@ottochain/sdk` → `v${{ steps.params.outputs.version }}`
+
+            ## Updated packages
+            All workspace packages that depend on `@ottochain/sdk` have been updated.
+
+            ---
+            *Triggered by: ${{ github.event_name }}*
+          branch: bump/sdk
+          delete-branch: true
+          labels: |
+            dependencies
+            automated
