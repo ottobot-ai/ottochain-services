@@ -418,6 +418,27 @@ jobs:
           fi
           echo "✓ DL1 cluster size: $cluster_size"
 
+      - name: Fetch METAGRAPH_ID from GL0
+        run: |
+          echo "Waiting for metagraph to appear in GL0 state channel snapshots..."
+          for i in $(seq 1 60); do
+            METAGRAPH_ID=$(curl -s http://localhost:9000/global-snapshots/latest \
+              | jq -r '.value.stateChannelSnapshots | keys[0] // ""' 2>/dev/null || echo "")
+            if [ -n "$METAGRAPH_ID" ] && [ "$METAGRAPH_ID" != "null" ]; then
+              echo "✓ METAGRAPH_ID: $METAGRAPH_ID"
+              echo "METAGRAPH_ID=$METAGRAPH_ID" >> $GITHUB_ENV
+              break
+            fi
+            if [ $i -eq 60 ]; then
+              echo "❌ Could not fetch METAGRAPH_ID from GL0 after 60s"
+              echo "GL0 latest snapshot:"
+              curl -s http://localhost:9000/global-snapshots/latest | jq '.' 2>/dev/null || true
+              exit 1
+            fi
+            echo "  Attempt $i/60: metagraph not yet in GL0, waiting..."
+            sleep 1
+          done
+
       - name: Start Redis
         run: |
           docker run -d --name redis-ci -p 6379:6379 redis:alpine
