@@ -117,6 +117,11 @@ function loadConfig(): TrafficConfig {
 async function main(): Promise<void> {
   const config = loadConfig();
   
+  // Start status server for monitoring (before everything else)
+  const statusPort = parseInt(process.env.STATUS_PORT ?? '3033', 10);
+  const startedAt = new Date().toISOString();
+  await startStatusServer(statusPort);
+
   // Required: BRIDGE_URL
   const bridgeUrl = process.env.BRIDGE_URL;
   if (!bridgeUrl) {
@@ -198,6 +203,24 @@ async function main(): Promise<void> {
   );
   
   // Wire up status-server providers for monitoring
+  // Wire up v2 status provider (no GA fields - uses fiber-centric metrics)
+  setStatusProvider(() => {
+    const stats = orchestrator.getStats();
+    const total = stats.completedFibers + stats.failedFibers;
+    return {
+      enabled: true,
+      mode: 'orchestrator',
+      targetActiveFibers: config.targetActiveFibers,
+      activeFibers: stats.activeFibers,
+      completedFibers: stats.completedFibers,
+      failedFibers: stats.failedFibers,
+      successRate: total > 0 ? stats.completedFibers / total : 0,
+      fiberTypeDistribution: stats.fiberTypeDistribution,
+      uptime: Date.now() - new Date(startedAt).getTime(),
+      startedAt,
+    };
+  });
+
   setWeightsProvider(() => orchestrator.getWeights());
   
   setFibersProvider(() => ({

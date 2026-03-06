@@ -1,29 +1,48 @@
 /**
- * Simple HTTP status server for traffic generator
+ * Simple HTTP status server for traffic generator v2
  * Exposes current configuration and runtime stats for monitoring
- * Provides control endpoints to start/stop/configure the generator
+ * Provides control endpoints to configure the generator
+ * 
+ * Endpoints:
+ *   GET  /health           - Health check
+ *   GET  /status           - Current status (active fibers, completion rate, etc.)
+ *   GET  /weights          - Configured fiber type weights
+ *   POST /weights          - Update fiber type weights at runtime
+ *   GET  /fibers           - Active + recently completed fibers
+ *   GET  /agents           - Agent pool registration status
+ *   POST /start            - Start the generator
+ *   POST /stop             - Stop the generator
  */
 
 import * as http from 'node:http';
 
+/**
+ * v2 status - no GA-specific fields (generation, mutation, etc.)
+ * Uses fiber-centric metrics instead of population-centric.
+ */
 export interface TrafficGenStatus {
   enabled: boolean;
-  mode: 'standard' | 'high-throughput' | 'orchestrator' | 'idle';
-  targetTps: number;
-  targetPopulation: number;
-  currentPopulation: number;
-  currentTps: number;
-  generation: number;
-  totalTransactions: number;
+  mode: 'orchestrator' | 'idle';
+  /** Configured target concurrent active fibers */
+  targetActiveFibers: number;
+  /** Current active fiber count */
+  activeFibers: number;
+  /** Total fibers completed since startup */
+  completedFibers: number;
+  /** Total fibers failed since startup */
+  failedFibers: number;
+  /** Completion rate (completed / (completed + failed)) */
   successRate: number;
+  /** Distribution of active fibers by type */
+  fiberTypeDistribution: Record<string, number>;
+  /** Milliseconds since startup */
   uptime: number;
+  /** ISO timestamp when generator started */
   startedAt: string | null;
 }
 
 export interface TrafficGenConfig {
-  targetTps?: number;
-  targetPopulation?: number;
-  mode?: 'standard' | 'high-throughput';
+  targetActiveFibers?: number;
 }
 
 type StatusProvider = () => TrafficGenStatus;
@@ -66,13 +85,12 @@ type AgentsProvider = () => AgentsResponse;
 let statusProvider: StatusProvider = () => ({
   enabled: false,
   mode: 'idle',
-  targetTps: 0,
-  targetPopulation: 0,
-  currentPopulation: 0,
-  currentTps: 0,
-  generation: 0,
-  totalTransactions: 0,
+  targetActiveFibers: 0,
+  activeFibers: 0,
+  completedFibers: 0,
+  failedFibers: 0,
   successRate: 0,
+  fiberTypeDistribution: {},
   uptime: 0,
   startedAt: null,
 });
