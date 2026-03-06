@@ -143,6 +143,11 @@ function createMockBridge() {
     createFiber: vi.fn().mockResolvedValue({ fiberId: 'fiber-uuid-789', hash: 'hash9' }),
     transitionFiber: vi.fn().mockResolvedValue({ hash: 'hash10', event: 'move', fiberId: 'fiber-uuid-789' }),
     transitionContract: vi.fn().mockResolvedValue({ hash: 'hash11', event: 'custom', fiberId: 'contract-uuid-456' }),
+
+    // Script oracle operations
+    registerScript: vi.fn().mockResolvedValue({ scriptId: 'script-uuid-aaa', owner: 'DAG0...', name: 'Test Script', hash: 'hashS1' }),
+    invokeScript: vi.fn().mockResolvedValue({ invocationId: 'inv-uuid-bbb', scriptId: 'script-uuid-aaa', caller: 'DAG0...', hash: 'hashS2' }),
+    getScript: vi.fn().mockResolvedValue(null),
     
     // Status
     checkSyncStatus: vi.fn().mockResolvedValue({ ready: true, allReady: true }),
@@ -288,6 +293,118 @@ describe('FiberOrchestrator', () => {
       expect(createCount).toBeGreaterThan(0);
       // Combined should equal 20 (all available agent pairs used)
       expect(proposeCount + createCount).toBe(20);
+    });
+  });
+
+  // ==========================================================================
+  // Script Oracle Tests
+  // ==========================================================================
+
+  describe('script oracle lifecycle', () => {
+    let scriptConfig: TrafficConfig;
+
+    beforeEach(() => {
+      scriptConfig = {
+        ...defaultConfig,
+        targetActiveFibers: 1,
+        fiberWeights: { escrowScript: 1 },
+      };
+      orchestrator = new FiberOrchestrator(scriptConfig, bridge as BridgeClient, () => mockAgents);
+    });
+
+    it('should register a script oracle on first tick', async () => {
+      await orchestrator.tick();
+
+      expect(bridge.registerScript).toHaveBeenCalledOnce();
+      const call = (bridge.registerScript as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(call[1]).toHaveProperty('if'); // escrow JSON Logic program has top-level 'if'
+      expect(call[2]).toMatchObject({ name: 'Escrow Release Condition' });
+    });
+
+    it('should activate (REGISTERED → ACTIVE) on second tick', async () => {
+      // Tick 1: register
+      await orchestrator.tick();
+      // Tick 2: activate (REGISTERED → ACTIVE, no bridge call)
+      await orchestrator.tick();
+
+      // registerScript called once; invokeScript not yet called
+      expect(bridge.registerScript).toHaveBeenCalledOnce();
+      expect(bridge.invokeScript).not.toHaveBeenCalled();
+    });
+
+    it('should invoke the script oracle on subsequent ticks', async () => {
+      await orchestrator.tick(); // register
+      await orchestrator.tick(); // activate
+      await orchestrator.tick(); // invoke #1
+      await orchestrator.tick(); // invoke #2
+
+      expect(bridge.invokeScript).toHaveBeenCalledTimes(2);
+      const invCall = (bridge.invokeScript as ReturnType<typeof vi.fn>).mock.calls[0];
+      // First arg: privateKey, second: scriptId, third: inputs
+      expect(invCall[1]).toBe('script-uuid-aaa');
+      // Escrow inputs have known shape
+      expect(invCall[2]).toHaveProperty('amount');
+      expect(invCall[2]).toHaveProperty('required');
+      expect(invCall[2]).toHaveProperty('depositorConfirmed');
+    });
+
+    it('should retire after maxInvocations are reached', async () => {
+      // default maxInvocations = 4 (SCRIPT_INVOKE_COUNT)
+      // ticks: register, activate, invoke x4, retire
+      const totalTicks = 2 + 4 + 1; // activate + invoke x4 + retire
+      for (let i = 0; i < totalTicks; i++) {
+        await orchestrator.tick();
+      }
+
+      expect(bridge.invokeScript).toHaveBeenCalledTimes(4);
+      // After retirement, active fibers should be 0 and a new one created
+      const stats = orchestrator.getStats();
+      // new script should have been created to replace completed one
+      expect(stats.completedFibers).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should work with votingScript type', async () => {
+      const votingConfig = { ...scriptConfig, fiberWeights: { votingScript: 1 } };
+      orchestrator = new FiberOrchestrator(votingConfig, bridge as BridgeClient, () => mockAgents);
+
+      await orchestrator.tick(); // register
+      await orchestrator.tick(); // activate
+      await orchestrator.tick(); // invoke #1
+
+      expect(bridge.registerScript).toHaveBeenCalledOnce();
+      const regCall = (bridge.registerScript as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(regCall[2]).toMatchObject({ name: 'Vote Tally Oracle' });
+
+      expect(bridge.invokeScript).toHaveBeenCalledOnce();
+      const invCall = (bridge.invokeScript as ReturnType<typeof vi.fn>).mock.calls[0];
+      // Voting inputs have 'votes' array
+      expect(invCall[2]).toHaveProperty('votes');
+      expect(Array.isArray(invCall[2].votes)).toBe(true);
+    });
+
+    it('should work with approvalScript type', async () => {
+      const approvalConfig = { ...scriptConfig, fiberWeights: { approvalScript: 1 } };
+      orchestrator = new FiberOrchestrator(approvalConfig, bridge as BridgeClient, () => mockAgents);
+
+      await orchestrator.tick(); // register
+      await orchestrator.tick(); // activate
+      await orchestrator.tick(); // invoke #1
+
+      const regCall = (bridge.registerScript as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(regCall[2]).toMatchObject({ name: 'Approval Router' });
+
+      const invCall = (bridge.invokeScript as ReturnType<typeof vi.fn>).mock.calls[0];
+      // Approval inputs have yesVotes, totalVotes, threshold
+      expect(invCall[2]).toHaveProperty('yesVotes');
+      expect(invCall[2]).toHaveProperty('totalVotes');
+      expect(invCall[2]).toHaveProperty('threshold');
+    });
+
+    it('should report ScriptOracle fibers in stats', async () => {
+      await orchestrator.tick(); // register
+
+      const stats = orchestrator.getStats();
+      expect(stats.activeFibers).toBe(1);
     });
   });
 });

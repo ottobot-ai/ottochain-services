@@ -89,6 +89,46 @@ export interface MarketState {
   sequenceNumber: number;
 }
 
+// ==========================================================================
+// Script Oracle Interfaces
+// ==========================================================================
+
+export interface RegisterScriptResponse {
+  scriptId: string;
+  owner: string;
+  name?: string;
+  hash: string;
+}
+
+export interface InvokeScriptResponse {
+  invocationId: string;
+  scriptId: string;
+  caller: string;
+  hash: string;
+}
+
+export interface ScriptState {
+  scriptId: string;
+  name?: string;
+  lastInvocation?: {
+    invocationId: string;
+    inputs: Record<string, unknown>;
+    result: unknown;
+    timestamp: number;
+    caller: string;
+  } | null;
+  state?: Record<string, unknown> | null;
+  metadata?: {
+    name?: string;
+    description?: string;
+    createdAt?: string;
+  };
+  accessControl?: {
+    invokers?: string[];
+    owners?: string[];
+  };
+}
+
 export class BridgeClient {
   private baseUrl: string;
   private ml0Url: string;
@@ -1418,6 +1458,97 @@ export class BridgeClient {
     }>;
   }> {
     return this.listFibers('CorporateEntity', limit);
+  }
+
+  // ==========================================================================
+  // Script Oracle Operations
+  // ==========================================================================
+
+  /**
+   * Register (deploy) a new JSON Logic script oracle.
+   * POST /script/register
+   */
+  async registerScript(
+    privateKey: string,
+    program: Record<string, unknown>,
+    options?: {
+      name?: string;
+      description?: string;
+      fiberId?: string;
+      initialState?: Record<string, unknown>;
+      accessControl?: { invokers?: string[]; owners?: string[] };
+    }
+  ): Promise<RegisterScriptResponse> {
+    return this.post<RegisterScriptResponse>('/script/register', {
+      privateKey,
+      program,
+      name: options?.name,
+      description: options?.description,
+      fiberId: options?.fiberId,
+      initialState: options?.initialState,
+      accessControl: options?.accessControl,
+    });
+  }
+
+  /**
+   * Invoke a registered script with input data.
+   * POST /script/invoke
+   */
+  async invokeScript(
+    privateKey: string,
+    scriptId: string,
+    inputs: Record<string, unknown>,
+    context?: Record<string, unknown>
+  ): Promise<InvokeScriptResponse> {
+    return this.post<InvokeScriptResponse>('/script/invoke', {
+      privateKey,
+      scriptId,
+      inputs,
+      context,
+    });
+  }
+
+  /**
+   * Get script state by ID.
+   * GET /script/:scriptId
+   */
+  async getScript(scriptId: string): Promise<ScriptState | null> {
+    try {
+      return await this.get<ScriptState>(`/script/${scriptId}`);
+    } catch (err) {
+      if ((err as Error).message.includes('404')) return null;
+      throw err;
+    }
+  }
+
+  /**
+   * Get the last invocation result for a script.
+   * GET /script/:scriptId/result
+   */
+  async getScriptResult(scriptId: string): Promise<ScriptState | null> {
+    try {
+      return await this.get<ScriptState>(`/script/${scriptId}/result`);
+    } catch (err) {
+      if ((err as Error).message.includes('404')) return null;
+      throw err;
+    }
+  }
+
+  /**
+   * List scripts with optional filters.
+   * GET /script?name=X&owner=Y&limit=N
+   */
+  async listScripts(options?: {
+    name?: string;
+    owner?: string;
+    limit?: number;
+  }): Promise<{ total: number; count: number; scripts: Record<string, ScriptState> }> {
+    const params = new URLSearchParams();
+    if (options?.name) params.set('name', options.name);
+    if (options?.owner) params.set('owner', options.owner);
+    if (options?.limit != null) params.set('limit', options.limit.toString());
+    const query = params.toString();
+    return this.get(`/script${query ? `?${query}` : ''}`);
   }
 
   // ==========================================================================

@@ -1,7 +1,8 @@
 import { BridgeClient } from './bridge-client.js';
 import { IndexerClient } from './indexer-client.js';
-import { FIBER_DEFINITIONS, type FiberDefinition, type MarketStateData, type DAOStateData, type GovernanceStateData, type CorporateEntityStateData, type CorporateBoardStateData, type CorporateShareholdersStateData, type CorporateSecuritiesStateData } from './fiber-definitions.js';
+import { FIBER_DEFINITIONS, type FiberDefinition, type MarketStateData, type DAOStateData, type GovernanceStateData, type CorporateEntityStateData, type CorporateBoardStateData, type CorporateShareholdersStateData, type CorporateSecuritiesStateData, type ScriptOracleStateData } from './fiber-definitions.js';
 import { MARKET_SM_DEFINITION } from './market-workflows.js';
+import { SCRIPT_PROGRAMS, SCRIPT_NAMES, SCRIPT_DESCRIPTIONS, SCRIPT_INPUT_GENERATORS, SCRIPT_INVOKE_COUNT } from './script-workflows.js';
 import { Agent } from './types.js';
 
 export interface TrafficConfig {
@@ -45,6 +46,15 @@ export interface ActiveFiber {
   failed?: boolean;
   /** Failure reason */
   failureReason?: string;
+  /** Script oracle tracking (only for ScriptOracle workflowType) */
+  scriptOracle?: {
+    /** On-chain script fiber ID from /script/register */
+    scriptId: string;
+    /** Number of invocations submitted so far */
+    invocations: number;
+    /** Max invocations before retiring */
+    maxInvocations: number;
+  };
 }
 
 export interface TickResult {
@@ -432,6 +442,42 @@ export class FiberOrchestrator {
         );
         fiberId = result.fiberId;
         console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${securitiesData.shareClassName}, ${securitiesData.shareCount} shares)`);
+      } else if (def.workflowType === 'ScriptOracle') {
+        // Register a JSON Logic script oracle via /script/register
+        const scriptData = stateData as ScriptOracleStateData;
+        const scriptType = scriptData.scriptType as string;
+        const program = SCRIPT_PROGRAMS[scriptType];
+        if (!program) {
+          console.log(`  ❌ Unknown script type: ${scriptType}`);
+          return;
+        }
+        const result = await this.bridge.registerScript(
+          proposer.privateKey,
+          program,
+          {
+            name: SCRIPT_NAMES[scriptType],
+            description: SCRIPT_DESCRIPTIONS[scriptType],
+          }
+        );
+        fiberId = result.scriptId;
+        console.log(`  ✅ Registered ${def.name}: ${fiberId.slice(0, 12)}... (owner: ${proposer.address.slice(0, 10)})`);
+
+        // Add to active fibers with script oracle tracking
+        this.activeFibers.push({
+          id: fiberId,
+          type,
+          definition: def,
+          participants,
+          currentState: def.initialState,
+          transitionIndex: 0,
+          startedAt: Date.now(),
+          scriptOracle: {
+            scriptId: fiberId,
+            invocations: 0,
+            maxInvocations: (scriptData.maxInvocations as number) ?? SCRIPT_INVOKE_COUNT,
+          },
+        });
+        return; // early-return: already pushed
       } else if (def.workflowType === 'Contract' && counterparty) {
         // Use SDK-compliant contract creation
         const contractData = stateData as Record<string, unknown>;
@@ -509,6 +555,42 @@ export class FiberOrchestrator {
     if (availableTransitions.length === 0) {
       return 'waiting'; // No transitions available
     }
+
+    // Script oracle: override transition selection based on invocation count
+    if (def.workflowType === 'ScriptOracle' && fiber.scriptOracle) {
+      const { invocations, maxInvocations } = fiber.scriptOracle;
+      // REGISTERED → ACTIVE (activate, no bridge call needed)
+      if (fiber.currentState === 'REGISTERED') {
+        const activateTransition = availableTransitions.find(t => t.event === 'activate');
+        if (activateTransition) {
+          const actorAgent = fiber.participants.get(activateTransition.actor);
+          if (actorAgent) {
+            fiber.currentState = activateTransition.to;
+            fiber.transitionIndex++;
+            console.log(`  → ${fiber.type}[${fiber.id.slice(0, 8)}]: REGISTERED --activate--> ACTIVE`);
+            return 'progressed';
+          }
+        }
+        return 'waiting';
+      }
+      // ACTIVE: invoke until maxed, then retire
+      if (fiber.currentState === 'ACTIVE') {
+        const event = invocations >= maxInvocations ? 'retire' : 'invoke';
+        const t = availableTransitions.find(tr => tr.event === event) ?? availableTransitions[0];
+        const actorAgent = fiber.participants.get(t.actor);
+        if (!actorAgent) return 'waiting';
+        try {
+          await this.executeScriptOracleTransition(fiber, t, actorAgent);
+          fiber.currentState = t.to;
+          fiber.transitionIndex++;
+          console.log(`  → ${fiber.type}[${fiber.id.slice(0, 8)}]: ACTIVE --${t.event}--> ${t.to}`);
+          return def.finalStates.includes(t.to) ? 'completed' : 'progressed';
+        } catch (err) {
+          console.log(`  ⚠️  ScriptOracle transition failed: ${(err as Error).message}`);
+          return 'waiting';
+        }
+      }
+    }
     
     // Pick a transition (prefer non-rejection paths for now)
     const transition = availableTransitions.find(t => 
@@ -540,6 +622,8 @@ export class FiberOrchestrator {
         await this.executeCorporateShareholdersTransition(fiber, transition, actorAgent);
       } else if (def.workflowType === 'CorporateSecurities') {
         await this.executeCorporateSecuritiesTransition(fiber, transition, actorAgent);
+      } else if (def.workflowType === 'ScriptOracle') {
+        await this.executeScriptOracleTransition(fiber, transition, actorAgent);
       } else {
         // Generic fiber transition
         await this.bridge.transitionFiber(
@@ -1303,6 +1387,58 @@ export class FiberOrchestrator {
   }
 
   private tickCount = 0;
+
+  // =========================================================================
+  // Script Oracle Transition Executor
+  // =========================================================================
+
+  /**
+   * Execute a script oracle transition.
+   *
+   * `activate` — No on-chain call; just marks the fiber as ACTIVE in-process.
+   * `invoke`   — Calls /script/invoke with type-specific inputs; increments counter.
+   * `retire`   — No on-chain call; just marks the fiber as RETIRED in-process.
+   */
+  private async executeScriptOracleTransition(
+    fiber: ActiveFiber,
+    transition: { event: string; actor: string },
+    actor: { address: string; privateKey: string }
+  ): Promise<void> {
+    switch (transition.event) {
+      case 'activate':
+        // Script is already live once registered — nothing to do on-chain.
+        break;
+
+      case 'invoke': {
+        if (!fiber.scriptOracle) break;
+        const inputGen = SCRIPT_INPUT_GENERATORS[fiber.type];
+        const inputs = inputGen ? inputGen() : {};
+        const result = await this.bridge.invokeScript(
+          actor.privateKey,
+          fiber.scriptOracle.scriptId,
+          inputs
+        );
+        fiber.scriptOracle.invocations++;
+        console.log(
+          `  📜 ${fiber.type}[${fiber.id.slice(0, 8)}]: invoked (${fiber.scriptOracle.invocations}/${fiber.scriptOracle.maxInvocations}) hash=${result.hash.slice(0, 10)}`
+        );
+        break;
+      }
+
+      case 'retire':
+        // No on-chain retirement call in the current bridge API — just complete in-process.
+        if (fiber.scriptOracle) {
+          console.log(
+            `  📜 ${fiber.type}[${fiber.id.slice(0, 8)}]: retired after ${fiber.scriptOracle.invocations} invocations`
+          );
+        }
+        break;
+
+      default:
+        // Unexpected event for script oracle — log and ignore.
+        console.log(`  ⚠️  Unexpected ScriptOracle event: ${transition.event}`);
+    }
+  }
 
   /**
    * Vouch for all participants in a successfully completed fiber

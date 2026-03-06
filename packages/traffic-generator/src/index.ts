@@ -51,10 +51,10 @@ const DEFAULT_FIBER_WEIGHTS: Record<string, number> = {
   arbitratedEscrow: 0.08,
   simpleOrder: 0.07,
   
-  // Market workflows (25%)
+  // Market workflows (23%)
   predictionMarket: 0.10,
-  auctionMarket: 0.08,
-  crowdfundMarket: 0.07,
+  auctionMarket: 0.07,
+  crowdfundMarket: 0.06,
   
   // DAO workflows (15%)
   tokenDAO: 0.06,
@@ -66,10 +66,15 @@ const DEFAULT_FIBER_WEIGHTS: Record<string, number> = {
   corporateEntity: 0.04,
   corporateBoard: 0.03,
   
-  // Custom/Game workflows (20%)
-  ticTacToe: 0.10,
-  voting: 0.06,
-  approval: 0.04,
+  // Custom/Game workflows (12%)
+  ticTacToe: 0.06,
+  voting: 0.04,
+  approval: 0.02,
+
+  // Script Oracle workflows (10%)
+  escrowScript: 0.04,
+  votingScript: 0.03,
+  approvalScript: 0.03,
 };
 
 function loadConfig(): TrafficConfig {

@@ -9,6 +9,7 @@
 // The import works at runtime - types are declared in sdk-apps.d.ts as a workaround.
 // @ts-ignore Cannot find module '@ottochain/sdk/apps'
 import { contracts, markets, governance, identity, oracles } from '@ottochain/sdk/apps';
+import { SCRIPT_NAMES, SCRIPT_DESCRIPTIONS, SCRIPT_INVOKE_COUNT } from './script-workflows.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -29,7 +30,7 @@ export interface FiberContext {
 export interface FiberDefinition {
   type: string;
   name: string;
-  workflowType: 'Contract' | 'Market' | 'DAO' | 'Oracle' | 'AgentIdentity' | 'Governance' | 'CorporateEntity' | 'CorporateBoard' | 'CorporateShareholders' | 'CorporateSecurities' | 'Custom';
+  workflowType: 'Contract' | 'Market' | 'DAO' | 'Oracle' | 'AgentIdentity' | 'Governance' | 'CorporateEntity' | 'CorporateBoard' | 'CorporateShareholders' | 'CorporateSecurities' | 'Custom' | 'ScriptOracle';
   roles: string[];
   isVariableParty: boolean;
   states: string[];
@@ -72,6 +73,18 @@ export interface CorporateShareholdersStateData extends Record<string, unknown> 
   eligibleVoters: unknown[];
 }
 export interface CorporateSecuritiesStateData extends Record<string, unknown> {}
+
+/** State data for a script oracle fiber (tracked in-process by the traffic gen). */
+export interface ScriptOracleStateData extends Record<string, unknown> {
+  /** Script oracle fiber ID assigned on registration. */
+  scriptId: string;
+  /** Number of invocations executed so far. */
+  invocations: number;
+  /** Max invocations before retiring. */
+  maxInvocations: number;
+  /** JSON Logic program type name. */
+  scriptType: string;
+}
 
 // ---------------------------------------------------------------------------
 // SDK Definition Type
@@ -470,6 +483,83 @@ export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
       question: `Proposal ${context.generation}: approve initiative?`,
       options: ['yes', 'no', 'abstain'],
       generation: context.generation,
+  // -------------------------------------------------------------------------
+  // Script Oracle workflow types
+  //
+  // These do NOT use an SDK state machine definition: they use the
+  // /script/register + /script/invoke bridge routes instead.  The states and
+  // transitions below are tracked in-process only; the on-chain side uses
+  // CreateScript / InvokeScript metagraph operations.
+  // -------------------------------------------------------------------------
+  escrowScript: {
+    type: 'escrowScript',
+    name: SCRIPT_NAMES.escrowScript,
+    workflowType: 'ScriptOracle',
+    roles: ['owner'],
+    isVariableParty: false,
+    states: ['REGISTERED', 'ACTIVE', 'RETIRED'],
+    initialState: 'REGISTERED',
+    finalStates: ['RETIRED'],
+    transitions: [
+      { from: 'REGISTERED', to: 'ACTIVE',     event: 'activate', actor: 'owner' },
+      { from: 'ACTIVE',     to: 'ACTIVE',     event: 'invoke',   actor: 'owner' },
+      { from: 'ACTIVE',     to: 'RETIRED',    event: 'retire',   actor: 'owner' },
+    ],
+    generateInitialData: (participants: Map<string, string>, context: FiberContext): ScriptOracleStateData => ({
+      scriptId: '',
+      invocations: 0,
+      maxInvocations: SCRIPT_INVOKE_COUNT,
+      scriptType: 'escrowScript',
+      owner: participants.get('owner') ?? '',
+      fiberId: context.fiberId,
+    }),
+  },
+
+  votingScript: {
+    type: 'votingScript',
+    name: SCRIPT_NAMES.votingScript,
+    workflowType: 'ScriptOracle',
+    roles: ['owner'],
+    isVariableParty: false,
+    states: ['REGISTERED', 'ACTIVE', 'RETIRED'],
+    initialState: 'REGISTERED',
+    finalStates: ['RETIRED'],
+    transitions: [
+      { from: 'REGISTERED', to: 'ACTIVE',     event: 'activate', actor: 'owner' },
+      { from: 'ACTIVE',     to: 'ACTIVE',     event: 'invoke',   actor: 'owner' },
+      { from: 'ACTIVE',     to: 'RETIRED',    event: 'retire',   actor: 'owner' },
+    ],
+    generateInitialData: (participants: Map<string, string>, context: FiberContext): ScriptOracleStateData => ({
+      scriptId: '',
+      invocations: 0,
+      maxInvocations: SCRIPT_INVOKE_COUNT,
+      scriptType: 'votingScript',
+      owner: participants.get('owner') ?? '',
+      fiberId: context.fiberId,
+    }),
+  },
+
+  approvalScript: {
+    type: 'approvalScript',
+    name: SCRIPT_NAMES.approvalScript,
+    workflowType: 'ScriptOracle',
+    roles: ['owner'],
+    isVariableParty: false,
+    states: ['REGISTERED', 'ACTIVE', 'RETIRED'],
+    initialState: 'REGISTERED',
+    finalStates: ['RETIRED'],
+    transitions: [
+      { from: 'REGISTERED', to: 'ACTIVE',     event: 'activate', actor: 'owner' },
+      { from: 'ACTIVE',     to: 'ACTIVE',     event: 'invoke',   actor: 'owner' },
+      { from: 'ACTIVE',     to: 'RETIRED',    event: 'retire',   actor: 'owner' },
+    ],
+    generateInitialData: (participants: Map<string, string>, context: FiberContext): ScriptOracleStateData => ({
+      scriptId: '',
+      invocations: 0,
+      maxInvocations: SCRIPT_INVOKE_COUNT,
+      scriptType: 'approvalScript',
+      owner: participants.get('owner') ?? '',
+      fiberId: context.fiberId,
     }),
   },
 };
