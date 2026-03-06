@@ -10,6 +10,7 @@ import {
   getCheckpoint, 
   keyPairFromPrivateKey,
   getFiberSequenceNumber,
+  waitForFiber,
   type StateMachineDefinition,
   type CreateStateMachine,
   type TransitionStateMachine,
@@ -113,6 +114,15 @@ contractRoutes.post('/accept', async (req, res) => {
   try {
     const input = ContractActionSchema.parse(req.body);
 
+    // Wait for fiber to sync to DL1 before attempting transition
+    const visible = await waitForFiber(input.contractId, 30, 1000);
+    if (!visible) {
+      return res.status(503).json({
+        error: 'Contract not yet synced to data layer, try again shortly',
+        contractId: input.contractId,
+      });
+    }
+
     const state = await getStateMachine(input.contractId) as { 
       sequenceNumber?: number; 
       stateData?: { counterparty?: string };
@@ -178,6 +188,15 @@ contractRoutes.post('/reject', async (req, res) => {
   try {
     const input = ContractActionSchema.parse(req.body);
 
+    // Wait for fiber to sync to DL1 before attempting transition
+    const visible = await waitForFiber(input.contractId, 30, 1000);
+    if (!visible) {
+      return res.status(503).json({
+        error: 'Contract not yet synced to data layer, try again shortly',
+        contractId: input.contractId,
+      });
+    }
+
     const state = await getStateMachine(input.contractId) as { 
       sequenceNumber?: number; 
       stateData?: { counterparty?: string };
@@ -232,6 +251,15 @@ contractRoutes.post('/complete', async (req, res) => {
   try {
     const input = ContractActionSchema.parse(req.body);
 
+    // Wait for fiber to sync to DL1 before attempting transition
+    const visible = await waitForFiber(input.contractId, 30, 1000);
+    if (!visible) {
+      return res.status(503).json({
+        error: 'Contract not yet synced to data layer, try again shortly',
+        contractId: input.contractId,
+      });
+    }
+
     const state = await getStateMachine(input.contractId) as { 
       sequenceNumber?: number;
       currentState?: string;
@@ -284,6 +312,15 @@ contractRoutes.post('/complete', async (req, res) => {
 contractRoutes.post('/finalize', async (req, res) => {
   try {
     const input = ContractActionSchema.parse(req.body);
+
+    // Wait for fiber to sync to DL1 before attempting transition
+    const visible = await waitForFiber(input.contractId, 30, 1000);
+    if (!visible) {
+      return res.status(503).json({
+        error: 'Contract not yet synced to data layer, try again shortly',
+        contractId: input.contractId,
+      });
+    }
 
     const state = await getStateMachine(input.contractId) as { 
       sequenceNumber?: number;
@@ -347,6 +384,15 @@ contractRoutes.post('/dispute', async (req, res) => {
 
     if (!input.reason) {
       return res.status(400).json({ error: 'reason is required for disputes' });
+    }
+
+    // Wait for fiber to sync to DL1 before attempting transition
+    const visible = await waitForFiber(input.contractId, 30, 1000);
+    if (!visible) {
+      return res.status(503).json({
+        error: 'Contract not yet synced to data layer, try again shortly',
+        contractId: input.contractId,
+      });
     }
 
     const state = await getStateMachine(input.contractId) as { 
