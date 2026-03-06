@@ -1,7 +1,7 @@
 /**
- * Evolutionary Traffic Generator Types
+ * Traffic Generator Types
  * 
- * Genetic evolution-inspired model for continuous metagraph traffic simulation.
+ * Core types for the weighted distribution traffic generator.
  */
 
 import {
@@ -62,7 +62,7 @@ export interface MarketClaim {
 }
 
 /**
- * Market instance tracked by the simulator
+ * Market instance tracked by the traffic generator
  */
 export interface Market {
   /** Market fiber ID */
@@ -95,7 +95,7 @@ export interface Market {
   claims: Record<string, MarketClaim>;
   /** Market-type-specific terms */
   terms: Record<string, unknown>;
-  /** Generation when created */
+  /** Tick when created */
   createdGeneration: number;
   /** Final outcome (after settlement) */
   finalOutcome?: string | number;
@@ -132,7 +132,7 @@ export const ON_CHAIN_AGENT_STATES = enumStringKeys(SdkAgentState);
 export const ON_CHAIN_CONTRACT_STATES = enumStringKeys(SdkContractState);
 
 // ============================================================================
-// Agent Population Types
+// Agent Types
 // ============================================================================
 
 export interface Agent {
@@ -144,9 +144,9 @@ export interface Agent {
   fiberId: string | null;
   /** Current state in the identity lifecycle */
   state: SimulationAgentState;
-  /** Computed fitness score */
+  /** Fitness score (for legacy compatibility) */
   fitness: AgentFitness;
-  /** Simulation metadata */
+  /** Agent metadata */
   meta: AgentMeta;
 }
 
@@ -155,20 +155,20 @@ export interface AgentFitness {
   reputation: number;
   /** Contracts completed / proposed ratio */
   completionRate: number;
-  /** Connections to high-rep agents (network centrality) */
+  /** Connections to high-rep agents */
   networkEffect: number;
-  /** Survival bonus (generations alive) */
+  /** Ticks since registration */
   age: number;
   /** Computed total fitness */
   total: number;
 }
 
 export interface AgentMeta {
-  /** Generation when agent was created */
+  /** Tick when agent was registered */
   birthGeneration: number;
   /** Display name for logging */
   displayName: string;
-  /** Platform ID (for cross-platform simulation) */
+  /** Platform ID */
   platform: string;
   /** Addresses this agent has vouched for */
   vouchedFor: Set<string>;
@@ -180,14 +180,14 @@ export interface AgentMeta {
   completedContracts: number;
   /** Failed/rejected contract count */
   failedContracts: number;
-  /** Risk tolerance (0-1, affects transition choices) */
+  /** Risk tolerance (0-1) - used for some decisions */
   riskTolerance: number;
   // Market-related fields
   /** Active market fiber IDs this agent participates in */
   activeMarkets: Set<string>;
   /** Markets this agent has created */
   marketsCreated: number;
-  /** Markets where this agent won (prediction correct, auction won) */
+  /** Markets where this agent won */
   marketWins: number;
   /** Markets where this agent lost */
   marketLosses: number;
@@ -218,13 +218,12 @@ export interface Contract {
   task: string;
   /** Contract terms */
   terms: Record<string, unknown>;
-  /** Generation when created */
+  /** Tick when created */
   createdGeneration: number;
-  /** Expected completion generation */
+  /** Expected completion tick */
   expectedCompletion: number;
 }
-
-// ============================================================================
+=====================================================================
 // Simulation Context
 // ============================================================================
 
@@ -385,3 +384,5 @@ export const DEFAULT_CONFIG: GeneratorConfig = {
   marketTypeWeights: [0.4, 0.3, 0.2, 0.1], // prediction, auction, crowdfund, group_buy
   marketDeadlineGenerations: 5,
 };
+=======
+
