@@ -290,20 +290,20 @@
       </div>
       <div class="metrics-grid">
         <div class="metric">
-          <div class="metric-value" id="currentTps">--</div>
-          <div class="metric-label">Current TPS</div>
+          <div class="metric-value" id="activeFibers">--</div>
+          <div class="metric-label">Active Fibers</div>
         </div>
         <div class="metric">
-          <div class="metric-value" id="targetTps">--</div>
-          <div class="metric-label">Target TPS</div>
+          <div class="metric-value" id="targetActiveFibers">--</div>
+          <div class="metric-label">Target Active</div>
         </div>
         <div class="metric">
-          <div class="metric-value" id="population">--</div>
-          <div class="metric-label">Population</div>
+          <div class="metric-value" id="completedFibers">--</div>
+          <div class="metric-label">Completed</div>
         </div>
         <div class="metric">
-          <div class="metric-value" id="totalTx">--</div>
-          <div class="metric-label">Total TX</div>
+          <div class="metric-value" id="failedFibers">--</div>
+          <div class="metric-label">Failed</div>
         </div>
         <div class="metric">
           <div class="metric-value" id="successRate">--</div>
@@ -535,11 +535,11 @@
         badge.className = 'status-badge stopped';
       }
       
-      document.getElementById('currentTps').textContent = status.currentTps?.toFixed(1) || '0';
-      document.getElementById('targetTps').textContent = status.targetTps || '--';
-      document.getElementById('population').textContent = `${status.currentPopulation || 0}/${status.targetPopulation || '--'}`;
-      document.getElementById('totalTx').textContent = formatNumber(status.totalTransactions || 0);
-      document.getElementById('successRate').textContent = status.successRate ? (status.successRate * 100).toFixed(1) + '%' : '--';
+      document.getElementById('activeFibers').textContent = status.activeFibers ?? '--';
+      document.getElementById('targetActiveFibers').textContent = status.targetActiveFibers ?? '--';
+      document.getElementById('completedFibers').textContent = formatNumber(status.completedFibers || 0);
+      document.getElementById('failedFibers').textContent = formatNumber(status.failedFibers || 0);
+      document.getElementById('successRate').textContent = status.successRate != null ? (status.successRate * 100).toFixed(1) + '%' : '--';
       document.getElementById('uptime').textContent = formatUptime(status.uptime);
       
       document.getElementById('btnStart').disabled = status.enabled;

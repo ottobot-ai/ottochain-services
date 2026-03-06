@@ -56,7 +56,7 @@ export const MARKET_SM_DEFINITION = {
  */
 export function getAvailableMarketEvents(state: string): string[] {
   return MARKET_SM_DEFINITION.transitions
-    .filter(t => t.from.value === state)
+    .filter(t => t.from === state)
     .map(t => t.eventName);
 }
 
