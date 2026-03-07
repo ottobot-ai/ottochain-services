@@ -12,6 +12,51 @@ import { OttoMetagraphClient } from '@ottochain/sdk';
 import type { StateMachineFiberRecord } from '@ottochain/sdk/core';
 import { AgentState as PrismaAgentState, ContractState as PrismaContractState } from '@prisma/client';
 
+// ── Bridge callback helper ────────────────────────────────────────────────────
+
+interface FiberNotification {
+  fiberId: string;
+  currentState: string;
+  ordinal: number;
+  status: string;
+}
+
+/**
+ * Notify bridge of newly indexed fibers via its internal callback endpoint.
+ *
+ * Fire-and-forget: failures are logged but do NOT block snapshot indexing.
+ * The bridge has its own safety timeout for callers that don't receive a push.
+ */
+async function notifyBridge(snapshotOrdinal: number, fibers: FiberNotification[]): Promise<void> {
+  if (fibers.length === 0) return;
+
+  const config = getConfig();
+  // Default: derive from BRIDGE_URL (same host, /internal/indexer-notify)
+  const callbackUrl = config.BRIDGE_CALLBACK_URL
+    ?? `${config.BRIDGE_URL}/internal/indexer-notify`;
+
+  try {
+    const resp = await fetch(callbackUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ snapshotOrdinal, fibers }),
+      signal: AbortSignal.timeout(5_000), // 5s hard cap — don't stall the indexer
+    });
+
+    if (!resp.ok) {
+      console.warn(`[processor] Bridge callback returned ${resp.status} for ordinal ${snapshotOrdinal}`);
+    } else {
+      const data = await resp.json() as { waiterssResolved?: number };
+      if ((data.waiterssResolved ?? 0) > 0) {
+        console.log(`[processor] Bridge resolved ${data.waiterssResolved} waiters for ordinal ${snapshotOrdinal}`);
+      }
+    }
+  } catch (err) {
+    // Network error or timeout — log and continue
+    console.warn(`[processor] Bridge callback failed for ordinal ${snapshotOrdinal}: ${(err as Error).message}`);
+  }
+}
+
 interface ProcessResult {
   ordinal: number;
   fibersUpdated: number;
@@ -71,6 +116,9 @@ export async function processSnapshot(notification: SnapshotNotification): Promi
   let contractsUpdated = 0;
   let corporateUpdated = 0;
 
+  // Collected for push notification to bridge after indexing completes
+  const indexedFibers: FiberNotification[] = [];
+  
   // Index ALL state machines as generic Fibers
   for (const [fiberId, fiber] of Object.entries(stateMachines || {})) {
     const meta = fiberMetadata(fiber);
@@ -109,6 +157,9 @@ export async function processSnapshot(notification: SnapshotNotification): Promi
 
     fibersUpdated++;
 
+    // Collect for bridge push notification
+    indexedFibers.push({ fiberId, currentState, ordinal: notification.ordinal, status });
+    
     // Record transition if there's a new receipt
     if (fiber.lastReceipt && fiber.lastReceipt.success) {
       const existingTransition = await prisma.fiberTransition.findFirst({
@@ -217,6 +268,10 @@ export async function processSnapshot(notification: SnapshotNotification): Promi
   );
 
   await publishEvent(CHANNELS.STATS_UPDATED, result);
+
+  // Push-notify bridge of all indexed fibers (fire-and-forget, non-blocking)
+  void notifyBridge(notification.ordinal, indexedFibers);
+
   return result;
 }
 

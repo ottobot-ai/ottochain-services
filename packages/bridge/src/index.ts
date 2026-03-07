@@ -14,7 +14,9 @@ import { marketRoutes } from './routes/market.js';
 import { oracleRoutes } from './routes/oracle.js';
 import { corporateRoutes } from './routes/corporate.js';
 import { tokenRoutes } from './routes/token.js';
+import { internalRoutes } from './routes/internal.js';     // Internal service-to-service API
 import { responseTimeTracker } from './lib/response-time-tracker.js';
+import { confirmationRegistry } from './lib/confirmation-registry.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' })); // Larger limit for state machine definitions
@@ -40,6 +42,7 @@ app.get('/health', (_, res) => {
     status: 'ok',
     service: 'bridge',
     responseTime: { p50, p95, p99 },
+    pendingConfirmations: confirmationRegistry.size,
   });
 });
 
@@ -66,6 +69,7 @@ app.use('/market', marketRoutes);         // Market API (predictions, auctions, 
 app.use('/oracle', oracleRoutes);         // Oracle API (registration, attestation, staking)
 app.use('/corporate', corporateRoutes);   // Corporate governance API (entities, board, shareholders)
 app.use('/token', tokenRoutes);           // Token API (create, transfer, split, merge, burn, expire)
+app.use('/internal', internalRoutes);     // Internal service-to-service (indexer → bridge callbacks)
 
 // Start server
 const config = getConfig();
