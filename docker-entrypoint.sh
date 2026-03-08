@@ -57,6 +57,7 @@ if echo "$DB_SERVICES" | grep -qw "$SERVICE" && [ -n "$DATABASE_URL" ]; then
         echo "WARNING: Could not verify database connection, proceeding anyway"
     fi
 
+
     # Auto-migrate: ensure database schema is up to date
     # Uses db push (idempotent) rather than migrate deploy to avoid
     # failures from missing base migrations on fresh databases.
