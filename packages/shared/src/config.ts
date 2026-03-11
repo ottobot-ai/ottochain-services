@@ -26,7 +26,7 @@ const ConfigSchema = z.object({
   GL0_URL: z.string().url().optional(),
   
   // Metagraph identification
-  METAGRAPH_ID: z.string().optional(), // DAG address of the metagraph
+  METAGRAPH_ID: z.string().optional(), // DAG address of the metagraph (required for indexer)
   
   // Metagraph endpoints
   METAGRAPH_ML0_URL: z.string().url().default('http://localhost:9200'),

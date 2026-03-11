@@ -1,13 +1,22 @@
 /**
  * GL0 Confirmation Poller
  * 
- * Polls GL0 global snapshots to confirm ML0 currency snapshots.
- * Updates status from PENDING → CONFIRMED when hash appears in GL0.
+ * Polls GL0 global snapshots (combined endpoint) to confirm ML0 currency snapshots.
+ * Uses /global-snapshots/latest/combined which returns the full accumulated state,
+ * not just the incremental — so our metagraph is always present once it has
+ * produced any snapshot (the incremental endpoint misses ~70% of snapshots).
+ * Updates status from PENDING → CONFIRMED when metagraph appears in GL0.
  */
 
 import { prisma, getConfig, publishEvent, CHANNELS } from '@ottochain/shared';
+import { getIndexerRequired } from './config.js';
 
-interface GlobalSnapshot {
+/**
+ * GL0 /global-snapshots/latest/combined returns a tuple:
+ * [Signed[GlobalSnapshot], SnapshotInfo]
+ * We only need the first element (the signed snapshot).
+ */
+interface CombinedSnapshotElement {
   value: {
     ordinal: number;
     // stateChannelSnapshots: metagraphId → array of currency snapshot binaries
@@ -28,24 +37,25 @@ let lastCheckedGl0Ordinal = 0;
  * Check GL0 for confirmed metagraph snapshots
  */
 async function checkConfirmations(): Promise<void> {
-  const config = getConfig();
-  const gl0Url = config.GL0_URL;
-  const metagraphId = config.METAGRAPH_ID;
-  
-  if (!gl0Url) {
-    console.warn('⚠️ GL0_URL not configured, skipping confirmation check');
-    return;
-  }
+  getConfig(); // ensure shared config is initialized
+  const { GL0_URL: gl0Url, METAGRAPH_ID: metagraphId } = getIndexerRequired();
   
   try {
-    // Fetch latest global snapshot
-    const response = await fetch(`${gl0Url}/global-snapshots/latest`);
+    // Fetch latest combined global snapshot (full accumulated state).
+    // Unlike /latest (incremental), /latest/combined always includes our
+    // metagraph in stateChannelSnapshots once it has produced any snapshot.
+    const response = await fetch(`${gl0Url}/global-snapshots/latest/combined`);
     if (!response.ok) {
       console.warn(`⚠️ GL0 returned ${response.status}`);
       return;
     }
     
-    const globalSnapshot = await response.json() as GlobalSnapshot;
+    const combined = await response.json() as CombinedSnapshotElement[];
+    const globalSnapshot = combined[0]; // First element is the signed snapshot
+    if (!globalSnapshot?.value) {
+      console.warn('⚠️ GL0 combined response missing snapshot data');
+      return;
+    }
     const gl0Ordinal = globalSnapshot.value.ordinal;
     
     // Skip if we've already checked this ordinal
@@ -59,90 +69,101 @@ async function checkConfirmations(): Promise<void> {
     
     // Look for our metagraph's currency snapshots in GL0
     // The metagraph ID key in stateChannelSnapshots confirms GL0 received our snapshot
-    const metagraphSnapshots = metagraphId ? stateChannels[metagraphId] : undefined;
+    const metagraphSnapshots = stateChannels[metagraphId];
     
     if (!metagraphSnapshots || metagraphSnapshots.length === 0) {
       // Our metagraph didn't produce a snapshot in this GL0 ordinal — normal, skip
       return;
     }
     
-    // Our metagraph IS in this GL0 snapshot — confirm the latest pending
+    // Our metagraph IS in this GL0 snapshot — batch-confirm all pending up to this point.
+    // GL0 including our metagraph means it accepted the latest ML0 binary, which implies
+    // all prior ML0 snapshots were valid (chain is linear).
     const latestEntry = metagraphSnapshots[metagraphSnapshots.length - 1];
     const confirmedHash = latestEntry.value.lastSnapshotHash;
+    const gl0OrdinalBigInt = BigInt(gl0Ordinal);
     
-    // Find pending snapshots to confirm. Match by hash if possible, else confirm the oldest pending.
-    let pending = await prisma.indexedSnapshot.findFirst({
+    // Try to find the specific snapshot by hash to get its ordinal as the upper bound
+    const matchedByHash = await prisma.indexedSnapshot.findFirst({
       where: { hash: confirmedHash, status: 'PENDING' }
     });
     
-    if (!pending) {
-      // Hash might not match (webhook vs polled), just confirm the oldest pending
-      pending = await prisma.indexedSnapshot.findFirst({
-        where: { status: 'PENDING' },
-        orderBy: { ordinal: 'asc' }
-      });
-    }
+    // If hash matches, confirm everything up to that ordinal.
+    // If no match (hash mismatch from polling vs webhook), confirm ALL pending —
+    // GL0 accepted our latest state, so all prior are implicitly confirmed.
+    const upperBound = matchedByHash?.ordinal;
     
-    if (pending) {
-      const gl0OrdinalBigInt = BigInt(gl0Ordinal);
+    const batchResult = await prisma.indexedSnapshot.updateMany({
+      where: {
+        status: 'PENDING',
+        ...(upperBound ? { ordinal: { lte: upperBound } } : {}),
+      },
+      data: {
+        status: 'CONFIRMED',
+        gl0Ordinal: gl0OrdinalBigInt,
+        confirmedAt: new Date(),
+      }
+    });
+    
+    if (batchResult.count > 0) {
+      console.log(`✅ Batch-confirmed ${batchResult.count} ML0 snapshots in GL0 ordinal ${gl0Ordinal} (hash: ${confirmedHash.slice(0, 12)}...)`);
       
-      // Update the indexed snapshot
-      await prisma.indexedSnapshot.update({
-        where: { ordinal: pending.ordinal },
-        data: {
-          status: 'CONFIRMED',
-          gl0Ordinal: gl0OrdinalBigInt,
-          confirmedAt: new Date(),
-        }
-      });
-      
-      // Backfill gl0Ordinal on fibers created/updated in this snapshot
-      await prisma.fiber.updateMany({
-        where: { createdOrdinal: pending.ordinal, createdGl0Ordinal: null },
-        data: { createdGl0Ordinal: gl0OrdinalBigInt }
-      });
-      await prisma.fiber.updateMany({
-        where: { updatedOrdinal: pending.ordinal, updatedGl0Ordinal: null },
-        data: { updatedGl0Ordinal: gl0OrdinalBigInt }
-      });
-      
-      // Backfill gl0Ordinal on fiber transitions in this snapshot
-      await prisma.fiberTransition.updateMany({
-        where: { snapshotOrdinal: pending.ordinal, gl0Ordinal: null },
-        data: { gl0Ordinal: gl0OrdinalBigInt }
-      });
-      
-      console.log(`✅ Confirmed ML0 snapshot ${pending.ordinal} in GL0 ordinal ${gl0Ordinal} (hash: ${confirmedHash.slice(0, 12)}...)`);
+      // Backfill gl0Ordinal on fibers/transitions — scoped to the snapshot ordinals
+      // we just confirmed, so in-flight (not-yet-confirmed) rows are never over-stamped.
+      const confirmedOrdinals = await prisma.indexedSnapshot
+        .findMany({
+          where: { status: 'CONFIRMED', gl0Ordinal: gl0OrdinalBigInt },
+          select: { ordinal: true },
+        })
+        .then((rows) => rows.map((r) => r.ordinal));
+
+      if (confirmedOrdinals.length > 0) {
+        await prisma.fiber.updateMany({
+          where: { createdGl0Ordinal: null, createdOrdinal: { in: confirmedOrdinals } },
+          data: { createdGl0Ordinal: gl0OrdinalBigInt },
+        });
+        await prisma.fiber.updateMany({
+          where: { updatedGl0Ordinal: null, updatedOrdinal: { in: confirmedOrdinals } },
+          data: { updatedGl0Ordinal: gl0OrdinalBigInt },
+        });
+        await prisma.fiberTransition.updateMany({
+          where: { gl0Ordinal: null, snapshotOrdinal: { in: confirmedOrdinals } },
+          data: { gl0Ordinal: gl0OrdinalBigInt },
+        });
+      }
       
       await publishEvent(CHANNELS.STATS_UPDATED, {
         event: 'SNAPSHOT_CONFIRMED',
-        ml0Ordinal: Number(pending.ordinal),
+        count: batchResult.count,
         gl0Ordinal,
         hash: confirmedHash,
       });
     }
-    
-    // Check for orphaned snapshots (pending for too long with newer confirmed)
+
+    // Detect orphaned snapshots (PENDING superseded by a confirmed chain).
+    // Runs on every ordinal advance so we don't silently lose visibility into
+    // snapshots that were skipped or fork-replaced.
     const latestConfirmed = await prisma.indexedSnapshot.findFirst({
       where: { status: 'CONFIRMED' },
-      orderBy: { ordinal: 'desc' }
+      orderBy: { ordinal: 'desc' },
     });
-    
+
     if (latestConfirmed) {
-      // Mark older pending snapshots as orphaned
       const orphaned = await prisma.indexedSnapshot.updateMany({
         where: {
           status: 'PENDING',
-          ordinal: { lt: latestConfirmed.ordinal }
+          ordinal: { lt: latestConfirmed.ordinal },
         },
-        data: { status: 'ORPHANED' }
+        data: { status: 'ORPHANED' },
       });
-      
+
       if (orphaned.count > 0) {
-        console.warn(`⚠️ Marked ${orphaned.count} snapshots as ORPHANED (superseded by ordinal ${latestConfirmed.ordinal})`);
+        console.warn(
+          `⚠️ Marked ${orphaned.count} snapshot(s) as ORPHANED (superseded by confirmed ordinal ${latestConfirmed.ordinal})`
+        );
       }
     }
-    
+
   } catch (err) {
     console.error('❌ Error checking GL0 confirmations:', err);
   }

@@ -5,6 +5,7 @@
 
 import express, { Request, Response } from 'express';
 import { prisma, getConfig, SnapshotNotificationSchema, RejectionNotificationSchema, getStatsCollector } from '@ottochain/shared';
+import { getIndexerRequired } from './config.js';
 import { processSnapshot } from './processor.js';
 import { startConfirmationPoller, stopConfirmationPoller, getConfirmationStats } from './confirmations.js';
 import { startSnapshotPoller, stopSnapshotPoller, getPollerStats } from './poller.js';
@@ -333,9 +334,20 @@ async function registerWebhookSubscriber(ml0Url: string, callbackUrl: string): P
   }
 }
 
-// Start server
+// Start server — validate required indexer config before binding
+// getIndexerRequired() throws a ZodError with clear field-level messages if
+// METAGRAPH_ID or GL0_URL are absent or malformed, so the process exits with
+// a useful message instead of an obscure undefined-access crash later.
 const config = getConfig();
 const port = config.INDEXER_PORT;
+
+try {
+  getIndexerRequired();
+} catch (err) {
+  console.error('❌ Indexer startup failed — required config is missing or invalid:');
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+}
 
 app.listen(port, '0.0.0.0', async () => {
   console.log(`🔍 Indexer listening on port ${port} (0.0.0.0)`);
