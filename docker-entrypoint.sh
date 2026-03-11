@@ -62,10 +62,23 @@ if echo "$DB_SERVICES" | grep -qw "$SERVICE" && [ -n "$DATABASE_URL" ]; then
     # failures from missing base migrations on fresh databases.
     if [ "${SKIP_MIGRATION}" != "true" ]; then
         echo "Running database migration..."
-        if npx prisma db push --skip-generate --accept-data-loss 2>&1; then
-            echo "Database schema is up to date"
+        if [ "${NODE_ENV}" = "production" ]; then
+            # Production: use migrate deploy (safe, no data loss)
+            echo "Production mode: running prisma migrate deploy"
+            if npx prisma migrate deploy 2>&1; then
+                echo "Database schema is up to date"
+            else
+                echo "ERROR: Database migration failed in production — aborting startup"
+                exit 1
+            fi
         else
-            echo "WARNING: Database migration failed, proceeding anyway"
+            # Dev/staging: use db push with data loss warning
+            echo "WARNING: running db push --accept-data-loss — schema changes may drop data"
+            if npx prisma db push --skip-generate --accept-data-loss 2>&1; then
+                echo "Database schema is up to date"
+            else
+                echo "WARNING: Database migration failed — proceeding anyway (non-production)"
+            fi
         fi
     fi
 fi
