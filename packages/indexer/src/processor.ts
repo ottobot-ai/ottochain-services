@@ -1,13 +1,15 @@
 // Snapshot Processor
 // Chain-agnostic indexing of all OttoChain state machines
 
-import { 
-  prisma, 
-  getConfig, 
-  type SnapshotNotification, 
-  publishEvent, 
+import {
+  prisma,
+  getConfig,
+  type SnapshotNotification,
+  publishEvent,
   CHANNELS,
 } from '@ottochain/shared';
+import { OttoMetagraphClient } from '@ottochain/sdk';
+import type { StateMachineFiberRecord } from '@ottochain/sdk/core';
 import { AgentState as PrismaAgentState, ContractState as PrismaContractState } from '@prisma/client';
 
 interface ProcessResult {
@@ -18,85 +20,69 @@ interface ProcessResult {
   corporateUpdated: number;
 }
 
-interface MetagraphState {
-  stateMachines: Record<string, StateMachineFiber>;
-  scripts: Record<string, ScriptFiber>;
+/** Narrow metadata to a plain object so we can access .name / .description safely */
+function fiberMetadata(fiber: StateMachineFiberRecord): { name?: string; description?: string } {
+  const meta = fiber.definition?.metadata;
+  if (meta && typeof meta === 'object' && !Array.isArray(meta)) {
+    return meta as { name?: string; description?: string };
+  }
+  return {};
 }
 
-interface StateMachineFiber {
-  fiberId: string;
-  status: string;
-  currentState: string;
-  stateData: Record<string, unknown>;
-  definition: {
-    states: Record<string, unknown>;
-    initialState: string;
-    transitions: Array<{
-      from: string;
-      to: string;
-      eventName: string;
-    }>;
-    metadata?: { name?: string; description?: string };
-  };
-  owners: string[];
-  sequenceNumber: number;
-  creationOrdinal: number;
-  latestUpdateOrdinal: number;
-  lastReceipt?: {
-    eventName: string;
-    fromState: string;
-    toState: string;
-    success: boolean;
-    gasUsed: number;
-  };
+/** Narrow stateData to a plain object */
+function fiberStateData(fiber: StateMachineFiberRecord): Record<string, unknown> {
+  const sd = fiber.stateData;
+  if (sd && typeof sd === 'object' && !Array.isArray(sd)) {
+    return sd as Record<string, unknown>;
+  }
+  return {};
 }
 
-interface ScriptFiber {
-  fiberId: string;
-  status: string;
-  owners: string[];
+let _metagraphClient: OttoMetagraphClient | null = null;
+
+function getMetagraphClient(): OttoMetagraphClient {
+  if (!_metagraphClient) {
+    const config = getConfig();
+    _metagraphClient = new OttoMetagraphClient({ ml0Url: config.METAGRAPH_ML0_URL });
+  }
+  return _metagraphClient;
 }
 
 /**
  * Process a snapshot notification:
- * 1. Fetch current state from metagraph
+ * 1. Fetch current calculated state from metagraph via SDK
  * 2. Index ALL state machines as generic Fibers
  * 3. Derive Agent records for AgentIdentity workflows
  * 4. Derive Contract records for Contract workflows
  */
 export async function processSnapshot(notification: SnapshotNotification): Promise<ProcessResult> {
-  const config = getConfig();
-  
-  // Fetch current calculated state from ML0
-  const stateUrl = `${config.METAGRAPH_ML0_URL}/data-application/v1/checkpoint`;
-  const response = await fetch(stateUrl);
-  
-  if (!response.ok) {
-    throw new Error(`Failed to fetch state: ${response.status} ${response.statusText}`);
-  }
-  
-  const checkpoint = await response.json() as { state: MetagraphState; ordinal: number };
+  const client = getMetagraphClient();
+
+  // Fetch current calculated state from ML0 via SDK
+  const checkpoint = await client.getCheckpoint();
   const { stateMachines, scripts } = checkpoint.state;
-  
+
   const smCount = Object.keys(stateMachines || {}).length;
   const scriptCount = Object.keys(scripts || {}).length;
   console.log(`📊 Checkpoint ordinal ${checkpoint.ordinal}: ${smCount} state machines, ${scriptCount} scripts`);
-  
+
   let fibersUpdated = 0;
   let agentsUpdated = 0;
   let contractsUpdated = 0;
   let corporateUpdated = 0;
-  
+
   // Index ALL state machines as generic Fibers
   for (const [fiberId, fiber] of Object.entries(stateMachines || {})) {
-    const workflowType = fiber.definition?.metadata?.name || 'Unknown';
-    const workflowDesc = fiber.definition?.metadata?.description || null;
+    const meta = fiberMetadata(fiber);
+    const stateData = fiberStateData(fiber);
+    const workflowType = meta.name || 'Unknown';
+    const workflowDesc = meta.description || null;
     const currentState = fiber.currentState || 'unknown';
     const status = mapFiberStatus(fiber.status);
-    
+
     const existingFiber = await prisma.fiber.findUnique({ where: { fiberId } });
-    
-    // Upsert the fiber (cast to Prisma.InputJsonValue)
+
+    // Upsert the fiber
     await prisma.fiber.upsert({
       where: { fiberId },
       create: {
@@ -106,7 +92,7 @@ export async function processSnapshot(notification: SnapshotNotification): Promi
         currentState,
         status,
         owners: fiber.owners || [],
-        stateData: (fiber.stateData || {}) as any,
+        stateData: (stateData || {}) as any,
         definition: (fiber.definition || {}) as any,
         sequenceNumber: fiber.sequenceNumber || 0,
         createdOrdinal: BigInt(fiber.creationOrdinal || notification.ordinal),
@@ -115,14 +101,14 @@ export async function processSnapshot(notification: SnapshotNotification): Promi
       update: {
         currentState,
         status,
-        stateData: (fiber.stateData || {}) as any,
+        stateData: (stateData || {}) as any,
         sequenceNumber: fiber.sequenceNumber || 0,
         updatedOrdinal: BigInt(notification.ordinal),
       },
     });
-    
+
     fibersUpdated++;
-    
+
     // Record transition if there's a new receipt
     if (fiber.lastReceipt && fiber.lastReceipt.success) {
       const existingTransition = await prisma.fiberTransition.findFirst({
@@ -132,7 +118,7 @@ export async function processSnapshot(notification: SnapshotNotification): Promi
           eventName: fiber.lastReceipt.eventName,
         },
       });
-      
+
       if (!existingTransition) {
         await prisma.fiberTransition.create({
           data: {
@@ -145,7 +131,7 @@ export async function processSnapshot(notification: SnapshotNotification): Promi
             snapshotOrdinal: BigInt(notification.ordinal),
           },
         });
-        
+
         // Publish activity
         await publishEvent(CHANNELS.ACTIVITY_FEED, {
           eventType: 'TRANSITION',
@@ -156,28 +142,27 @@ export async function processSnapshot(notification: SnapshotNotification): Promi
         });
       }
     }
-    
+
     // Derive Agent from AgentIdentity workflows
-    if (workflowType === 'AgentIdentity' || fiber.stateData?.schema === 'AgentIdentity') {
+    if (workflowType === 'AgentIdentity' || stateData?.schema === 'AgentIdentity') {
       const updated = await deriveAgent(fiber, notification.ordinal);
       if (updated) agentsUpdated++;
     }
-    
+
     // Derive Contract from Contract workflows
-    if (workflowType === 'Contract' || fiber.stateData?.schema === 'Contract') {
+    if (workflowType === 'Contract' || stateData?.schema === 'Contract') {
       const updated = await deriveContract(fiber, notification.ordinal);
       if (updated) contractsUpdated++;
     }
 
     // Publish market updates for Market workflows
-    if (workflowType === 'Market' || fiber.stateData?.schema === 'Market') {
-      // Publish to both the global market channel and the market-specific channel
+    if (workflowType === 'Market' || stateData?.schema === 'Market') {
       const marketPayload = {
         fiberId,
-        marketType: fiber.stateData?.marketType,
-        marketStatus: fiber.stateData?.status,
+        marketType: stateData?.marketType,
+        marketStatus: stateData?.status,
         currentState,
-        totalCommitted: fiber.stateData?.totalCommitted,
+        totalCommitted: stateData?.totalCommitted,
         ordinal: notification.ordinal,
         updatedAt: new Date().toISOString(),
       };
@@ -188,16 +173,23 @@ export async function processSnapshot(notification: SnapshotNotification): Promi
         console.warn(`[processor] Market pubsub publish failed for ${fiberId}:`, err.message);
       });
     }
-    
+
     // Track Corporate Entity workflows (uses generic Fiber table + activity feed)
-    if (workflowType === 'Entity' || workflowType === 'Board' || workflowType === 'Shareholders' ||
-        workflowType === 'Officers' || workflowType === 'Securities' || workflowType === 'Compliance' ||
-        workflowType === 'Proxy' || fiber.stateData?.schema?.toString().startsWith('Corporate')) {
+    if (
+      workflowType === 'Entity' ||
+      workflowType === 'Board' ||
+      workflowType === 'Shareholders' ||
+      workflowType === 'Officers' ||
+      workflowType === 'Securities' ||
+      workflowType === 'Compliance' ||
+      workflowType === 'Proxy' ||
+      stateData?.schema?.toString().startsWith('Corporate')
+    ) {
       await trackCorporateActivity(fiber, notification.ordinal, existingFiber);
       corporateUpdated++;
     }
   }
-  
+
   // Update indexed snapshot stats (preserve status - set by confirmation poller)
   await prisma.indexedSnapshot.upsert({
     where: { ordinal: BigInt(notification.ordinal) },
@@ -217,10 +209,13 @@ export async function processSnapshot(notification: SnapshotNotification): Promi
       indexedAt: new Date(),
     },
   });
-  
+
   const result = { ordinal: notification.ordinal, fibersUpdated, agentsUpdated, contractsUpdated, corporateUpdated };
-  console.log(`✅ Indexed snapshot ${notification.ordinal}: ${fibersUpdated} fibers, ${agentsUpdated} agents, ${contractsUpdated} contracts, ${corporateUpdated} corporate`);
-  
+  console.log(
+    `✅ Indexed snapshot ${notification.ordinal}: ${fibersUpdated} fibers, ` +
+    `${agentsUpdated} agents, ${contractsUpdated} contracts, ${corporateUpdated} corporate`,
+  );
+
   await publishEvent(CHANNELS.STATS_UPDATED, result);
   return result;
 }
@@ -228,17 +223,17 @@ export async function processSnapshot(notification: SnapshotNotification): Promi
 /**
  * Derive an Agent record from an AgentIdentity fiber
  */
-async function deriveAgent(fiber: StateMachineFiber, ordinal: number): Promise<boolean> {
+async function deriveAgent(fiber: StateMachineFiberRecord, ordinal: number): Promise<boolean> {
   const address = fiber.owners[0];
   if (!address) return false;
-  
-  const stateData = fiber.stateData || {};
+
+  const stateData = fiberStateData(fiber);
   const displayName = (stateData.displayName as string) || `Agent ${address.slice(3, 11)}`;
   const reputation = (stateData.reputation as number) ?? 10;
   const agentState = mapAgentState(stateData.status as string, fiber.currentState);
-  
+
   const existing = await prisma.agent.findUnique({ where: { address } });
-  
+
   if (!existing) {
     console.log(`  🆔 Creating agent: ${displayName} (${address.slice(0, 12)}...)`);
     await prisma.agent.create({
@@ -252,7 +247,7 @@ async function deriveAgent(fiber: StateMachineFiber, ordinal: number): Promise<b
         snapshotOrdinal: BigInt(ordinal),
       },
     });
-    
+
     // Initial reputation history
     const agent = await prisma.agent.findUnique({ where: { address } });
     if (agent) {
@@ -266,15 +261,15 @@ async function deriveAgent(fiber: StateMachineFiber, ordinal: number): Promise<b
         },
       });
     }
-    
+
     await publishEvent(CHANNELS.AGENT_UPDATED, { address, displayName, reputation, state: agentState });
     return true;
   }
-  
+
   // Update if changed
   if (existing.reputation !== reputation || existing.displayName !== displayName || existing.state !== agentState) {
     const repDelta = reputation - existing.reputation;
-    
+
     await prisma.agent.update({
       where: { address },
       data: {
@@ -285,7 +280,7 @@ async function deriveAgent(fiber: StateMachineFiber, ordinal: number): Promise<b
         snapshotOrdinal: BigInt(ordinal),
       },
     });
-    
+
     if (repDelta !== 0) {
       await prisma.reputationHistory.create({
         data: {
@@ -297,28 +292,28 @@ async function deriveAgent(fiber: StateMachineFiber, ordinal: number): Promise<b
         },
       });
     }
-    
+
     await publishEvent(CHANNELS.AGENT_UPDATED, { address, displayName, reputation, state: agentState });
     return true;
   }
-  
+
   return false;
 }
 
 /**
  * Derive a Contract record from a Contract fiber
  */
-async function deriveContract(fiber: StateMachineFiber, ordinal: number): Promise<boolean> {
-  const stateData = fiber.stateData || {};
+async function deriveContract(fiber: StateMachineFiberRecord, ordinal: number): Promise<boolean> {
+  const stateData = fiberStateData(fiber);
   const proposerAddress = (stateData.proposer as string) || fiber.owners[0];
   const counterpartyAddress = (stateData.counterparty as string) || proposerAddress;
-  
+
   if (!proposerAddress) return false;
-  
+
   // Ensure agents exist
   const proposer = await prisma.agent.findUnique({ where: { address: proposerAddress } });
   const counterparty = await prisma.agent.findUnique({ where: { address: counterpartyAddress } });
-  
+
   if (!proposer || !counterparty) {
     // Create placeholder agents if needed
     if (!proposer) {
@@ -346,14 +341,14 @@ async function deriveContract(fiber: StateMachineFiber, ordinal: number): Promis
       });
     }
   }
-  
+
   const proposerAgent = await prisma.agent.findUnique({ where: { address: proposerAddress } });
   const counterpartyAgent = await prisma.agent.findUnique({ where: { address: counterpartyAddress } });
-  
+
   if (!proposerAgent || !counterpartyAgent) return false;
-  
+
   const contractState = mapContractState(fiber.currentState, fiber.status);
-  
+
   await prisma.contract.upsert({
     where: { contractId: fiber.fiberId },
     create: {
@@ -364,7 +359,7 @@ async function deriveContract(fiber: StateMachineFiber, ordinal: number): Promis
       terms: {
         title: stateData.title || 'Contract',
         description: stateData.description || '',
-        ...(stateData.terms || {}),
+        ...(stateData.terms as Record<string, unknown> || {}),
       },
       fiberId: fiber.fiberId,
       snapshotOrdinal: BigInt(ordinal),
@@ -374,49 +369,47 @@ async function deriveContract(fiber: StateMachineFiber, ordinal: number): Promis
       terms: {
         title: stateData.title || 'Contract',
         description: stateData.description || '',
-        ...(stateData.terms || {}),
+        ...(stateData.terms as Record<string, unknown> || {}),
       },
       snapshotOrdinal: BigInt(ordinal),
       ...(contractState === 'ACTIVE' && { acceptedAt: new Date() }),
       ...(contractState === 'COMPLETED' && { completedAt: new Date() }),
     },
   });
-  
+
   await publishEvent(CHANNELS.CONTRACT_UPDATED, {
     contractId: fiber.fiberId,
     state: contractState,
   });
-  
+
   return true;
 }
 
 /**
  * Track corporate governance activity.
- * Corporate entities use multiple linked fibers (Entity, Board, Shareholders, Officers, etc.).
- * Data is stored in the generic Fiber table; this function publishes activity events
- * for real-time monitoring and links related fibers via stateData.entityId.
  */
 async function trackCorporateActivity(
-  fiber: StateMachineFiber, 
+  fiber: StateMachineFiberRecord,
   ordinal: number,
   existingFiber: { currentState: string } | null,
 ): Promise<void> {
-  const stateData = fiber.stateData || {};
-  const workflowType = fiber.definition?.metadata?.name || 'Unknown';
+  const stateData = fiberStateData(fiber);
+  const meta = fiberMetadata(fiber);
+  const workflowType = meta.name || 'Unknown';
   const currentState = fiber.currentState || 'unknown';
   const entityId = (stateData.entityId as string) || fiber.fiberId;
   const legalName = (stateData.legalName as string) || (stateData.name as string) || entityId;
-  
+
   // Only publish if state changed
   if (existingFiber && existingFiber.currentState === currentState) return;
-  
+
   const isNew = !existingFiber;
   const eventType = isNew ? 'CORPORATE_CREATED' : 'CORPORATE_UPDATED';
-  
+
   if (isNew) {
     console.log(`  🏢 New corporate ${workflowType}: ${legalName} (${fiber.fiberId.slice(0, 12)}...)`);
   }
-  
+
   await publishEvent(CHANNELS.ACTIVITY_FEED, {
     eventType,
     timestamp: new Date().toISOString(),
@@ -424,17 +417,18 @@ async function trackCorporateActivity(
     workflowType: `Corporate/${workflowType}`,
     entityId,
     legalName,
-    action: isNew 
+    action: isNew
       ? `${workflowType} created: ${currentState}`
       : `${workflowType}: ${existingFiber?.currentState} → ${currentState}`,
   });
 }
 
+/** Map SDK FiberStatus ('Active'|'Archived'|'Failed') to Prisma FiberStatus enum */
 function mapFiberStatus(status: string): 'ACTIVE' | 'ARCHIVED' | 'FAILED' {
   switch (status?.toLowerCase()) {
     case 'archived': return 'ARCHIVED';
-    case 'failed': return 'FAILED';
-    default: return 'ACTIVE';
+    case 'failed':   return 'FAILED';
+    default:         return 'ACTIVE';
   }
 }
 
@@ -444,15 +438,15 @@ function mapFiberStatus(status: string): 'ACTIVE' | 'ARCHIVED' | 'FAILED' {
  */
 function mapAgentState(stateDataStatus: string | undefined, currentState: string | undefined): PrismaAgentState {
   const state = (stateDataStatus || currentState || '').toUpperCase();
-  
+
   switch (state) {
-    case 'WITHDRAWN': return PrismaAgentState.WITHDRAWN;
-    case 'ACTIVE': return PrismaAgentState.ACTIVE;
+    case 'WITHDRAWN':  return PrismaAgentState.WITHDRAWN;
+    case 'ACTIVE':     return PrismaAgentState.ACTIVE;
     case 'CHALLENGED': return PrismaAgentState.CHALLENGED;
-    case 'SUSPENDED': return PrismaAgentState.SUSPENDED;
-    case 'PROBATION': return PrismaAgentState.PROBATION;
+    case 'SUSPENDED':  return PrismaAgentState.SUSPENDED;
+    case 'PROBATION':  return PrismaAgentState.PROBATION;
     case 'REGISTERED':
-    default: return PrismaAgentState.REGISTERED;
+    default:           return PrismaAgentState.REGISTERED;
   }
 }
 
@@ -462,17 +456,17 @@ function mapAgentState(stateDataStatus: string | undefined, currentState: string
  */
 function mapContractState(currentState: string | undefined, fiberStatus: string): PrismaContractState {
   // If fiber is archived/completed, the contract is done
-  if (fiberStatus !== 'ACTIVE') return PrismaContractState.COMPLETED;
-  
+  if (fiberStatus.toLowerCase() !== 'active') return PrismaContractState.COMPLETED;
+
   const state = (currentState || '').toUpperCase();
-  
+
   switch (state) {
     case 'COMPLETED': return PrismaContractState.COMPLETED;
-    case 'REJECTED': return PrismaContractState.REJECTED;
+    case 'REJECTED':  return PrismaContractState.REJECTED;
     case 'CANCELLED': return PrismaContractState.CANCELLED;
-    case 'DISPUTED': return PrismaContractState.DISPUTED;
-    case 'ACTIVE': return PrismaContractState.ACTIVE;
+    case 'DISPUTED':  return PrismaContractState.DISPUTED;
+    case 'ACTIVE':    return PrismaContractState.ACTIVE;
     case 'PROPOSED':
-    default: return PrismaContractState.PROPOSED;
+    default:          return PrismaContractState.PROPOSED;
   }
 }
