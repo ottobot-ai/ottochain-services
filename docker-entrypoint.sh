@@ -30,8 +30,10 @@ if [ ! -d "/app/packages/$SERVICE" ]; then
     exit 1
 fi
 
-# For indexer, wait for database
-if [ "$SERVICE" = "indexer" ] && [ -n "$DATABASE_URL" ]; then
+# Services that need PostgreSQL
+DB_SERVICES="gateway indexer monitor"
+
+if echo "$DB_SERVICES" | grep -qw "$SERVICE" && [ -n "$DATABASE_URL" ]; then
     echo "Waiting for database..."
     max_attempts=30
     attempt=0
@@ -53,6 +55,31 @@ if [ "$SERVICE" = "indexer" ] && [ -n "$DATABASE_URL" ]; then
     
     if [ $attempt -eq $max_attempts ]; then
         echo "WARNING: Could not verify database connection, proceeding anyway"
+    fi
+
+    # Auto-migrate: ensure database schema is up to date
+    # Uses db push (idempotent) rather than migrate deploy to avoid
+    # failures from missing base migrations on fresh databases.
+    if [ "${SKIP_MIGRATION}" != "true" ]; then
+        echo "Running database migration..."
+        if [ "${NODE_ENV}" = "production" ]; then
+            # Production: use migrate deploy (safe, no data loss)
+            echo "Production mode: running prisma migrate deploy"
+            if npx prisma migrate deploy 2>&1; then
+                echo "Database schema is up to date"
+            else
+                echo "ERROR: Database migration failed in production — aborting startup"
+                exit 1
+            fi
+        else
+            # Dev/staging: use db push with data loss warning
+            echo "WARNING: running db push --accept-data-loss — schema changes may drop data"
+            if npx prisma db push --skip-generate --accept-data-loss 2>&1; then
+                echo "Database schema is up to date"
+            else
+                echo "WARNING: Database migration failed — proceeding anyway (non-production)"
+            fi
+        fi
     fi
 fi
 
