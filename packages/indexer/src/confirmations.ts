@@ -1,14 +1,22 @@
 /**
  * GL0 Confirmation Poller
  * 
- * Polls GL0 global snapshots to confirm ML0 currency snapshots.
- * Updates status from PENDING → CONFIRMED when hash appears in GL0.
+ * Polls GL0 global snapshots (combined endpoint) to confirm ML0 currency snapshots.
+ * Uses /global-snapshots/latest/combined which returns the full accumulated state,
+ * not just the incremental — so our metagraph is always present once it has
+ * produced any snapshot (the incremental endpoint misses ~70% of snapshots).
+ * Updates status from PENDING → CONFIRMED when metagraph appears in GL0.
  */
 
 import { prisma, getConfig, publishEvent, CHANNELS } from '@ottochain/shared';
 import { getIndexerRequired } from './config.js';
 
-interface GlobalSnapshot {
+/**
+ * GL0 /global-snapshots/latest/combined returns a tuple:
+ * [Signed[GlobalSnapshot], SnapshotInfo]
+ * We only need the first element (the signed snapshot).
+ */
+interface CombinedSnapshotElement {
   value: {
     ordinal: number;
     // stateChannelSnapshots: metagraphId → array of currency snapshot binaries
@@ -33,14 +41,21 @@ async function checkConfirmations(): Promise<void> {
   const { GL0_URL: gl0Url, METAGRAPH_ID: metagraphId } = getIndexerRequired();
   
   try {
-    // Fetch latest global snapshot
-    const response = await fetch(`${gl0Url}/global-snapshots/latest`);
+    // Fetch latest combined global snapshot (full accumulated state).
+    // Unlike /latest (incremental), /latest/combined always includes our
+    // metagraph in stateChannelSnapshots once it has produced any snapshot.
+    const response = await fetch(`${gl0Url}/global-snapshots/latest/combined`);
     if (!response.ok) {
       console.warn(`⚠️ GL0 returned ${response.status}`);
       return;
     }
     
-    const globalSnapshot = await response.json() as GlobalSnapshot;
+    const combined = await response.json() as CombinedSnapshotElement[];
+    const globalSnapshot = combined[0]; // First element is the signed snapshot
+    if (!globalSnapshot?.value) {
+      console.warn('⚠️ GL0 combined response missing snapshot data');
+      return;
+    }
     const gl0Ordinal = globalSnapshot.value.ordinal;
     
     // Skip if we've already checked this ordinal

@@ -428,20 +428,23 @@ jobs:
           METAGRAPH_ID=$(docker exec ml0-0 printenv CL_TOKEN_ID 2>/dev/null || echo "")
 
           if [ -z "$METAGRAPH_ID" ]; then
-            echo "CL_TOKEN_ID not set in ml0-0 container, falling back to GL0 discovery..."
+            # Fallback: discover from GL0 combined state (full accumulated state,
+            # not incremental — avoids missing the metagraph in sparse snapshots)
+            echo "CL_TOKEN_ID not set in ml0-0, falling back to GL0 combined state..."
             for i in $(seq 1 60); do
-              METAGRAPH_ID=$(curl -s http://localhost:9000/global-snapshots/latest \
-                | jq -r '.value.stateChannelSnapshots | keys[0] // ""' 2>/dev/null || echo "")
+              METAGRAPH_ID=$(curl -s http://localhost:9000/global-snapshots/latest/combined \
+                | jq -r '.[0].value.stateChannelSnapshots | keys[0] // ""' 2>/dev/null || echo "")
               if [ -n "$METAGRAPH_ID" ] && [ "$METAGRAPH_ID" != "null" ]; then
                 break
               fi
               if [ $i -eq 60 ]; then
                 echo "❌ Could not determine METAGRAPH_ID from ML0 or GL0"
                 docker exec ml0-0 env 2>/dev/null | grep -i token || true
-                curl -s http://localhost:9000/global-snapshots/latest | jq '.' 2>/dev/null || true
+                curl -s http://localhost:9000/global-snapshots/latest/combined \
+                  | jq '.[0].value.stateChannelSnapshots | keys' 2>/dev/null || true
                 exit 1
               fi
-              echo "  Attempt $i/60: waiting for metagraph in GL0..."
+              echo "  Attempt $i/60: waiting for metagraph in GL0 combined state..."
               sleep 1
             done
           fi
@@ -449,17 +452,17 @@ jobs:
           echo "✓ METAGRAPH_ID: $METAGRAPH_ID"
           echo "METAGRAPH_ID=$METAGRAPH_ID" >> $GITHUB_ENV
 
-          # Verify ML0 is progressing by checking it appears in GL0 combined snapshots
+          # Verify ML0 is progressing by checking it appears in GL0 combined state
           echo "Verifying ML0 snapshots reach GL0..."
           for i in $(seq 1 30); do
-            found=$(curl -s http://localhost:9000/global-snapshots/latest \
-              | jq -r --arg mid "$METAGRAPH_ID" '.value.stateChannelSnapshots[$mid] // empty | length' 2>/dev/null || echo "0")
+            found=$(curl -s http://localhost:9000/global-snapshots/latest/combined \
+              | jq -r --arg mid "$METAGRAPH_ID" '.[0].value.stateChannelSnapshots[$mid] // empty | length' 2>/dev/null || echo "0")
             if [ "$found" -gt 0 ] 2>/dev/null; then
-              echo "✓ ML0 snapshots confirmed in GL0 state channels"
+              echo "✓ ML0 confirmed in GL0 combined state"
               break
             fi
             if [ $i -eq 30 ]; then
-              echo "⚠️ ML0 not yet visible in GL0 state channels (may appear later)"
+              echo "⚠️ ML0 not yet visible in GL0 combined state (may appear later)"
             fi
             sleep 2
           done
