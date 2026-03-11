@@ -570,12 +570,21 @@ jobs:
           STATE_WAIT_TIMEOUT: '90'
           DL1_SYNC_WAIT: '15'
           TRANSITION_WAIT: '10'
+          # Epic A — multi-party signing not yet in metagraph.
+          # Counterparty-signed transitions (accept/reject) are blocked by
+          # updateSignedByOwners validation.  Use a short poll window so we
+          # don't burn 90s per suite waiting for a transition that cannot apply.
+          # Steps that hit this wall are recorded as 'blocked' (not 'failed').
+          # Remove this env var once Epic A is merged into the metagraph.
+          EPIC_A_STATE_WAIT: '15'
           MAX_RETRIES: '3'
         run: |
           # Tests Contract fiber three paths:
           #   Suite A: propose → accept → complete → finalize
           #   Suite B: propose → reject
           #   Suite C: propose → accept → dispute
+          # Note: accept/reject transitions are currently 'blocked' pending Epic A
+          # (multi-party signing).  The test exits 0 for blocked steps.
           for attempt in $(seq 1 $MAX_RETRIES); do
             echo "=== Attempt $attempt of $MAX_RETRIES ==="
             if npx tsx packages/traffic-generator/test/contract-integration.test.ts; then
