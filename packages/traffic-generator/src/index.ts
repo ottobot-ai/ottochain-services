@@ -58,6 +58,7 @@ function loadConfig(): GeneratorConfig {
     maxGenerations: parseInt(process.env.MAX_GENERATIONS ?? '0', 10),
     bridgeUrl: process.env.BRIDGE_URL ?? 'http://localhost:3030',
     ml0Url: process.env.ML0_URL ?? 'http://localhost:9200',
+    indexerUrl: process.env.INDEXER_URL ?? 'http://localhost:3031',
     platforms: (process.env.PLATFORMS ?? 'discord,telegram,twitter,github').split(','),
     seed: process.env.SEED ? parseInt(process.env.SEED, 10) : undefined,
     walletPoolPath,
