@@ -29,7 +29,7 @@ services:
       - INDEXER_CALLBACK_URL=http://indexer:3031/webhook/snapshot
       # Redis on host (accessed via host.docker.internal, same as postgres)
       - REDIS_URL=redis://host.docker.internal:6379
-      # Required: metagraph DAG address (fetched from GL0 in CI workflow before services start)
+      # Required: metagraph DAG address (fetched from ML0 in CI workflow before services start)
       - METAGRAPH_ID=${METAGRAPH_ID}
       # GL0 for snapshot confirmation polling (reachable on tessellation_common network)
       - GL0_URL=http://gl0-0:9000

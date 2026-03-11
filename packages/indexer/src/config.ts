@@ -5,6 +5,10 @@
  * not every service needs them. The indexer requires both — this module
  * validates them eagerly so the rest of the indexer can use them without
  * non-null assertions or runtime guards.
+ *
+ * METAGRAPH_ID should be sourced from the ML0 node (its CL_TOKEN_ID env var)
+ * rather than discovered from GL0, since public networks may host multiple
+ * metagraphs.
  */
 
 import { z } from 'zod';
