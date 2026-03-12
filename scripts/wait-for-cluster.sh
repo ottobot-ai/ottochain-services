@@ -117,8 +117,20 @@ join_and_verify() {
             -d "{\"id\":\"$target_id\", \"ip\": \"127.0.0.1\", \"p2pPort\": $target_p2p}" 2>&1 || true)
 
         if [ -z "$response" ] || echo "$response" | grep -qi "success\|ok\|joined\|already"; then
-            log "  $name join accepted, verifying session..."
-            sleep 3
+            log "  $name join accepted, waiting for session propagation..."
+            # Give the node time to process the join and create its local
+            # cluster session. ClusterSessionDoesNotExist is thrown when we
+            # query /cluster/info before the session is fully initialized.
+            for wait_i in $(seq 1 5); do
+                sleep 3
+                local check_session
+                check_session=$(get_cluster_session "$port")
+                if [ "$check_session" = "$genesis_session" ] && [ "$check_session" != "none" ] && [ "$check_session" != "error" ]; then
+                    log "  $name session confirmed after join (wait $wait_i)"
+                    return 0
+                fi
+                log "  $name session=$check_session (waiting ${wait_i}/5)..."
+            done
             continue
         fi
 
