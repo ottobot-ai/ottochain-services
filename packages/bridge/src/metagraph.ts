@@ -8,6 +8,7 @@
 import { getConfig } from '@ottochain/shared';
 import { batchSign, generateKeyPair as sdkGenerateKeyPair, keyPairFromPrivateKey as sdkKeyPairFromPrivateKey, HttpClient } from '@ottochain/sdk';
 import type { KeyPair } from '@ottochain/sdk';
+import { confirmationRegistry, type FiberConfirmation } from './lib/confirmation-registry.js';
 
 // ─── Optimistic Sequence Cache ────────────────────────────────────────────────
 //
@@ -467,3 +468,33 @@ export async function waitForSequence(
   console.log(`[metagraph] Timeout waiting for fiber ${fiberId} to reach sequence ${targetSeq}`);
   return false;
 }
+
+/**
+ * Wait for push-based confirmation from the indexer.
+ *
+ * This is the preferred alternative to `waitForFiber()` (polling).
+ *
+ * Registers the fiberId in the ConfirmationRegistry and awaits the indexer's
+ * callback.  Resolves with the confirmed state as soon as the indexer calls
+ * POST /internal/indexer-notify.
+ *
+ * Falls back gracefully: if the indexer callback is never received within
+ * `timeoutMs`, the returned Promise rejects with a timeout error so the
+ * caller can fall back to polling or return a 503.
+ *
+ * @param fiberId   - UUID of the fiber to wait for
+ * @param timeoutMs - Safety timeout in milliseconds (default: 120 000 = 2 min)
+ * @returns Resolved FiberConfirmation on success
+ * @throws  Error on timeout (message includes fiberId and timeout duration)
+ */
+export async function waitForFiberConfirmation(
+  fiberId: string,
+  timeoutMs = 120_000
+): Promise<FiberConfirmation> {
+  console.log(`[metagraph] Awaiting push confirmation for fiber ${fiberId} (timeout=${timeoutMs}ms)...`);
+  const confirmation = await confirmationRegistry.register(fiberId, timeoutMs);
+  console.log(`[metagraph] Push confirmation received for fiber ${fiberId}: state=${confirmation.currentState}, ordinal=${confirmation.ordinal}`);
+  return confirmation;
+}
+
+export type { FiberConfirmation };

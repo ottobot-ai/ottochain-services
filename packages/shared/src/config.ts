@@ -41,6 +41,10 @@ const ConfigSchema = z.object({
   GATEWAY_PORT: z.coerce.number().default(4000),
   BRIDGE_PORT: z.coerce.number().default(3030),
   BRIDGE_URL: z.string().url().default('http://localhost:3030'),
+  // URL the indexer uses to notify the bridge of confirmed fibers.
+  // Defaults to BRIDGE_URL/internal/indexer-notify.  Set to empty string
+  // to disable push notifications (indexer falls back to no-op).
+  BRIDGE_CALLBACK_URL: z.string().url().optional(),
   INDEXER_PORT: z.coerce.number().default(3031),
   
   // GL0 polling interval (ms)
