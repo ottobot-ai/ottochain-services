@@ -29,6 +29,8 @@ MAX_RESPONSIVE_WAIT=120   # seconds waiting for HTTP
 MAX_READY_WAIT=240        # seconds waiting for Ready state (increased for CI)
 JOIN_RETRY_DELAY=5        # seconds between join attempts
 MAX_JOIN_ATTEMPTS=20      # join retries per node (increased)
+MAX_RESTARTS=2            # container restarts before giving up
+STUCK_THRESHOLD=5         # consecutive error-session joins before restart
 
 log() { echo "[$(date '+%H:%M:%S')] $*"; }
 error() { echo "[$(date '+%H:%M:%S')] ERROR: $*" >&2; }
@@ -69,6 +71,21 @@ wait_ready() {
     return 1
 }
 
+restart_container() {
+    local name=$1 port=$2
+    log "  Restarting stuck container $name..."
+    docker restart "$name" 2>/dev/null || true
+    for i in $(seq 1 60); do
+        if curl -sf "http://localhost:$port/node/info" | jq -e '.state' >/dev/null 2>&1; then
+            log "  $name back after restart (${i}s)"
+            return 0
+        fi
+        sleep 1
+    done
+    error "  $name did not recover after restart"
+    return 1
+}
+
 join_and_verify() {
     local port=$1 cli_port=$2 target_port=$3 name=$4
 
@@ -85,6 +102,9 @@ join_and_verify() {
         error "Cannot get peer ID from genesis node on port $target_port"
         return 1
     fi
+
+    local restarts=0
+    local consecutive_errors=0
 
     for attempt in $(seq 1 $MAX_JOIN_ATTEMPTS); do
         # Check if clusterSession already matches genesis
@@ -108,6 +128,23 @@ join_and_verify() {
 
         # NOTE: SessionStarted IS a valid state to send join request — do NOT skip it.
         # In Tessellation, SessionStarted means the node is waiting to join a cluster.
+
+        # Detect stuck node: join returns 200 but session never establishes.
+        # ClusterSessionDoesNotExist is thrown internally — restart clears it.
+        if [ "$node_session" = "error" ] || [ "$node_session" = "none" ]; then
+            consecutive_errors=$((consecutive_errors + 1))
+        else
+            consecutive_errors=0
+        fi
+
+        if [ "$consecutive_errors" -ge "$STUCK_THRESHOLD" ] && [ "$restarts" -lt "$MAX_RESTARTS" ]; then
+            log "  $name stuck: $consecutive_errors consecutive session errors (state=$state)"
+            restarts=$((restarts + 1))
+            restart_container "$name" "$port" || return 1
+            consecutive_errors=0
+            sleep 5
+            continue
+        fi
 
         # Attempt join
         log "  $name join attempt $attempt (state=$state, session=$node_session)..."
@@ -146,7 +183,7 @@ join_and_verify() {
         return 0
     fi
 
-    error "$name NOT in genesis cluster after $MAX_JOIN_ATTEMPTS attempts"
+    error "$name NOT in genesis cluster after $MAX_JOIN_ATTEMPTS attempts ($restarts restarts)"
     error "  genesis clusterSession=$genesis_session"
     error "  $name  clusterSession=$final_session"
     docker logs "$name" 2>&1 | tail -20 || true
