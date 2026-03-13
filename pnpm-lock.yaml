@@ -233,6 +233,9 @@ importers:
 
   packages/traffic-generator:
     dependencies:
+      '@ottochain/sdk':
+        specifier: ^1.3.0
+        version: 1.3.0(@stardust-collective/dag4@2.8.1)
       '@ottochain/shared':
         specifier: workspace:*
         version: link:../shared

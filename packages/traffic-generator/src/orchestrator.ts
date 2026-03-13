@@ -203,16 +203,11 @@ export class FiberOrchestrator {
           fibersToRemove.push(fiber.id);
           continue;
         } else if (verifyResult === 'timeout') {
-          // Exceeded max retries
-          fiber.pendingTransition.retries++;
-          const maxRetries = this.config.indexer?.maxRetries ?? 3;
-          if (fiber.pendingTransition.retries >= maxRetries) {
-            console.log(`  ⚠️  Fiber ${fiber.id.slice(0, 8)} exceeded max retries waiting for indexer`);
-            fiber.failed = true;
-            fiber.failureReason = 'Indexer confirmation timeout';
-            rejected++;
-            this.failedFibers++;
-            fibersToRemove.push(fiber.id);
+          // Long timeout (5 min) — transaction may have been lost. Retry the transition.
+          const elapsed = Date.now() - (fiber.pendingTransition.submittedAt ?? 0);
+          if (elapsed > 300_000) {
+            console.log(`  ⚠️  Fiber ${fiber.id.slice(0, 8)} pending for >5min, will retry transition`);
+            fiber.pendingTransition = undefined; // Clear pending, let driveFiber retry
           } else {
             pending++;
           }
@@ -230,6 +225,8 @@ export class FiberOrchestrator {
         } else if (result === 'completed') {
           completed++;
           this.completedFibers++;
+          // Vouch for successful counterparties before removal
+          await this.vouchForParticipants(fiber);
           fibersToRemove.push(fiber.id);
         }
         // 'waiting' means no action needed yet
@@ -358,7 +355,7 @@ export class FiberOrchestrator {
     const tempFiberId = `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     
     // Generate proper stateData using the definition's generator
-    const stateData = def.generateStateData(participantAddresses, {
+    const stateData = def.generateInitialData(participantAddresses, {
       fiberId: tempFiberId,
       generation: this.tickCount,
     });
@@ -452,19 +449,27 @@ export class FiberOrchestrator {
         console.log(`  ✅ Proposed ${def.name}: ${fiberId.slice(0, 12)}... (${proposer.address.slice(0, 10)} → ${counterparty.address.slice(0, 10)})`);
       } else {
         // Use generic fiber creation for custom types
+        // Convert states array → Record<string, {id, isFinal}> as bridge schema requires
+        const statesRecord: Record<string, { id: string; isFinal: boolean }> = {};
+        for (const s of def.states) {
+          statesRecord[s] = { id: s, isFinal: def.finalStates.includes(s) };
+        }
         const createResult = await this.bridge.createFiber(
           proposer.privateKey,
           {
-            workflowType: def.workflowType,
-            type: def.type,
-            name: def.name,
             initialState: def.initialState,
-            states: def.states,
+            states: statesRecord,
             transitions: def.transitions.map(t => ({
               from: t.from,
               to: t.to,
-              event: t.event,
+              eventName: t.event,
+              guard: { '==': [1, 1] },       // always-true guard
+              effect: { 'var': 'state' },     // identity effect (pass-through)
             })),
+            metadata: {
+              name: def.name,
+              description: `${def.workflowType}: ${def.name}`,
+            },
           },
           stateData as Record<string, unknown>
         );
@@ -579,27 +584,47 @@ export class FiberOrchestrator {
     transition: { event: string; actor: string },
     actor: { address: string; privateKey: string }
   ): Promise<void> {
+    // Route each contract event to its dedicated bridge method so tests and
+    // the bridge API receive the correct endpoint calls.
     switch (transition.event) {
       case 'accept':
         await this.bridge.acceptContract(actor.privateKey, fiber.id);
         break;
+
       case 'reject':
         await this.bridge.rejectContract(actor.privateKey, fiber.id, 'Declined by counterparty');
         break;
+
+      // 'deliver' is the escrow-flavoured submit-completion step (counterparty
+      // submits proof of delivery before the proposer confirms/finalises).
       case 'deliver':
-      case 'confirm':
       case 'submit_completion':
-        await this.bridge.submitCompletion(actor.privateKey, fiber.id, `Completed by ${actor.address.slice(0, 10)}`);
+        await this.bridge.submitCompletion(
+          actor.privateKey,
+          fiber.id,
+          `completion-${Date.now().toString(36)}`
+        );
         break;
-      case 'finalize':
+
+      // 'confirm' is the proposer's finalisation step after delivery.
+      case 'confirm':
         await this.bridge.finalizeContract(actor.privateKey, fiber.id);
         break;
+
       case 'dispute':
-        await this.bridge.disputeContract(actor.privateKey, fiber.id, 'Disputed by party');
+        await this.bridge.disputeContract(actor.privateKey, fiber.id, 'Terms not met');
         break;
-      default:
-        // Fallback to generic transition
-        await this.bridge.transitionContract(actor.privateKey, fiber.id, transition.event, { agent: actor.address });
+
+      default: {
+        // Generic fallback for any other contract events (e.g. 'resolve')
+        const payload: Record<string, unknown> = { agent: actor.address };
+        if (transition.event === 'resolve') {
+          payload.resolution = 'Mutual agreement';
+          payload.proposerApproves = true;
+          payload.counterpartyApproves = true;
+        }
+        await this.bridge.transitionFiber(actor.privateKey, fiber.id, transition.event, payload);
+      }
     }
   }
 
@@ -1278,6 +1303,46 @@ export class FiberOrchestrator {
   }
 
   private tickCount = 0;
+
+  /**
+   * Vouch for all participants in a successfully completed fiber
+   * Each participant vouches for all other participants
+   */
+  private async vouchForParticipants(fiber: ActiveFiber): Promise<void> {
+    const participants = Array.from(fiber.participants.entries());
+    if (participants.length < 2) return; // Need at least 2 to vouch
+    
+    const vouchReason = `Completed ${fiber.definition.name} fiber ${fiber.id.slice(0, 8)}`;
+    let vouchCount = 0;
+    
+    for (const [fromRole, fromAgent] of participants) {
+      for (const [toRole, toAgent] of participants) {
+        if (fromAgent.address === toAgent.address) continue;
+        
+        try {
+          // Find the agent's identity fiber ID for vouching
+          // For now, use the address as a lookup - in practice we'd track fiber IDs
+          await this.bridge.vouchForAgent(
+            fromAgent.privateKey,
+            toAgent.address, // The bridge should resolve this to the identity fiber
+            fromAgent.address,
+            vouchReason
+          );
+          vouchCount++;
+        } catch (err) {
+          // Vouching failure is non-fatal - log and continue
+          const msg = (err as Error).message;
+          if (!msg.includes('already vouched') && !msg.includes('duplicate')) {
+            console.log(`  ⚠️  Vouch failed (${fromRole}→${toRole}): ${msg.slice(0, 40)}`);
+          }
+        }
+      }
+    }
+    
+    if (vouchCount > 0) {
+      console.log(`  🤝 ${fiber.type}[${fiber.id.slice(0, 8)}]: ${vouchCount} vouches recorded`);
+    }
+  }
 
   /**
    * Check if an agent is currently participating in any fiber
