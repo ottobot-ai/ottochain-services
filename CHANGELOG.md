@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/ottobot-ai/ottochain-services/compare/v0.10.0...v0.11.0) (2026-03-13)
+
+
+### Features
+
+* **traffic-gen:** v2 weighted distribution engine (Cards 1-4) ([#218](https://github.com/ottobot-ai/ottochain-services/issues/218)) ([714755e](https://github.com/ottobot-ai/ottochain-services/commit/714755ed83ac7f952781b36bb2d7ff899b9c10a9))
+
 ## [0.10.0](https://github.com/ottobot-ai/ottochain-services/compare/v0.9.0...v0.10.0) (2026-03-13)
 
 
