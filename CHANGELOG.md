@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.10.0](https://github.com/ottobot-ai/ottochain-services/compare/v0.9.0...v0.10.0) (2026-03-13)
+
+
+### Features
+
+* add SDK version bump workflow ([#214](https://github.com/ottobot-ai/ottochain-services/issues/214)) ([7e4d6cd](https://github.com/ottobot-ai/ottochain-services/commit/7e4d6cd41856c488ac45d029527e807bea7e5837))
+* **bridge+indexer:** push-based transaction confirmation via indexer callback ([#224](https://github.com/ottobot-ai/ottochain-services/issues/224)) ([f74a30b](https://github.com/ottobot-ai/ottochain-services/commit/f74a30bdc924d0f7f21a1486f0a968bbc2e5a625))
+* **indexer:** migrate to @ottochain/sdk for metagraph HTTP calls ([#215](https://github.com/ottobot-ai/ottochain-services/issues/215)) ([3bbf365](https://github.com/ottobot-ai/ottochain-services/commit/3bbf365f4199c57262b49b5c719119c2bb9d7803))
+
+
+### Bug Fixes
+
+* auto-migrate database schema on container startup ([#217](https://github.com/ottobot-ai/ottochain-services/issues/217)) ([99fcafb](https://github.com/ottobot-ai/ottochain-services/commit/99fcafb6d4e38ac73b48ebbc5869d4b702e4574f))
+* **ci:** restart stuck DL1 nodes during cluster join ([#235](https://github.com/ottobot-ai/ottochain-services/issues/235)) ([2bb06cd](https://github.com/ottobot-ai/ottochain-services/commit/2bb06cdd3a1378e9243e43ba77a59e15ab92fd37))
+* **ci:** use OTTOBOT_PAT for SDK bump PRs ([#236](https://github.com/ottobot-ai/ottochain-services/issues/236)) ([bb79a84](https://github.com/ottobot-ai/ottochain-services/commit/bb79a842473b84c8d592f4ee2763c8832430d99b))
+* **ci:** wait for DL1 cluster session propagation after join ([#233](https://github.com/ottobot-ai/ottochain-services/issues/233)) ([29ab302](https://github.com/ottobot-ai/ottochain-services/commit/29ab3027fcf61bbad0caddb805299e9a3b447667))
+* indexer confirmation pipeline and database migrations ([#225](https://github.com/ottobot-ai/ottochain-services/issues/225)) ([a352d42](https://github.com/ottobot-ai/ottochain-services/commit/a352d4213f98a9acb4bcce06f202cfeb0a5d5985))
+* **indexer:** require METAGRAPH_ID and batch-confirm snapshots ([#222](https://github.com/ottobot-ai/ottochain-services/issues/222)) ([7240963](https://github.com/ottobot-ai/ottochain-services/commit/72409636e0e21da2885621bc0b193dc26a8c7173))
+* read INDEXER_URL env var in standard simulator mode ([#216](https://github.com/ottobot-ai/ottochain-services/issues/216)) ([2bff167](https://github.com/ottobot-ai/ottochain-services/commit/2bff167e5e8c51f241e9277f92992d180445e063))
+
 ## [0.9.0](https://github.com/ottobot-ai/ottochain-services/compare/v0.8.1...v0.9.0) (2026-03-05)
 
 
