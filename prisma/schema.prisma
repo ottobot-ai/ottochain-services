@@ -1,10 +1,7 @@
 generator client {
-  provider      = "prisma-client-js"
-  // node:20-slim uses Debian Bookworm with OpenSSL 3.0
-  binaryTargets = ["native", "debian-openssl-3.0.x"]
-  // Prisma v7 defaults to "client" engine (WASM, requires driver adapter/Accelerate).
-  // Use "library" for traditional Node.js + PostgreSQL without Prisma Accelerate.
-  engineType    = "library"
+  // prisma-client-js is deprecated in v7 but still functional.
+  // Prisma v7 WASM engine requires a driver adapter (see packages/shared/src/db.ts).
+  provider = "prisma-client-js"
 }
 
 datasource db {
