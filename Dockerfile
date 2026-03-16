@@ -29,10 +29,8 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 
 # Re-run prisma generate to ensure the client matches the full source tree.
-# --force bypasses any cache/fingerprint check — required because the pnpm
-# virtual store may have a stale generated client (client/WASM engine) if
-# node_modules was partially restored from cache before .dockerignore was added.
-RUN npx prisma generate --force
+# (Prisma v7 removed --force; plain generate is idempotent and sufficient.)
+RUN npx prisma generate
 
 # Build all packages
 RUN pnpm run build
