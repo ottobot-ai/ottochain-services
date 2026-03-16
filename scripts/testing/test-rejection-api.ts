@@ -20,7 +20,7 @@
 import { PrismaClient } from '@prisma/client';
 
 const INDEXER_URL = process.env.INDEXER_URL || 'http://localhost:3031';
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({ datasourceUrl: process.env.DATABASE_URL });
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

@@ -5,7 +5,7 @@
 
 import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({ datasourceUrl: process.env.DATABASE_URL });
 
 const PLATFORMS = ['DISCORD', 'TELEGRAM', 'TWITTER', 'GITHUB'] as const;
 const ATTESTATION_TYPES = ['VOUCH', 'BEHAVIORAL', 'COMPLETION'] as const;
