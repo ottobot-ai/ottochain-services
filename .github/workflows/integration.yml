@@ -305,7 +305,7 @@ jobs:
       - name: Push database schema
         env:
           DATABASE_URL: postgresql://ottochain:ottochain@localhost:5432/ottochain
-        run: pnpm db:push --skip-generate
+        run: pnpm db:push
 
       - name: Write metagraph extra env
         run: |
