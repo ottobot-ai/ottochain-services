@@ -2,7 +2,7 @@
 import { PrismaClient } from '@prisma/client';
 import { publishEvent, CHANNELS } from '../../packages/shared/src/redis.js';
 
-const prisma = new PrismaClient({ datasourceUrl: process.env.DATABASE_URL });
+const prisma = new PrismaClient();
 const PLATFORMS = ['DISCORD', 'TELEGRAM', 'TWITTER', 'GITHUB'] as const;
 const ATTESTATION_TYPES = ['VOUCH', 'BEHAVIORAL', 'COMPLETION'] as const;
 

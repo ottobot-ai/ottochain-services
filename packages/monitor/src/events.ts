@@ -6,7 +6,7 @@
 
 import { PrismaClient, MonitoringEventType, MonitoringSeverity, MonitoringScope, Prisma } from '@prisma/client';
 
-const prisma = new PrismaClient({ datasourceUrl: process.env.DATABASE_URL });
+const prisma = new PrismaClient();
 
 export interface MonitoringEventInput {
   eventType: string;

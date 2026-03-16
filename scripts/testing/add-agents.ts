@@ -2,7 +2,7 @@
 import { PrismaClient } from '@prisma/client';
 import crypto from 'crypto';
 
-const prisma = new PrismaClient({ datasourceUrl: process.env.DATABASE_URL });
+const prisma = new PrismaClient();
 
 const NAMES = [
   'Atlas', 'Nova', 'Cipher', 'Echo', 'Flux', 'Helix', 'Ion', 'Juno',
