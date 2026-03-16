@@ -2,10 +2,16 @@ generator client {
   provider      = "prisma-client-js"
   // node:20-slim uses Debian Bookworm with OpenSSL 3.0
   binaryTargets = ["native", "debian-openssl-3.0.x"]
+  // Prisma v7 defaults to "client" engine (WASM, requires driver adapter/Accelerate).
+  // Use "library" for traditional Node.js + PostgreSQL without Prisma Accelerate.
+  engineType    = "library"
 }
 
 datasource db {
   provider = "postgresql"
+  // Required for Prisma CLI (db push/migrate) and runtime PrismaClient.
+  // prisma.config.ts also provides this but is not present in the Docker image.
+  url      = env("DATABASE_URL")
 }
 
 /// Agent identity registered on OttoChain
