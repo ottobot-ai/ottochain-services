@@ -75,7 +75,7 @@ if echo "$DB_SERVICES" | grep -qw "$SERVICE" && [ -n "$DATABASE_URL" ]; then
         else
             # Dev/staging: use db push with data loss warning
             echo "WARNING: running db push --accept-data-loss — schema changes may drop data"
-            if npx prisma db push --skip-generate --accept-data-loss 2>&1; then
+            if npx prisma db push --accept-data-loss 2>&1; then
                 echo "Database schema is up to date"
             else
                 echo "WARNING: Database migration failed — proceeding anyway (non-production)"

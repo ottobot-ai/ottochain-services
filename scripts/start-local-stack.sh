@@ -54,7 +54,7 @@ done
 
 # Push schema
 DATABASE_URL="postgresql://ottochain:ottochain@localhost:5432/ottochain" \
-    pnpm db:push --skip-generate 2>/dev/null
+    pnpm db:push 2>/dev/null
 log "  ✓ Schema pushed"
 
 # ============================================================================
