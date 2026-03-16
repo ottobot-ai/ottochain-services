@@ -1,0 +1,34 @@
+# Prevent local node_modules from contaminating the Docker build.
+# Without this, COPY . . would overwrite the pnpm install inside Docker
+# with the CI runner's local node_modules (which may have a stale/wrong
+# Prisma client variant — causing PrismaClientConstructorValidationError
+# with "client" engine type even when engineType=library is set in schema).
+node_modules/
+.pnpm-store/
+
+# Build outputs (Docker rebuilds these)
+dist/
+*.tsbuildinfo
+
+# Git
+.git/
+.github/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Environment files (passed via docker run -e or compose env)
+.env
+.env.local
+.env.*.local
+
+# Test artifacts
+coverage/
+/tmp/
+
+# Docs (not needed in image)
+*.md
