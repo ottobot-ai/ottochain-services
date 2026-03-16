@@ -9,9 +9,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  // Required for Prisma CLI (db push/migrate) and runtime PrismaClient.
-  // prisma.config.ts also provides this but is not present in the Docker image.
-  url      = env("DATABASE_URL")
 }
 
 /// Agent identity registered on OttoChain
