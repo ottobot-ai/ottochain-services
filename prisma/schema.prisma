@@ -1,12 +1,11 @@
 generator client {
-  provider      = "prisma-client-js"
-  // node:20-slim uses Debian Bookworm with OpenSSL 3.0
-  binaryTargets = ["native", "debian-openssl-3.0.x"]
+  // prisma-client-js is deprecated in v7 but still functional.
+  // Prisma v7 WASM engine requires a driver adapter (see packages/shared/src/db.ts).
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 /// Agent identity registered on OttoChain

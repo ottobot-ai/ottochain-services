@@ -86,7 +86,7 @@ done
 
 log "Pushing database schema..."
 DATABASE_URL="postgresql://ottochain:ottochain@localhost:$POSTGRES_PORT/ottochain" \
-    pnpm db:push --skip-generate 2>/dev/null
+    pnpm db:push 2>/dev/null
 
 log "Starting metagraph cluster..."
 cd "$TESSELLATION_DIR"

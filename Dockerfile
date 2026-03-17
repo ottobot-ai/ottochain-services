@@ -16,17 +16,21 @@ COPY packages/monitor/package.json ./packages/monitor/
 COPY packages/traffic-generator/package.json ./packages/traffic-generator/
 COPY packages/shared/package.json ./packages/shared/
 
-# Copy Prisma schema (needed for prisma generate)
+# Copy Prisma schema AND config (needed for prisma generate during pnpm install postinstall)
+# prisma.config.ts must be present before pnpm install so the postinstall prisma generate
+# uses the correct datasource config and engineType from schema.prisma (library, not client/WASM)
 COPY prisma ./prisma/
+COPY prisma.config.ts ./
 
-# Install dependencies
+# Install dependencies (root package.json postinstall runs prisma generate)
 RUN pnpm install --frozen-lockfile
 
 # Copy source
 COPY . .
 
-# Generate Prisma client
-RUN pnpm --filter indexer prisma generate
+# Re-run prisma generate to ensure the client matches the full source tree.
+# (Prisma v7 removed --force; plain generate is idempotent and sufficient.)
+RUN pnpm exec prisma generate
 
 # Build all packages
 RUN pnpm run build
@@ -54,8 +58,10 @@ COPY --from=builder /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.ya
 COPY --from=builder /app/packages ./packages
 COPY --from=builder /app/node_modules ./node_modules
 
-# Copy Prisma schema (needed for runtime migrations via prisma db push)
+# Copy Prisma schema and config (needed for runtime migrations via prisma db push)
+# prisma.config.ts is required by Prisma v7 for prisma db push to find datasource.url
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/prisma.config.ts ./
 
 # Copy entrypoint script
 COPY docker-entrypoint.sh /usr/local/bin/

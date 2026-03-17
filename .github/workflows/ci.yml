@@ -141,5 +141,5 @@ jobs:
         env:
           DATABASE_URL: postgresql://ottochain:ottochain@localhost:5432/ottochain
         run: |
-          pnpm db:push --skip-generate
+          pnpm db:push
           pnpm db:generate
