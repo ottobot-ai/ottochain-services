@@ -4,9 +4,8 @@
  * Receives events from ottochain-monitoring and queries them for the status page.
  */
 
-import { PrismaClient, MonitoringEventType, MonitoringSeverity, MonitoringScope, Prisma } from '@prisma/client';
-
-const prisma = new PrismaClient({});
+import { MonitoringEventType, MonitoringSeverity, MonitoringScope, Prisma } from '@prisma/client';
+import { prisma } from '@ottochain/shared';
 
 export interface MonitoringEventInput {
   eventType: string;

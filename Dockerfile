@@ -30,7 +30,7 @@ COPY . .
 
 # Re-run prisma generate to ensure the client matches the full source tree.
 # (Prisma v7 removed --force; plain generate is idempotent and sufficient.)
-RUN npx prisma generate
+RUN pnpm exec prisma generate
 
 # Build all packages
 RUN pnpm run build
