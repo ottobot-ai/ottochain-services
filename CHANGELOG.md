@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.12.0](https://github.com/ottobot-ai/ottochain-services/compare/v0.11.0...v0.12.0) (2026-03-18)
+
+
+### Features
+
+* **gateway:** Apollo Server v5 migration ([#249](https://github.com/ottobot-ai/ottochain-services/issues/249)) ([d0fd706](https://github.com/ottobot-ai/ottochain-services/commit/d0fd706025fd601dc39d628fffcb8b7da62f990f))
+* signing modes for agent registration (server/self) [rebased] ([#248](https://github.com/ottobot-ai/ottochain-services/issues/248)) ([caedac5](https://github.com/ottobot-ai/ottochain-services/commit/caedac5923a72001fa3e7fc6e97c949f0e62553e))
+
+
+### Bug Fixes
+
+* **ci:** add --force to sdk-bump workflow ([#250](https://github.com/ottobot-ai/ottochain-services/issues/250)) ([ca63b44](https://github.com/ottobot-ai/ottochain-services/commit/ca63b443acbd6ca8bb84150a05f2cebba2e0962d))
+* **gateway:** add express.json() middleware for Apollo Server v5 ([#251](https://github.com/ottobot-ai/ottochain-services/issues/251)) ([6bfa803](https://github.com/ottobot-ai/ottochain-services/commit/6bfa8036da8af02acb2dcd862e583d2665dbabaf))
+* migrate to Prisma v7 (prisma.config.ts + client datasourceUrl) ([#246](https://github.com/ottobot-ai/ottochain-services/issues/246)) ([e116f5a](https://github.com/ottobot-ai/ottochain-services/commit/e116f5a78899ae17f290afe17932573e2fe67b7a))
+
 ## [0.11.0](https://github.com/ottobot-ai/ottochain-services/compare/v0.10.0...v0.11.0) (2026-03-13)
 
 
