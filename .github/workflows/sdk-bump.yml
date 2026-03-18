@@ -65,7 +65,7 @@ jobs:
           done
 
       - name: Update lockfile
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --no-frozen-lockfile --force
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v8
