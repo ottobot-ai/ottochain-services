@@ -15,6 +15,8 @@ import { oracleRoutes } from './routes/oracle.js';
 import { corporateRoutes } from './routes/corporate.js';
 import { tokenRoutes } from './routes/token.js';
 import { internalRoutes } from './routes/internal.js';     // Internal service-to-service API
+import { buildRoutes } from './routes/build.js';
+import { submitRoutes } from './routes/submit.js';
 import { responseTimeTracker } from './lib/response-time-tracker.js';
 import { confirmationRegistry } from './lib/confirmation-registry.js';
 
@@ -62,7 +64,9 @@ app.use('/wallet', walletRoutes);
 app.use('/agent', agentRoutes);
 app.use('/contract', contractRoutes);
 app.use('/fiber', fiberRoutes);    // Generic fiber API
-app.use('/sm', smRoutes);          // Generic state machine API
+app.use('/sm', smRoutes);          // Generic state machine API (legacy, server-signed)
+app.use('/build', buildRoutes);    // Client-side signing: build unsigned payloads
+app.use('/submit', submitRoutes);  // Client-side signing: relay pre-signed transactions
 app.use('/script', scriptRoutes);  // Generic script oracle API
 app.use('/governance', governanceRoutes); // DAO/Governance API
 app.use('/market', marketRoutes);         // Market API (predictions, auctions, crowdfunding)

@@ -1,15 +1,16 @@
 // Agent registration and management routes
 // Uses OttoChain metagraph state machines for on-chain identity
+// Supports two signing modes: server-signed and self-signed
 
 import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
-import { 
-  submitTransaction, 
-  getStateMachine, 
-  getCheckpoint, 
-  keyPairFromPrivateKey, 
-  generateKeyPair, 
+import {
+  submitTransaction,
+  getStateMachine,
+  getCheckpoint,
+  keyPairFromPrivateKey,
+  generateKeyPair,
   waitForFiber,
   getFiberSequenceNumber,
   type StateMachineDefinition,
@@ -18,28 +19,116 @@ import {
   type FiberOrdinal,
 } from '../metagraph.js';
 import { getIdentityDefinition, DEFAULT_REPUTATION_CONFIG } from '@ottochain/sdk/apps/identity';
+import { batchSign, type Signed, type SignatureProof } from '@ottochain/sdk';
+import {
+  getKeyStore,
+  registerServerSigned,
+  registerSelfSigned,
+  getSigningKey,
+  validateSelfSignedOwnership,
+  type SigningMode,
+} from '../lib/metakit/key-store.js';
+import { relaySignedTransaction } from '../lib/metakit/relay.js';
 
 const AGENT_IDENTITY_DEFINITION = getIdentityDefinition() as StateMachineDefinition;
 
+// TODO: Implement per-fiber rate limiting (see docs/specs/signing-modes-spec.md)
 export const agentRoutes: RouterType = Router();
 
 // ============================================================================
 // Request Schemas
 // ============================================================================
 
-const RegisterRequestSchema = z.object({
-  privateKey: z.string().length(64),
+// Base metadata (shared between modes)
+const AgentMetadataSchema = z.object({
   displayName: z.string().optional(),
   platform: z.string().optional(),
   platformUserId: z.string().optional(),
 });
 
-const TransitionRequestSchema = z.object({
+// Server-signed registration: bridge generates and stores keys
+const RegisterServerSignedSchema = AgentMetadataSchema.extend({
+  signingMode: z.literal('server'),
+});
+
+// Self-signed registration: client provides their public key
+const RegisterSelfSignedSchema = AgentMetadataSchema.extend({
+  signingMode: z.literal('self'),
+  publicKey: z.string().length(128).regex(/^[0-9a-fA-F]+$/, 'Public key must be 128 hex characters'),
+});
+
+// Combined registration schema
+const RegisterRequestSchema = z.discriminatedUnion('signingMode', [
+  RegisterServerSignedSchema,
+  RegisterSelfSignedSchema,
+]);
+
+// Legacy registration (deprecated) - privateKey in request
+const LegacyRegisterRequestSchema = AgentMetadataSchema.extend({
+  privateKey: z.string().length(64),
+});
+
+// Signature proof schema
+const SignatureProofSchema = z.object({
+  id: z.string().length(128),
+  signature: z.string().min(100),
+});
+
+// Signed update schema for self-signed mode
+const SignedUpdateSchema = z.object({
+  value: z.record(z.any()),
+  proofs: z.array(SignatureProofSchema).min(1),
+});
+
+// Server-signed transition: bridge signs with stored key
+const TransitionServerSignedSchema = z.object({
+  fiberId: z.string().uuid(),
+  event: z.string(),
+  payload: z.record(z.any()).optional(),
+});
+
+// Self-signed transition: client provides pre-signed update
+const TransitionSelfSignedSchema = z.object({
+  fiberId: z.string().uuid(),
+  signedUpdate: SignedUpdateSchema,
+});
+
+// Legacy transition (deprecated)
+const LegacyTransitionRequestSchema = z.object({
   privateKey: z.string().length(64),
   fiberId: z.string().uuid(),
   event: z.string(),
   payload: z.record(z.any()).optional(),
 });
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/**
+ * Determine if a registration request is using legacy format
+ */
+function isLegacyRegistration(body: unknown): body is z.infer<typeof LegacyRegisterRequestSchema> {
+  return typeof body === 'object' && body !== null && 'privateKey' in body && !('signingMode' in body);
+}
+
+/**
+ * Determine if a transition request is using legacy format
+ */
+function isLegacyTransition(body: unknown): body is z.infer<typeof LegacyTransitionRequestSchema> {
+  return typeof body === 'object' && body !== null && 'privateKey' in body;
+}
+
+/**
+ * Submit a transaction using server-signed mode
+ */
+async function submitServerSigned(
+  fiberId: string,
+  message: TransitionStateMachine | CreateStateMachine | object
+): Promise<{ hash: string }> {
+  const privateKey = await getSigningKey(fiberId);
+  return submitTransaction(message, privateKey);
+}
 
 // ============================================================================
 // Routes
@@ -66,37 +155,115 @@ agentRoutes.post('/wallet', async (_req, res) => {
 /**
  * Register a new agent identity
  * POST /agent/register
- * 
- * Creates a new AgentIdentity state machine on the metagraph.
+ *
+ * Supports two modes:
+ * - server: Bridge generates and stores keys, signs on agent's behalf
+ * - self: Agent provides public key, submits pre-signed transactions
+ *
+ * Also supports deprecated legacy format (privateKey in request) for backward compat.
  */
 agentRoutes.post('/register', async (req, res) => {
   try {
+    // Check for legacy format
+    if (isLegacyRegistration(req.body)) {
+      console.warn('[agent/register] DEPRECATED: Using privateKey in request. Migrate to signingMode API.');
+
+      const input = LegacyRegisterRequestSchema.parse(req.body);
+      const keyPair = keyPairFromPrivateKey(input.privateKey);
+      const ownerAddress = keyPair.address;
+      const fiberId = randomUUID();
+
+      // Store the key in server mode (treating legacy as server-signed)
+      const store = getKeyStore();
+      await store.set(fiberId, input.privateKey);
+      await store.setMetadata(fiberId, {
+        signingMode: 'server',
+        publicKey: keyPair.publicKey,
+        address: ownerAddress,
+        createdAt: new Date(),
+      });
+
+      const message = {
+        CreateStateMachine: {
+          fiberId,
+          definition: AGENT_IDENTITY_DEFINITION,
+          initialData: {
+            schema: 'AgentIdentity',
+            displayName: input.displayName ?? null,
+            platform: input.platform ?? null,
+            platformUserId: input.platformUserId ?? null,
+            owner: ownerAddress,
+            reputation: DEFAULT_REPUTATION_CONFIG.baseReputation,
+            vouches: [],
+            completedContracts: 0,
+            violations: 0,
+            status: 'REGISTERED',
+            createdAt: new Date().toISOString(),
+          },
+          parentFiberId: null,
+        },
+      };
+
+      console.log(`[agent/register] Creating AgentIdentity fiber ${fiberId} for ${ownerAddress} (legacy mode)`);
+      const result = await submitTransaction(message, input.privateKey);
+
+      return res.status(201).json({
+        fiberId,
+        address: ownerAddress,
+        publicKey: keyPair.publicKey,
+        signingMode: 'server' as SigningMode,
+        hash: result.hash,
+        message: 'Agent identity created. Call /agent/activate to activate.',
+        _deprecated: 'Using privateKey in requests is deprecated. Use signingMode: "server" or "self" instead.',
+      });
+    }
+
+    // New format with signingMode
     const input = RegisterRequestSchema.parse(req.body);
-    
-    // Derive address from private key
-    const keyPair = keyPairFromPrivateKey(input.privateKey);
-    const ownerAddress = keyPair.address;
-    
     const fiberId = randomUUID();
-    
+
+    let ownerAddress: string;
+    let publicKey: string;
+    let privateKeyForTx: string;
+
+    if (input.signingMode === 'server') {
+      // Server-signed: generate and store keys
+      const registration = await registerServerSigned(fiberId);
+      ownerAddress = registration.keyPair.address;
+      publicKey = registration.keyPair.publicKey;
+      privateKeyForTx = registration.keyPair.privateKey;
+    } else {
+      // Self-signed CreateStateMachine requires multi-party signing support (Epic A)
+      // Until then, the relay key signer won't match the owner address → DL1 rejection
+      // For now, register metadata only and return fiberId for future use
+      const registration = await registerSelfSigned(fiberId, input.publicKey);
+
+      console.log(`[agent/register] Self-signed registration for ${registration.address} — metadata only (pending multi-party signing)`);
+
+      return res.status(201).json({
+        fiberId,
+        address: registration.address,
+        publicKey: input.publicKey,
+        signingMode: input.signingMode,
+        status: 'pending_metagraph',
+        message: 'Agent identity registered with bridge. On-chain fiber creation requires multi-party signing support (not yet available). Use this fiberId for future operations once Epic A lands.',
+      });
+    }
+
     const message = {
       CreateStateMachine: {
         fiberId,
         definition: AGENT_IDENTITY_DEFINITION,
         initialData: {
-          // Schema field for indexer filtering
           schema: 'AgentIdentity',
-          // Agent metadata
           displayName: input.displayName ?? null,
           platform: input.platform ?? null,
           platformUserId: input.platformUserId ?? null,
           owner: ownerAddress,
-          // Reputation tracking (uses SDK config)
           reputation: DEFAULT_REPUTATION_CONFIG.baseReputation,
           vouches: [],
           completedContracts: 0,
           violations: 0,
-          // Status
           status: 'REGISTERED',
           createdAt: new Date().toISOString(),
         },
@@ -104,12 +271,14 @@ agentRoutes.post('/register', async (req, res) => {
       },
     };
 
-    console.log(`[agent/register] Creating AgentIdentity fiber ${fiberId} for ${ownerAddress}`);
-    const result = await submitTransaction(message, input.privateKey);
+    console.log(`[agent/register] Creating AgentIdentity fiber ${fiberId} for ${ownerAddress} (${input.signingMode} mode)`);
+    const result = await submitTransaction(message, privateKeyForTx);
 
     res.status(201).json({
       fiberId,
       address: ownerAddress,
+      publicKey,
+      signingMode: input.signingMode,
       hash: result.hash,
       message: 'Agent identity created. Call /agent/activate to activate.',
     });
@@ -126,22 +295,91 @@ agentRoutes.post('/register', async (req, res) => {
 /**
  * Transition an agent's state machine
  * POST /agent/transition
- * 
- * Events: activate, receive_vouch, receive_completion, receive_violation, withdraw
+ *
+ * Supports:
+ * - Server-signed: { fiberId, event, payload } - bridge signs
+ * - Self-signed: { fiberId, signedUpdate: { value, proofs } } - client pre-signed
+ * - Legacy: { privateKey, fiberId, event, payload } - deprecated
  */
 agentRoutes.post('/transition', async (req, res) => {
   try {
-    const input = TransitionRequestSchema.parse(req.body);
+    // Check for legacy format
+    if (isLegacyTransition(req.body)) {
+      console.warn('[agent/transition] DEPRECATED: Using privateKey in request. Migrate to signingMode API.');
 
-    // Verify agent exists
+      const input = LegacyTransitionRequestSchema.parse(req.body);
+
+      const state = await getStateMachine(input.fiberId) as { sequenceNumber?: number } | null;
+      if (!state) {
+        return res.status(404).json({ error: 'Agent not found' });
+      }
+
+      const targetSequenceNumber = await getFiberSequenceNumber(input.fiberId);
+      const message = {
+        TransitionStateMachine: {
+          fiberId: input.fiberId,
+          eventName: input.event,
+          payload: input.payload ?? {},
+          targetSequenceNumber,
+        },
+      };
+
+      console.log(`[agent/transition] Event ${input.event} on fiber ${input.fiberId} (legacy)`);
+      const result = await submitTransaction(message, input.privateKey);
+
+      return res.json({
+        hash: result.hash,
+        event: input.event,
+        fiberId: input.fiberId,
+        _deprecated: 'Using privateKey in requests is deprecated.',
+      });
+    }
+
+    // Check for self-signed format
+    const selfSignedParse = TransitionSelfSignedSchema.safeParse(req.body);
+    if (selfSignedParse.success) {
+      const input = selfSignedParse.data;
+
+      // Validate ownership
+      const signerPublicKey = input.signedUpdate.proofs[0]?.id;
+      if (!signerPublicKey) {
+        return res.status(400).json({ error: 'No signature proof provided' });
+      }
+
+      const validation = await validateSelfSignedOwnership(input.fiberId, signerPublicKey);
+      if (!validation.valid) {
+        return res.status(403).json({ error: validation.error });
+      }
+
+      console.log(`[agent/transition] Relaying self-signed update for fiber ${input.fiberId}`);
+      const result = await relaySignedTransaction(input.signedUpdate as { value: unknown; proofs: unknown[] });
+      return res.json({
+        hash: result.hash,
+        fiberId: input.fiberId,
+        signingMode: 'self',
+      });
+    }
+
+    // Server-signed format
+    const input = TransitionServerSignedSchema.parse(req.body);
+
+    // Check signing mode
+    const store = getKeyStore();
+    const mode = await store.getMode(input.fiberId);
+
+    if (mode === 'self') {
+      return res.status(400).json({
+        error: 'Fiber is in self-signed mode. Submit signedUpdate with pre-signed transaction.',
+        signingMode: 'self',
+      });
+    }
+
     const state = await getStateMachine(input.fiberId) as { sequenceNumber?: number } | null;
     if (!state) {
       return res.status(404).json({ error: 'Agent not found' });
     }
 
-    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
     const targetSequenceNumber = await getFiberSequenceNumber(input.fiberId);
-
     const message = {
       TransitionStateMachine: {
         fiberId: input.fiberId,
@@ -151,13 +389,16 @@ agentRoutes.post('/transition', async (req, res) => {
       },
     };
 
-    console.log(`[agent/transition] Event ${input.event} on fiber ${input.fiberId}`);
-    const result = await submitTransaction(message, input.privateKey);
+    console.log(`[agent/transition] Event ${input.event} on fiber ${input.fiberId} (server-signed)`);
+
+    const privateKey = await getSigningKey(input.fiberId);
+    const result = await submitTransaction(message, privateKey);
 
     res.json({
       hash: result.hash,
       event: input.event,
       fiberId: input.fiberId,
+      signingMode: 'server',
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -172,24 +413,20 @@ agentRoutes.post('/transition', async (req, res) => {
 /**
  * Activate an agent (shorthand for transition with activate event)
  * POST /agent/activate
- * 
- * This route waits for the fiber to be visible in DL1 state before attempting
- * the transition, which prevents "CidNotFound" errors when activating immediately
- * after registration.
  */
 agentRoutes.post('/activate', async (req, res) => {
   try {
-    const { privateKey, fiberId, waitForSync = true, maxWaitSeconds = 30 } = req.body;
+    const { fiberId, waitForSync = true, maxWaitSeconds = 30, signedUpdate, privateKey } = req.body;
 
-    if (!privateKey || !fiberId) {
-      return res.status(400).json({ error: 'privateKey and fiberId are required' });
+    if (!fiberId) {
+      return res.status(400).json({ error: 'fiberId is required' });
     }
 
-    // Wait for fiber to appear in state before activating (prevents CidNotFound)
+    // Wait for fiber to appear in state before activating
     if (waitForSync) {
       const fiberVisible = await waitForFiber(fiberId, maxWaitSeconds, 1000);
       if (!fiberVisible) {
-        return res.status(503).json({ 
+        return res.status(503).json({
           error: 'Fiber not yet synced to data layer',
           fiberId,
           hint: 'Try again in a few seconds or set waitForSync=false to skip waiting'
@@ -203,15 +440,68 @@ agentRoutes.post('/activate', async (req, res) => {
     }
 
     if (state.currentState !== 'REGISTERED') {
-      return res.status(400).json({ 
-        error: 'Agent cannot be activated', 
-        currentState: state.currentState 
+      return res.status(400).json({
+        error: 'Agent cannot be activated',
+        currentState: state.currentState
       });
     }
 
-    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
-    const targetSequenceNumber = await getFiberSequenceNumber(fiberId);
+    // Handle self-signed activation
+    if (signedUpdate) {
+      const signerPublicKey = signedUpdate.proofs?.[0]?.id;
+      if (!signerPublicKey) {
+        return res.status(400).json({ error: 'No signature proof provided' });
+      }
 
+      const validation = await validateSelfSignedOwnership(fiberId, signerPublicKey);
+      if (!validation.valid) {
+        return res.status(403).json({ error: validation.error });
+      }
+
+      const result = await relaySignedTransaction(signedUpdate as { value: unknown; proofs: unknown[] });
+      return res.json({
+        hash: result.hash,
+        fiberId,
+        status: 'ACTIVE',
+        signingMode: 'self',
+      });
+    }
+
+    // Handle legacy privateKey
+    if (privateKey) {
+      console.warn('[agent/activate] DEPRECATED: Using privateKey in request.');
+
+      const targetSequenceNumber = await getFiberSequenceNumber(fiberId);
+      const message = {
+        TransitionStateMachine: {
+          fiberId,
+          eventName: 'activate',
+          payload: {},
+          targetSequenceNumber,
+        },
+      };
+
+      const result = await submitTransaction(message, privateKey);
+      return res.json({
+        hash: result.hash,
+        fiberId,
+        status: 'ACTIVE',
+        _deprecated: 'Using privateKey in requests is deprecated.',
+      });
+    }
+
+    // Server-signed activation
+    const store = getKeyStore();
+    const mode = await store.getMode(fiberId);
+
+    if (mode === 'self') {
+      return res.status(400).json({
+        error: 'Fiber is in self-signed mode. Provide signedUpdate.',
+        signingMode: 'self',
+      });
+    }
+
+    const targetSequenceNumber = await getFiberSequenceNumber(fiberId);
     const message = {
       TransitionStateMachine: {
         fiberId,
@@ -221,13 +511,15 @@ agentRoutes.post('/activate', async (req, res) => {
       },
     };
 
-    console.log(`[agent/activate] Activating fiber ${fiberId}`);
-    const result = await submitTransaction(message, privateKey);
+    console.log(`[agent/activate] Activating fiber ${fiberId} (server-signed)`);
+    const privateKeyStored = await getSigningKey(fiberId);
+    const result = await submitTransaction(message, privateKeyStored);
 
     res.json({
       hash: result.hash,
       fiberId,
       status: 'ACTIVE',
+      signingMode: 'server',
     });
   } catch (err) {
     console.error('[agent/activate] Error:', err);
@@ -239,15 +531,13 @@ agentRoutes.post('/activate', async (req, res) => {
 /**
  * Vouch for another agent
  * POST /agent/vouch
- * 
- * Shorthand for transitioning the target agent with receive_vouch event.
  */
 agentRoutes.post('/vouch', async (req, res) => {
   try {
-    const { privateKey, targetFiberId, fromAddress, reason } = req.body;
+    const { fiberId, targetFiberId, fromAddress, reason, signedUpdate, privateKey } = req.body;
 
-    if (!privateKey || !targetFiberId) {
-      return res.status(400).json({ error: 'privateKey and targetFiberId are required' });
+    if (!targetFiberId) {
+      return res.status(400).json({ error: 'targetFiberId is required' });
     }
 
     const state = await getStateMachine(targetFiberId) as { sequenceNumber?: number; currentState?: string } | null;
@@ -256,18 +546,87 @@ agentRoutes.post('/vouch', async (req, res) => {
     }
 
     if (state.currentState !== 'ACTIVE') {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Can only vouch for active agents',
-        currentState: state.currentState 
+        currentState: state.currentState
       });
     }
 
-    // Derive voucher address if not provided
-    const voucherAddress = fromAddress ?? keyPairFromPrivateKey(privateKey).address;
+    // Handle self-signed vouch
+    if (signedUpdate) {
+      // For vouch, we need fiberId of the voucher, not target
+      if (!fiberId) {
+        return res.status(400).json({ error: 'fiberId (voucher) is required for self-signed vouch' });
+      }
 
-    // Get sequence from DL1's onchain state (more reliable than ML0 for rapid transactions)
+      const signerPublicKey = signedUpdate.proofs?.[0]?.id;
+      if (!signerPublicKey) {
+        return res.status(400).json({ error: 'No signature proof provided' });
+      }
+
+      const validation = await validateSelfSignedOwnership(fiberId, signerPublicKey);
+      if (!validation.valid) {
+        return res.status(403).json({ error: validation.error });
+      }
+
+      const result = await relaySignedTransaction(signedUpdate as { value: unknown; proofs: unknown[] });
+      return res.json({
+        hash: result.hash,
+        event: 'vouch',
+        targetFiberId,
+        signingMode: 'self',
+      });
+    }
+
+    // Handle legacy privateKey
+    if (privateKey) {
+      console.warn('[agent/vouch] DEPRECATED: Using privateKey in request.');
+
+      const voucherAddress = fromAddress ?? keyPairFromPrivateKey(privateKey).address;
+      const targetSequenceNumber = await getFiberSequenceNumber(targetFiberId);
+
+      const message = {
+        TransitionStateMachine: {
+          fiberId: targetFiberId,
+          eventName: 'receive_vouch',
+          payload: { from: voucherAddress, reason: reason ?? '' },
+          targetSequenceNumber,
+        },
+      };
+
+      const result = await submitTransaction(message, privateKey);
+      return res.json({
+        hash: result.hash,
+        event: 'vouch',
+        targetFiberId,
+        from: voucherAddress,
+        _deprecated: 'Using privateKey in requests is deprecated.',
+      });
+    }
+
+    // Server-signed vouch
+    if (!fiberId) {
+      return res.status(400).json({ error: 'fiberId (voucher) is required for server-signed vouch' });
+    }
+
+    const store = getKeyStore();
+    const mode = await store.getMode(fiberId);
+
+    if (mode === 'self') {
+      return res.status(400).json({
+        error: 'Voucher fiber is in self-signed mode. Provide signedUpdate.',
+        signingMode: 'self',
+      });
+    }
+
+    const metadata = await store.getMetadata(fiberId);
+    const voucherAddress = fromAddress ?? metadata?.address;
+
+    if (!voucherAddress) {
+      return res.status(400).json({ error: 'Could not determine voucher address' });
+    }
+
     const targetSequenceNumber = await getFiberSequenceNumber(targetFiberId);
-
     const message = {
       TransitionStateMachine: {
         fiberId: targetFiberId,
@@ -277,14 +636,16 @@ agentRoutes.post('/vouch', async (req, res) => {
       },
     };
 
-    console.log(`[agent/vouch] ${voucherAddress} vouching for ${targetFiberId}`);
-    const result = await submitTransaction(message, privateKey);
+    console.log(`[agent/vouch] ${voucherAddress} vouching for ${targetFiberId} (server-signed)`);
+    const voucherKey = await getSigningKey(fiberId);
+    const result = await submitTransaction(message, voucherKey);
 
     res.json({
       hash: result.hash,
       event: 'vouch',
       targetFiberId,
       from: voucherAddress,
+      signingMode: 'server',
     });
   } catch (err) {
     console.error('[agent/vouch] Error:', err);
@@ -303,7 +664,15 @@ agentRoutes.get('/:fiberId', async (req, res) => {
     if (!state) {
       return res.status(404).json({ error: 'Agent not found' });
     }
-    res.json(state);
+
+    // Include signing mode if known
+    const store = getKeyStore();
+    const metadata = await store.getMetadata(req.params.fiberId);
+
+    res.json({
+      ...state as object,
+      _signingMode: metadata?.signingMode ?? 'unknown',
+    });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Query failed';
     res.status(500).json({ error: errorMessage });
@@ -316,15 +685,15 @@ agentRoutes.get('/:fiberId', async (req, res) => {
  */
 agentRoutes.get('/', async (_req, res) => {
   try {
-    const checkpoint = await getCheckpoint() as { 
-      state: { 
-        stateMachines: Record<string, { 
+    const checkpoint = await getCheckpoint() as {
+      state: {
+        stateMachines: Record<string, {
           stateData?: { schema?: string };
           definition?: { metadata?: { name?: string } };
-        }> 
-      } 
+        }>
+      }
     };
-    
+
     // Filter state machines that are AgentIdentity
     const agents: Record<string, unknown> = {};
     for (const [fiberId, sm] of Object.entries(checkpoint.state.stateMachines ?? {})) {
@@ -335,7 +704,7 @@ agentRoutes.get('/', async (_req, res) => {
         agents[fiberId] = sm;
       }
     }
-    
+
     res.json({
       count: Object.keys(agents).length,
       agents,
@@ -346,3 +715,5 @@ agentRoutes.get('/', async (_req, res) => {
     res.status(500).json({ error: errorMessage });
   }
 });
+
+
