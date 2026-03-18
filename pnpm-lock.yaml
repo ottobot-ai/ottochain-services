@@ -37,8 +37,8 @@ importers:
   packages/bridge:
     dependencies:
       '@ottochain/sdk':
-        specifier: 1.4.2
-        version: 1.4.2(@stardust-collective/dag4@2.8.1)
+        specifier: 1.5.0
+        version: 1.5.0(@stardust-collective/dag4@2.8.1)
       '@ottochain/shared':
         specifier: workspace:*
         version: link:../shared
@@ -141,8 +141,8 @@ importers:
   packages/indexer:
     dependencies:
       '@ottochain/sdk':
-        specifier: 1.4.2
-        version: 1.4.2(@stardust-collective/dag4@2.8.1)
+        specifier: 1.5.0
+        version: 1.5.0(@stardust-collective/dag4@2.8.1)
       '@ottochain/shared':
         specifier: workspace:*
         version: link:../shared
@@ -209,8 +209,8 @@ importers:
   packages/shared:
     dependencies:
       '@ottochain/sdk':
-        specifier: 1.4.2
-        version: 1.4.2(@stardust-collective/dag4@2.8.1)
+        specifier: 1.5.0
+        version: 1.5.0(@stardust-collective/dag4@2.8.1)
       '@prisma/adapter-pg':
         specifier: ^7.5.0
         version: 7.5.0
@@ -240,8 +240,8 @@ importers:
   packages/traffic-generator:
     dependencies:
       '@ottochain/sdk':
-        specifier: 1.4.2
-        version: 1.4.2(@stardust-collective/dag4@2.8.1)
+        specifier: 1.5.0
+        version: 1.5.0(@stardust-collective/dag4@2.8.1)
       '@ottochain/shared':
         specifier: workspace:*
         version: link:../shared
@@ -794,8 +794,8 @@ packages:
     resolution: {integrity: sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg==}
     engines: {node: '>=8.0.0'}
 
-  '@ottochain/sdk@1.4.2':
-    resolution: {integrity: sha512-IDg5bQE+VYkbN/LqEIPlas8DpsSXeDiexTGVxRqkJLpVkmx6iOlCEuVFMxQfDr0Lx5QJQHqHlufWpoCoIskxag==}
+  '@ottochain/sdk@1.5.0':
+    resolution: {integrity: sha512-cfluN9fMQsZkDKVFTQXggURN9zmvC2gX5Q/kMUB85yRjIdbdgp083p8CK+xp98qzaisMmlS1vAlO+Xidfd2+uQ==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
       '@stardust-collective/dag4': ^2.6.0
@@ -3163,7 +3163,7 @@ snapshots:
 
   '@opentelemetry/api@1.9.0': {}
 
-  '@ottochain/sdk@1.4.2(@stardust-collective/dag4@2.8.1)':
+  '@ottochain/sdk@1.5.0(@stardust-collective/dag4@2.8.1)':
     dependencies:
       '@bufbuild/protobuf': 2.11.0
       '@constellation-network/metagraph-sdk': 0.2.0
