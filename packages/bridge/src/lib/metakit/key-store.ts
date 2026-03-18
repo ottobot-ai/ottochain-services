@@ -8,13 +8,13 @@
  * If not set, keys are stored unencrypted (development only - logs a warning).
  */
 
-import { PrismaClient, SigningMode as PrismaSigningMode } from '@prisma/client';
+import type { SigningMode as PrismaSigningMode } from '@prisma/client';
+import { prisma } from '@ottochain/shared';
 import { generateKeyPair, keyPairFromPrivateKey } from '../../metagraph.js';
 import type { KeyPair } from '../../metagraph.js';
 import {
   encryptKey,
   decryptKey,
-  normalizePublicKey,
   UNCOMPRESSED_PUBLIC_KEY_HEX_LENGTH,
   NORMALIZED_PUBLIC_KEY_HEX_LENGTH,
 } from './crypto.js';
@@ -22,14 +22,9 @@ import {
 // Re-export constants and crypto utilities for consumers
 export { encryptKey, decryptKey, UNCOMPRESSED_PUBLIC_KEY_HEX_LENGTH, NORMALIZED_PUBLIC_KEY_HEX_LENGTH };
 
-// Lazy-init Prisma client (shared across requests)
-let prismaClient: PrismaClient | null = null;
-
-function getPrisma(): PrismaClient {
-  if (!prismaClient) {
-    prismaClient = new PrismaClient();
-  }
-  return prismaClient;
+// Use shared Prisma singleton (Prisma v7 WASM requires adapter-pg, handled in @ottochain/shared)
+function getPrisma() {
+  return prisma;
 }
 
 export type SigningMode = 'server' | 'self';
