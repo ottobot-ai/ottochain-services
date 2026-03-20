@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.13.0](https://github.com/ottobot-ai/ottochain-services/compare/v0.12.0...v0.13.0) (2026-03-20)
+
+
+### Features
+
+* **ci:** add compatibility-check workflow for cross-repo integration testing ([#253](https://github.com/ottobot-ai/ottochain-services/issues/253)) ([d01542b](https://github.com/ottobot-ai/ottochain-services/commit/d01542bebbb2f7233c4f20d5612c94ff546fef1b))
+* **ci:** auto-merge SDK bump PRs ([#256](https://github.com/ottobot-ai/ottochain-services/issues/256)) ([ffc7549](https://github.com/ottobot-ai/ottochain-services/commit/ffc75492ea7cfe0e3fb11a49f2fe727a69670792))
+
 ## [0.12.0](https://github.com/ottobot-ai/ottochain-services/compare/v0.11.0...v0.12.0) (2026-03-18)
 
 
