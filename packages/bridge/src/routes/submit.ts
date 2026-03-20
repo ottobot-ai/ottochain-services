@@ -8,16 +8,54 @@
  *
  * Endpoint:
  *   POST /submit — accepts Signed<OttochainMessage>, relays to DL1
+ *
+ * Request formats accepted:
+ *   Direct:  { value, proofs }
+ *   Wrapped: { signed: { value, proofs } }   (SDK signTransaction() return shape)
  */
 
 import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
+import { verify } from '@ottochain/sdk';
 import { relaySignedTransaction } from '../lib/metakit/relay.js';
 
 export const submitRoutes: RouterType = Router();
 
 // ============================================================================
-// Request Schema
+// Known OttoChain message types
+// ============================================================================
+
+const KNOWN_MESSAGE_TYPES = new Set([
+  'CreateStateMachine',
+  'TransitionStateMachine',
+  'ArchiveStateMachine',
+  'CreateScript',
+  'InvokeScript',
+  'CreateContract',
+  'TransitionContract',
+  'ProposeContract',
+  'AcceptContract',
+  'CompleteContract',
+  'RejectContract',
+  'DisputeContract',
+  'CreateToken',
+  'TransferToken',
+  'BurnToken',
+  'SplitToken',
+  'MergeToken',
+  'ExpireToken',
+  'RegisterAgent',
+  'TransitionAgent',
+  'CreateAttestation',
+  'CreateProposal',
+  'CastVote',
+  'CreateMarket',
+  'PlaceBid',
+  'ResolveMarket',
+]);
+
+// ============================================================================
+// Request Schemas
 // ============================================================================
 
 const ProofSchema = z.object({
@@ -25,35 +63,97 @@ const ProofSchema = z.object({
   signature: z.string(),
 });
 
-const SignedMessageSchema = z.object({
+// The signed payload itself: { value: Record<string, any>, proofs: [...] }
+const SignedPayloadSchema = z.object({
   value: z.record(z.any()),
   proofs: z.array(ProofSchema).min(1, 'At least one proof (signature) required'),
 });
+
+// Accept both direct and wrapped formats:
+//   Direct:  { value, proofs }
+//   Wrapped: { signed: { value, proofs } }
+const SubmitBodySchema = z.union([
+  // Wrapped: { signed: { value, proofs } }
+  z.object({
+    signed: SignedPayloadSchema,
+  }).transform((body) => body.signed),
+  // Direct: { value, proofs }
+  SignedPayloadSchema,
+]);
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/**
+ * Extract fiberId from the message value if present.
+ * Handles CreateStateMachine and TransitionStateMachine.
+ */
+function extractFiberId(value: Record<string, unknown>): string | undefined {
+  for (const messageBody of Object.values(value)) {
+    if (typeof messageBody === 'object' && messageBody !== null) {
+      const body = messageBody as Record<string, unknown>;
+      if (typeof body['fiberId'] === 'string') {
+        return body['fiberId'];
+      }
+    }
+  }
+  return undefined;
+}
 
 // ============================================================================
 // POST /submit — Relay a pre-signed transaction to DL1
 // ============================================================================
 
 submitRoutes.post('/', async (req, res) => {
+  // Parse and normalize request body (direct or wrapped format)
+  const parseResult = SubmitBodySchema.safeParse(req.body);
+  if (!parseResult.success) {
+    res.status(400).json({ error: 'Invalid signed message', details: parseResult.error.errors });
+    return;
+  }
+
+  const signed = parseResult.data;
+
+  // Determine message type from the value key
+  const messageType = Object.keys(signed.value)[0] ?? 'unknown';
+
+  // Validate message type is a known OttoChain type
+  if (!KNOWN_MESSAGE_TYPES.has(messageType)) {
+    res.status(400).json({
+      error: 'Unknown message type',
+      messageType,
+      message: `Unrecognized message type: ${messageType}. Must be a valid OttochainMessage type.`,
+    });
+    return;
+  }
+
+  // Verify signature(s) before relaying — prevents relaying garbage to DL1
+  // signTransaction() uses signDataUpdate (isDataUpdate=true)
+  const verification = verify(signed, true);
+  if (!verification.isValid) {
+    res.status(422).json({
+      error: 'Signature verification failed',
+      message: `${verification.invalidProofs.length} of ${signed.proofs.length} proof(s) failed verification`,
+      invalidProofIds: verification.invalidProofs.map((p) => p.id),
+    });
+    return;
+  }
+
+  // Relay to DL1
   try {
-    const signed = SignedMessageSchema.parse(req.body);
-
-    // Determine message type for the response
-    const messageType = Object.keys(signed.value)[0] ?? 'unknown';
-
     const result = await relaySignedTransaction(signed);
+
+    const fiberId = extractFiberId(signed.value);
 
     res.json({
       hash: result.hash,
       messageType,
       signers: signed.proofs.map((p) => p.id),
+      ...(fiberId !== undefined ? { fiberId } : {}),
     });
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      res.status(400).json({ error: 'Invalid signed message', details: err.errors });
-    } else {
-      const message = err instanceof Error ? err.message : String(err);
-      res.status(502).json({ error: 'Relay failed', message });
-    }
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(502).json({ error: 'Relay failed', message });
   }
 });
