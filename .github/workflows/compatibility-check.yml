@@ -1,0 +1,401 @@
+name: Compatibility Check
+
+# Real compatibility testing between services@main and a proposed metagraph version.
+# Triggered by ottochain-deploy's validate-versions.yml when a metagraph bump PR is opened.
+#
+# Usage (from deploy repo validate-versions.yml):
+#   1. Dispatch this workflow with metagraph_version = proposed version
+#   2. Poll for completion; fail the deploy PR if this fails
+#
+# Cross-repo auth requirement:
+#   RELEASE_TOKEN secret (deploy repo) must have:
+#     - actions:write on ottobot-ai/ottochain-services (to dispatch)
+#     - actions:read on ottobot-ai/ottochain-services (to poll run status)
+#   Contact @scasplte2 to provision a GitHub App or PAT with these scopes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      metagraph_version:
+        description: 'OttoChain metagraph version to test (without v prefix, e.g., 0.7.14)'
+        required: true
+        type: string
+      deploy_pr_number:
+        description: 'Deploy repo PR number (informational only, used in summary)'
+        required: false
+        type: string
+      deploy_repo:
+        description: 'Deploy repo (owner/repo, informational)'
+        required: false
+        type: string
+        default: 'ottobot-ai/ottochain-deploy'
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  compatibility-test:
+    name: Test services@main ↔ metagraph v${{ inputs.metagraph_version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ottochain
+          POSTGRES_PASSWORD: ottochain
+          POSTGRES_DB: ottochain
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ottochain -d ottochain"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Validate input
+        run: |
+          VERSION="${{ inputs.metagraph_version }}"
+          if [ -z "$VERSION" ]; then
+            echo "❌ metagraph_version input is required"
+            exit 1
+          fi
+          # Strip v prefix if user included it
+          VERSION="${VERSION#v}"
+          echo "Testing compatibility: services@main ↔ ottochain v${VERSION}"
+          if [ -n "${{ inputs.deploy_pr_number }}" ]; then
+            echo "Deploy PR: ${{ inputs.deploy_repo }}#${{ inputs.deploy_pr_number }}"
+          fi
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          docker system prune -af --volumes || true
+          df -h /
+
+      - name: Checkout ottochain-services@main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+
+      # ── Resolve tessellation version for the proposed metagraph version ──
+      - name: Setup yq
+        uses: mikefarah/yq@v4
+
+      - name: Resolve versions for metagraph v${{ inputs.metagraph_version }}
+        id: versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          METAGRAPH_VERSION: ${{ inputs.metagraph_version }}
+        run: |
+          VERSION="${METAGRAPH_VERSION#v}"
+
+          # Fetch current versions.yaml from deploy repo for tessellation baseline
+          curl -sf -H "Authorization: token ${{ github.token }}" \
+            "https://raw.githubusercontent.com/${{ inputs.deploy_repo || 'ottobot-ai/ottochain-deploy' }}/main/versions.yaml" \
+            -o /tmp/deploy-versions.yaml
+
+          TESS_VER=$(yq '.components.tessellation.version' /tmp/deploy-versions.yaml)
+          [[ "$TESS_VER" != v* ]] && TESS_VER="v${TESS_VER}"
+
+          echo "metagraph_version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tessellation=${TESS_VER}" >> $GITHUB_OUTPUT
+          echo "Testing: OttoChain v${VERSION} with Tessellation ${TESS_VER}"
+
+      - name: Checkout tessellation ${{ steps.versions.outputs.tessellation }}
+        uses: actions/checkout@v6
+        with:
+          repository: Constellation-Labs/tessellation
+          path: tessellation
+          ref: ${{ steps.versions.outputs.tessellation }}
+
+      - name: Download metagraph & tessellation JARs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TESS_VER: ${{ steps.versions.outputs.tessellation }}
+          OTTO_VER: ${{ steps.versions.outputs.metagraph_version }}
+        run: |
+          echo "📦 Downloading Tessellation ${TESS_VER} JARs..."
+          gh release download "${TESS_VER}" \
+            --repo Constellation-Labs/tessellation \
+            --pattern "cl-node.jar" \
+            --pattern "cl-dag-l1.jar" \
+            --pattern "cl-keytool.jar" \
+            --pattern "cl-wallet.jar" \
+            --dir /tmp/tess-jars/ \
+            --clobber
+
+          echo "📦 Downloading OttoChain v${OTTO_VER} JARs..."
+          gh release download "v${OTTO_VER}" \
+            --repo scasplte2/ottochain \
+            --pattern "metagraph-l0-*.jar" \
+            --pattern "currency-l1-*.jar" \
+            --pattern "data-l1-*.jar" \
+            --dir /tmp/otto-jars/ \
+            --clobber
+
+          # Stage tessellation JARs
+          for mod in dag-l0 dag-l1 keytool wallet; do
+            mkdir -p tessellation/modules/${mod}/target/scala-2.13
+          done
+          cp /tmp/tess-jars/cl-node.jar     tessellation/modules/dag-l0/target/scala-2.13/tessellation-dag-l0-assembly-prebuilt.jar
+          cp /tmp/tess-jars/cl-dag-l1.jar   tessellation/modules/dag-l1/target/scala-2.13/tessellation-dag-l1-assembly-prebuilt.jar
+          cp /tmp/tess-jars/cl-keytool.jar  tessellation/modules/keytool/target/scala-2.13/tessellation-keytool-assembly-prebuilt.jar
+          cp /tmp/tess-jars/cl-wallet.jar   tessellation/modules/wallet/target/scala-2.13/tessellation-wallet-assembly-prebuilt.jar
+
+          # Stage metagraph JARs
+          DUMMY_META=/tmp/metagraph-dummy
+          for mod in l0 l1 data_l1; do
+            mkdir -p $DUMMY_META/modules/${mod}/target/scala-2.13
+          done
+          cp /tmp/otto-jars/metagraph-l0-*.jar $DUMMY_META/modules/l0/target/scala-2.13/ottochain-currency-l0-assembly-prebuilt.jar
+          cp /tmp/otto-jars/currency-l1-*.jar  $DUMMY_META/modules/l1/target/scala-2.13/ottochain-currency-l1-assembly-prebuilt.jar
+          cp /tmp/otto-jars/data-l1-*.jar      $DUMMY_META/modules/data_l1/target/scala-2.13/ottochain-data-l1-assembly-prebuilt.jar
+
+          echo "✅ All JARs staged"
+
+      - name: Install just
+        uses: extractions/setup-just@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Cache pnpm
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build services
+        run: pnpm build
+
+      - name: Push database schema
+        env:
+          DATABASE_URL: postgresql://ottochain:ottochain@localhost:5432/ottochain
+        run: pnpm db:push
+
+      - name: Write metagraph extra env
+        run: |
+          echo 'WEBHOOK_URL=http://webhook-enabled/' > /tmp/metagraph-extra.env
+
+      - name: Start metagraph cluster (v${{ steps.versions.outputs.metagraph_version }})
+        working-directory: tessellation
+        run: |
+          chmod -R +x docker/bin/
+          SKIP_METAGRAPH_ASSEMBLY=true PUBLISH=false \
+            ./docker/bin/compose-runner.sh --up --skip-assembly --metagraph=/tmp/metagraph-dummy --dl1 \
+            --env=/tmp/metagraph-extra.env
+
+      - name: Wait for metagraph healthy
+        run: |
+          echo "=== Waiting for GL0 ==="
+          for i in {1..90}; do
+            if curl -s http://localhost:9000/node/info | grep -q '"state":"Ready"'; then
+              echo "GL0 ready after ${i}s"; break
+            fi
+            sleep 1
+            if [ $i -eq 90 ]; then echo "GL0 timeout"; docker logs gl0-0 2>&1 | tail -30 || true; exit 1; fi
+          done
+
+          echo "=== Waiting for ML0 ==="
+          for i in {1..180}; do
+            if curl -s http://localhost:9200/node/info | grep -q '"state":"Ready"'; then
+              echo "ML0 ready after ${i}s"; break
+            fi
+            sleep 1
+            if [ $i -eq 180 ]; then echo "ML0 timeout"; docker logs ml0-0 2>&1 | tail -30 || true; exit 1; fi
+          done
+
+          echo "=== Waiting for DL1 cluster ==="
+          cp $GITHUB_WORKSPACE/scripts/wait-for-cluster.sh ./wait-for-cluster.sh
+          chmod +x ./wait-for-cluster.sh
+          ./wait-for-cluster.sh dl1 "9400 9410 9420" 9400
+
+          echo "=== Waiting for first metagraph snapshot ==="
+          for i in {1..120}; do
+            ordinal=$(curl -s http://localhost:9200/snapshots/latest | jq -r '.value.ordinal // 0' 2>/dev/null || echo "0")
+            if [ "$ordinal" -gt 0 ]; then
+              echo "Metagraph producing snapshots (ordinal: $ordinal) after ${i}s"; break
+            fi
+            sleep 1
+            if [ $i -eq 120 ]; then echo "Metagraph not producing snapshots"; exit 1; fi
+          done
+
+      - name: Verify DL1 cluster formation
+        run: |
+          PEER_0=$(curl -s http://localhost:9400/node/info | jq -r '.id // "error"' 2>/dev/null || echo "unreachable")
+          PEER_1=$(curl -s http://localhost:9410/node/info | jq -r '.id // "error"' 2>/dev/null || echo "unreachable")
+          PEER_2=$(curl -s http://localhost:9420/node/info | jq -r '.id // "error"' 2>/dev/null || echo "unreachable")
+
+          echo "DL1-0: ${PEER_0:0:32}..."
+          echo "DL1-1: ${PEER_1:0:32}..."
+          echo "DL1-2: ${PEER_2:0:32}..."
+
+          for i in 0 1 2; do
+            VAR="PEER_$i"
+            VAL="${!VAR}"
+            if [ -z "$VAL" ] || [ "$VAL" = "error" ] || [ "$VAL" = "unreachable" ]; then
+              echo "❌ DL1-$i not responding!"
+              docker logs "dl1-$i" 2>&1 | tail -20 || true
+              exit 1
+            fi
+          done
+
+          echo "✓ All DL1 nodes responding"
+
+          echo "Waiting for DL1 cluster to reach size 3..."
+          for i in $(seq 1 30); do
+            cluster_size=$(curl -s http://localhost:9400/cluster/info | jq 'length' 2>/dev/null || echo "0")
+            if [ "$cluster_size" -ge 3 ] 2>/dev/null; then
+              break
+            fi
+            if [ "$i" -gt 1 ] && [ $(( i % 5 )) -eq 0 ]; then
+              for port in 9410 9420; do
+                cli_port=$((port + 2))
+                curl -s -X POST "http://localhost:${cli_port}/cluster/join" \
+                  -H 'Content-Type: application/json' \
+                  -d "{\"id\":\"${PEER_0}\",\"ip\":\"dl1-0\",\"p2pPort\":9401}" 2>/dev/null || true
+              done
+            fi
+            sleep 2
+          done
+          if [ "$cluster_size" -lt 3 ] 2>/dev/null; then
+            echo "❌ DL1 cluster size $cluster_size (expected 3)"
+            exit 1
+          fi
+          echo "✓ DL1 cluster size: $cluster_size"
+
+      - name: Fetch METAGRAPH_ID
+        run: |
+          METAGRAPH_ID=$(docker exec ml0-0 printenv CL_TOKEN_ID 2>/dev/null || echo "")
+
+          if [ -z "$METAGRAPH_ID" ]; then
+            for i in $(seq 1 60); do
+              METAGRAPH_ID=$(curl -s http://localhost:9000/global-snapshots/latest/combined \
+                | jq -r '.[0].value.stateChannelSnapshots | keys[0] // ""' 2>/dev/null || echo "")
+              if [ -n "$METAGRAPH_ID" ] && [ "$METAGRAPH_ID" != "null" ]; then break; fi
+              if [ $i -eq 60 ]; then
+                echo "❌ Could not determine METAGRAPH_ID"
+                exit 1
+              fi
+              sleep 1
+            done
+          fi
+
+          echo "✓ METAGRAPH_ID: $METAGRAPH_ID"
+          echo "METAGRAPH_ID=$METAGRAPH_ID" >> $GITHUB_ENV
+
+      - name: Start Redis
+        run: |
+          docker run -d --name redis-ci -p 6379:6379 redis:alpine
+          sleep 2
+          docker exec redis-ci redis-cli ping
+
+      - name: Build services Docker image
+        run: |
+          docker build -t ottochain-services:ci .
+          echo "SERVICES_IMAGE=ottochain-services:ci" >> $GITHUB_ENV
+
+      - name: Start services containers
+        run: |
+          docker compose -f docker-compose.ci.yaml up -d
+
+          echo "Waiting for services to be healthy..."
+          for i in {1..60}; do
+            indexer_ok=$(curl -sf http://localhost:3031/health 2>/dev/null | grep -c '"status":"ok"' || echo "0")
+            bridge_ok=$(curl -sf http://localhost:3030/health 2>/dev/null | grep -c '"status":"ok"' || echo "0")
+            if [ "$indexer_ok" = "1" ] && [ "$bridge_ok" = "1" ]; then
+              echo "✓ Both services healthy after ${i}s"; break
+            fi
+            if [ $i -eq 60 ]; then
+              echo "❌ Services failed to become healthy"
+              docker compose -f docker-compose.ci.yaml logs
+              exit 1
+            fi
+            sleep 1
+          done
+
+          docker exec ml0-0 curl -sf http://indexer:3031/health
+          echo "✓ ML0 can reach indexer"
+
+      # ── Compatibility signal: run the traffic generator test ─────────────
+      # This is the strongest signal for services ↔ metagraph compatibility:
+      # creates state machines, activates fibers, verifies indexer picks them up.
+      - name: Run compatibility signal test (traffic generator)
+        env:
+          BRIDGE_URL: http://localhost:3030
+          ML0_URL: http://localhost:9200
+          INDEXER_URL: http://localhost:3031
+          FIBER_WAIT_TIMEOUT: '90'
+          DL1_SYNC_WAIT: '15'
+          ACTIVATION_WAIT: '10'
+          INDEXER_WAIT_TIMEOUT: '30000'
+          MAX_RETRIES: '5'
+        run: |
+          for attempt in $(seq 1 $MAX_RETRIES); do
+            echo "=== Attempt $attempt of $MAX_RETRIES ==="
+            if npx tsx packages/traffic-generator/test/integration.test.ts; then
+              echo "✓ Compatibility test passed on attempt $attempt"
+              exit 0
+            fi
+            if [ $attempt -lt $MAX_RETRIES ]; then
+              echo "⚠️ Test failed, waiting 10s before retry..."
+              sleep 10
+            fi
+          done
+          echo "❌ Compatibility FAILED: services@main is NOT compatible with metagraph v${{ inputs.metagraph_version }}"
+          exit 1
+
+      - name: Collect logs on failure
+        if: failure() || cancelled()
+        run: |
+          mkdir -p /tmp/compat-logs
+          docker ps -a | tee /tmp/compat-logs/containers.txt || true
+          for c in gl0-0 ml0-0 dl1-0 dl1-1 dl1-2 indexer bridge; do
+            docker logs "$c" 2>&1 | tee /tmp/compat-logs/${c}.log | tail -100 || true
+          done
+
+      - name: Upload logs on failure
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v7
+        with:
+          name: compat-check-logs-metagraph-v${{ inputs.metagraph_version }}-${{ github.run_number }}
+          path: /tmp/compat-logs/
+          retention-days: 7
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose -f docker-compose.ci.yaml down 2>/dev/null || true
+          docker rm -f redis-ci 2>/dev/null || true
+          cd tessellation && just down 2>/dev/null || docker compose down -v 2>/dev/null || true
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Compatibility Check Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Axis | Version |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "| services | main ($(git rev-parse --short HEAD)) |" >> $GITHUB_STEP_SUMMARY
+          echo "| ottochain metagraph | v${{ inputs.metagraph_version }} |" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ inputs.deploy_pr_number }}" ]; then
+            echo "| deploy PR | ${{ inputs.deploy_repo }}#${{ inputs.deploy_pr_number }} |" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Test**: services@main ↔ metagraph (traffic-generator integration)" >> $GITHUB_STEP_SUMMARY
