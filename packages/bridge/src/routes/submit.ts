@@ -26,7 +26,7 @@ export const submitRoutes: RouterType = Router();
 // Known OttoChain message types — imported from SDK
 // ============================================================================
 
-import { OTTOCHAIN_MESSAGE_TYPES } from '@ottochain/sdk';
+import { OTTOCHAIN_MESSAGE_TYPES } from '@ottochain/sdk/core';
 
 /**
  * Runtime set of valid message types.
