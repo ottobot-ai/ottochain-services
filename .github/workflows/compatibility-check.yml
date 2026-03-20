@@ -81,6 +81,9 @@ jobs:
           ref: main
 
       # ── Resolve tessellation version for the proposed metagraph version ──
+      - name: Setup yq
+        uses: mikefarah/yq@v4
+
       - name: Resolve versions for metagraph v${{ inputs.metagraph_version }}
         id: versions
         env:
@@ -100,9 +103,6 @@ jobs:
           echo "metagraph_version=${VERSION}" >> $GITHUB_OUTPUT
           echo "tessellation=${TESS_VER}" >> $GITHUB_OUTPUT
           echo "Testing: OttoChain v${VERSION} with Tessellation ${TESS_VER}"
-
-      - name: Setup yq
-        uses: mikefarah/yq@v4
 
       - name: Checkout tessellation ${{ steps.versions.outputs.tessellation }}
         uses: actions/checkout@v6
