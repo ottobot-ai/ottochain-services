@@ -15,6 +15,7 @@
  */
 
 import { Router, type Router as RouterType } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
 import { verify } from '@ottochain/sdk';
 import { relaySignedTransaction } from '../lib/metakit/relay.js';
@@ -102,10 +103,22 @@ function extractFiberId(value: Record<string, unknown>): string | undefined {
 }
 
 // ============================================================================
+// Rate limiter — prevent abuse of the public submit endpoint
+// ============================================================================
+
+const submitRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  limit: 30,           // max 30 submissions per IP per minute
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many requests — please slow down and try again shortly.' },
+});
+
+// ============================================================================
 // POST /submit — Relay a pre-signed transaction to DL1
 // ============================================================================
 
-submitRoutes.post('/', async (req, res) => {
+submitRoutes.post('/', submitRateLimiter, async (req, res) => {
   // Parse and normalize request body (direct or wrapped format)
   const parseResult = SubmitBodySchema.safeParse(req.body);
   if (!parseResult.success) {
