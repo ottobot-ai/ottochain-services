@@ -23,37 +23,16 @@ import { relaySignedTransaction } from '../lib/metakit/relay.js';
 export const submitRoutes: RouterType = Router();
 
 // ============================================================================
-// Known OttoChain message types
+// Known OttoChain message types — imported from SDK
 // ============================================================================
 
-const KNOWN_MESSAGE_TYPES = new Set([
-  'CreateStateMachine',
-  'TransitionStateMachine',
-  'ArchiveStateMachine',
-  'CreateScript',
-  'InvokeScript',
-  'CreateContract',
-  'TransitionContract',
-  'ProposeContract',
-  'AcceptContract',
-  'CompleteContract',
-  'RejectContract',
-  'DisputeContract',
-  'CreateToken',
-  'TransferToken',
-  'BurnToken',
-  'SplitToken',
-  'MergeToken',
-  'ExpireToken',
-  'RegisterAgent',
-  'TransitionAgent',
-  'CreateAttestation',
-  'CreateProposal',
-  'CastVote',
-  'CreateMarket',
-  'PlaceBid',
-  'ResolveMarket',
-]);
+import { OTTOCHAIN_MESSAGE_TYPES } from '@ottochain/sdk/core';
+
+/**
+ * Runtime set of valid message types.
+ * Imported from SDK to stay in sync automatically.
+ */
+const KNOWN_MESSAGE_TYPES = new Set<string>(OTTOCHAIN_MESSAGE_TYPES);
 
 // ============================================================================
 // Request Schemas
