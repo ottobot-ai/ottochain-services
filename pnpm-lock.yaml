@@ -12,8 +12,8 @@ importers:
   .:
     dependencies:
       '@ottochain/sdk':
-        specifier: ^1.6.0
-        version: 1.6.0(@stardust-collective/dag4@2.8.1)
+        specifier: 1.7.0-beta.1
+        version: 1.7.0-beta.1(@stardust-collective/dag4@2.8.1)
       '@prisma/client':
         specifier: ^7.5.0
         version: 7.5.0(prisma@7.5.0(@types/react@19.2.14)(magicast@0.5.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))(typescript@5.9.3)
@@ -40,8 +40,8 @@ importers:
   packages/bridge:
     dependencies:
       '@ottochain/sdk':
-        specifier: file:../../../ottochain-sdk
-        version: file:../ottochain-sdk(@stardust-collective/dag4@2.8.1)
+        specifier: 1.7.0-beta.1
+        version: 1.7.0-beta.1(@stardust-collective/dag4@2.8.1)
       '@ottochain/shared':
         specifier: workspace:*
         version: link:../shared
@@ -246,8 +246,8 @@ importers:
   packages/traffic-generator:
     dependencies:
       '@ottochain/sdk':
-        specifier: file:../../../ottochain-sdk
-        version: file:../ottochain-sdk(@stardust-collective/dag4@2.8.1)
+        specifier: 1.7.0-beta.1
+        version: 1.7.0-beta.1(@stardust-collective/dag4@2.8.1)
       '@ottochain/shared':
         specifier: workspace:*
         version: link:../shared
@@ -806,8 +806,8 @@ packages:
     peerDependencies:
       '@stardust-collective/dag4': ^2.6.0
 
-  '@ottochain/sdk@file:../ottochain-sdk':
-    resolution: {directory: ../ottochain-sdk, type: directory}
+  '@ottochain/sdk@1.7.0-beta.1':
+    resolution: {integrity: sha512-vMXtMZzQ7doCF2ePf3KsFtsZtDm47f2lQpw/l3uDj3kyLAN4jEQbcGneKinEUFdClCMjld4OeFaK4alsmM5wEg==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
       '@stardust-collective/dag4': ^2.6.0
@@ -3190,7 +3190,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@ottochain/sdk@file:../ottochain-sdk(@stardust-collective/dag4@2.8.1)':
+  '@ottochain/sdk@1.7.0-beta.1(@stardust-collective/dag4@2.8.1)':
     dependencies:
       '@bufbuild/protobuf': 2.11.0
       '@constellation-network/metagraph-sdk': 0.2.0

@@ -16,7 +16,7 @@
     "test:client-signing": "node --test --experimental-strip-types test/client-signing.test.ts"
   },
   "dependencies": {
-    "@ottochain/sdk": "file:../../../ottochain-sdk",
+    "@ottochain/sdk": "1.7.0-beta.1",
     "@ottochain/shared": "workspace:*",
     "@stardust-collective/dag4": "^2.8.1",
     "canonicalize": "^2.1.0",
