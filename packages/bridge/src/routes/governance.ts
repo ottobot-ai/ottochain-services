@@ -16,7 +16,7 @@ import {
   type FiberOrdinal,
 } from '../metagraph.js';
 import { getGovernanceDefinition } from '@ottochain/sdk/apps/governance';
-import { toProtoDefinition } from '../lib/proto-helper.js';
+import { toProtoDefinition, type ProtoStateMachineDefinition } from '@ottochain/sdk';
 
 export const governanceRoutes: RouterType = Router();
 
@@ -95,18 +95,18 @@ const VetoRequestSchema = z.object({
  * Get the appropriate state machine definition for a DAO type.
  * Maps bridge DAO types to SDK governance definitions.
  */
-function getDefinitionForDAOType(daoType: string): unknown {
+function getDefinitionForDAOType(daoType: string): ProtoStateMachineDefinition {
   switch (daoType) {
     case 'Multisig':
-      return toProtoDefinition(getGovernanceDefinition('daoMultisig'));
+      return toProtoDefinition(getGovernanceDefinition('daoMultisig') as any);
     case 'Token':
-      return toProtoDefinition(getGovernanceDefinition('daoToken'));
+      return toProtoDefinition(getGovernanceDefinition('daoToken') as any);
     case 'Threshold':
-      return toProtoDefinition(getGovernanceDefinition('daoReputation'));
+      return toProtoDefinition(getGovernanceDefinition('daoReputation') as any);
     case 'Single':
-      return toProtoDefinition(getGovernanceDefinition('daoSingle'));
+      return toProtoDefinition(getGovernanceDefinition('daoSingle') as any);
     default:
-      return toProtoDefinition(getGovernanceDefinition('simple'));
+      return toProtoDefinition(getGovernanceDefinition('simple') as any);
   }
 }
 

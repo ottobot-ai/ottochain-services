@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey, waitForFiber, getFiberSequenceNumber, getEpochProgress } from '../metagraph.js';
 import { MarketType, MarketState, getMarketDefinition, type MarketDefType } from '@ottochain/sdk/apps/markets';
-import { toProtoDefinition } from '../lib/proto-helper.js';
+import { toProtoDefinition } from '@ottochain/sdk';
 
 export const marketRoutes: RouterType = Router();
 
@@ -195,7 +195,7 @@ marketRoutes.post('/create', async (req, res) => {
     const message = {
       CreateStateMachine: {
         fiberId: marketId,
-        definition: toProtoDefinition(getMarketDefinition(defType)),
+        definition: toProtoDefinition(getMarketDefinition(defType) as any),
         initialData,
         parentFiberId: null,
       },

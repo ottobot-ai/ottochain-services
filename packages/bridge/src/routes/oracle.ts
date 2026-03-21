@@ -9,7 +9,7 @@ import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKe
 import { getIdentityDefinition } from '@ottochain/sdk/apps/identity';
 // Proto-generated identity types (oracle is now a type of identity)
 import { EntityState, EntityType } from '@ottochain/sdk/generated';
-import { toProtoDefinition } from '../lib/proto-helper.js';
+import { toProtoDefinition } from '@ottochain/sdk';
 
 const DEFAULT_ORACLE_CONFIG = {
   minStake: 100,
@@ -23,7 +23,7 @@ export const oracleRoutes: RouterType = Router();
 // State Machine Definition (from SDK)
 // ============================================================================
 
-const ORACLE_DEFINITION = toProtoDefinition(getIdentityDefinition('oracle'));
+const ORACLE_DEFINITION = toProtoDefinition(getIdentityDefinition('oracle') as any);
 
 // ============================================================================
 // Request Schemas

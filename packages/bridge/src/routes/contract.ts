@@ -16,9 +16,9 @@ import {
   type FiberOrdinal,
 } from '../metagraph.js';
 import { getContractDefinition } from '@ottochain/sdk/apps/contracts';
-import { toProtoDefinition } from '../lib/proto-helper.js';
+import { toProtoDefinition } from '@ottochain/sdk';
 
-const CONTRACT_DEFINITION = toProtoDefinition(getContractDefinition('agreement'));
+const CONTRACT_DEFINITION = toProtoDefinition(getContractDefinition('agreement') as any);
 
 export const contractRoutes: RouterType = Router();
 
