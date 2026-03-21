@@ -22,14 +22,19 @@ import { getCorporateDefinition } from '@ottochain/sdk/apps/corporate';
 // Corporate State Machine Definitions (from SDK)
 // ============================================================================
 
-const CORPORATE_ENTITY_DEFINITION = getCorporateDefinition('Entity');
-const CORPORATE_BOARD_DEFINITION = getCorporateDefinition('Board');
-const CORPORATE_SHAREHOLDERS_DEFINITION = getCorporateDefinition('Shareholders');
-const CORPORATE_OFFICERS_DEFINITION = getCorporateDefinition('Officers');
-const CORPORATE_SECURITIES_DEFINITION = getCorporateDefinition('Securities');
-const CORPORATE_COMPLIANCE_DEFINITION = getCorporateDefinition('Compliance');
-const CORPORATE_PROXY_DEFINITION = getCorporateDefinition('Proxy');
-const CORPORATE_RESOLUTION_DEFINITION = getCorporateDefinition('Resolution');
+// SDK v2: Only 4 corporate types remain
+const CORPORATE_ENTITY_DEFINITION = getCorporateDefinition('entity');
+const CORPORATE_BOARD_DEFINITION = getCorporateDefinition('board');
+const CORPORATE_SHAREHOLDERS_DEFINITION = getCorporateDefinition('shareholders');
+const CORPORATE_SECURITIES_DEFINITION = getCorporateDefinition('securities');
+
+// TODO: Officers, Compliance, Proxy, Resolution were archived in SDK v2
+// These routes below still reference them and need refactoring
+// For now, stub with entity definition to allow compilation
+const CORPORATE_OFFICERS_DEFINITION = CORPORATE_ENTITY_DEFINITION;
+const CORPORATE_COMPLIANCE_DEFINITION = CORPORATE_ENTITY_DEFINITION;
+const CORPORATE_PROXY_DEFINITION = CORPORATE_ENTITY_DEFINITION;
+const CORPORATE_RESOLUTION_DEFINITION = CORPORATE_ENTITY_DEFINITION;
 
 export const corporateRoutes: RouterType = Router();
 

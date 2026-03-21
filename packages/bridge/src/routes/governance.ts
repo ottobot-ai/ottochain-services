@@ -18,8 +18,7 @@ import {
 import {
   getDAODefinition,
   getGovernanceDefinition,
-  type DAODefinitionType,
-  type GovernanceDefinitionType,
+  type GovernanceType,
 } from '@ottochain/sdk/apps/governance';
 
 export const governanceRoutes: RouterType = Router();
@@ -28,8 +27,8 @@ export const governanceRoutes: RouterType = Router();
 // Request Schemas
 // ============================================================================
 
-const DAOTypeSchema = z.enum(['Single', 'Multisig', 'Threshold', 'Token']);
-const GovernanceTypeSchema = z.enum(['Legislature', 'Executive', 'Judiciary', 'Constitution', 'Simple']);
+const DAOTypeSchema = z.enum(['daoSingle', 'daoMultisig', 'daoToken', 'daoReputation']);
+const GovernanceTypeSchema = z.enum(['universal', 'simple']);
 const VoteChoiceSchema = z.enum(['For', 'Against', 'Abstain']);
 
 const CreateDAORequestSchema = z.object({
@@ -93,27 +92,23 @@ const VetoRequestSchema = z.object({
 // DAO State Machine Definitions (from SDK)
 // ============================================================================
 
-// SDK provides: getDAODefinition(type) for Single, Multisig, Threshold, Token
-// SDK provides: getGovernanceDefinition(type) for Legislature, Executive, etc.
+// SDK v2: getGovernanceDefinition(type) for all governance/DAO types
+// Types: universal, simple, daoSingle, daoMultisig, daoToken, daoReputation
 
 /**
- * Get the appropriate state machine definition for a DAO type.
- * Maps bridge DAO types to SDK definitions.
+ * Get the appropriate state machine definition for a DAO/governance type.
  */
 function getDefinitionForDAOType(daoType: string): unknown {
-  switch (daoType) {
-    case 'Multisig':
-      return getDAODefinition('Multisig');
-    case 'Token':
-      return getDAODefinition('Token');
-    case 'Threshold':
-      return getDAODefinition('Threshold');
-    case 'Single':
-      return getDAODefinition('Single');
-    default:
-      // Fall back to Simple governance for unknown types
-      return getGovernanceDefinition('Simple');
-  }
+  // All governance types now use getGovernanceDefinition
+  const typeMap: Record<string, GovernanceType> = {
+    'daoMultisig': 'daoMultisig',
+    'daoToken': 'daoToken', 
+    'daoReputation': 'daoReputation',
+    'daoSingle': 'daoSingle',
+    'simple': 'simple',
+    'universal': 'universal',
+  };
+  return getGovernanceDefinition(typeMap[daoType] || 'simple');
 }
 
 // ============================================================================
@@ -137,7 +132,7 @@ governanceRoutes.post('/create-dao', async (req, res) => {
     let initialData: Record<string, unknown>;
 
     switch (input.daoType) {
-      case 'Multisig':
+      case 'daoMultisig':
         if (!input.signers || input.signers.length === 0) {
           return res.status(400).json({ error: 'Multisig requires at least one signer' });
         }
@@ -160,7 +155,7 @@ governanceRoutes.post('/create-dao', async (req, res) => {
         };
         break;
 
-      case 'Token':
+      case 'daoToken':
         if (!input.tokenId) {
           return res.status(400).json({ error: 'Token DAO requires tokenId' });
         }

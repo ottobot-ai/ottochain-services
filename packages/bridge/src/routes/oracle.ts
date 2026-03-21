@@ -5,7 +5,12 @@ import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey, waitForFiber, getFiberSequenceNumber } from '../metagraph.js';
-import { getOracleDefinition, OracleState, DEFAULT_ORACLE_CONFIG } from '@ottochain/sdk/apps/oracles';
+import { getIdentityDefinition, AgentState } from '@ottochain/sdk/apps/identity';
+
+// Oracle is now part of identity app in SDK v2
+const getOracleDefinition = () => getIdentityDefinition('oracle');
+const OracleState = AgentState; // Unified identity states
+const DEFAULT_ORACLE_CONFIG = { minStake: 100 }; // Default config for oracle registration
 
 export const oracleRoutes: RouterType = Router();
 
