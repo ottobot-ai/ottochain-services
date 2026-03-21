@@ -136,6 +136,8 @@ services:
     image: ghcr.io/ottobot-ai/ottochain-services:${SERVICES_VERSION:-latest}
     container_name: traffic-gen
     restart: unless-stopped
+    ports:
+      - "3033:3033"
     environment:
       - SERVICE=traffic-generator
       - NODE_ENV=production
@@ -144,9 +146,11 @@ services:
       - INDEXER_URL=http://indexer:3031
       - TRAFFIC_INTERVAL=${TRAFFIC_INTERVAL:-5000}
       - TRAFFIC_BATCH_SIZE=${TRAFFIC_BATCH_SIZE:-3}
+      - DATABASE_URL=${DATABASE_URL}
     depends_on:
       - bridge
       - indexer
+      - postgres
     networks:
       - ottochain
 
