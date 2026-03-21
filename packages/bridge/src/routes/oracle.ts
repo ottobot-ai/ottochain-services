@@ -5,7 +5,24 @@ import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey, waitForFiber, getFiberSequenceNumber } from '../metagraph.js';
-import { getOracleDefinition, OracleState, DEFAULT_ORACLE_CONFIG } from '@ottochain/sdk/apps/oracles';
+// Oracle SM now lives under identity app (absorbed from oracles/)
+import { getIdentityDefinition } from '@ottochain/sdk/apps/identity';
+
+// Placeholder types until proto exports are updated
+const OracleState = {
+  ORACLE_STATE_UNSPECIFIED: 0,
+  ORACLE_STATE_PENDING: 1,
+  ORACLE_STATE_ACTIVE: 2,
+  ORACLE_STATE_INACTIVE: 3,
+  ORACLE_STATE_WITHDRAWN: 4,
+  ORACLE_STATE_SLASHED: 5,
+} as const;
+
+const DEFAULT_ORACLE_CONFIG = {
+  minStake: 100,
+  slashPenaltyPercent: 10,
+  unstakeCooldownMs: 86400000, // 24 hours
+};
 
 export const oracleRoutes: RouterType = Router();
 
@@ -13,7 +30,7 @@ export const oracleRoutes: RouterType = Router();
 // State Machine Definition (from SDK)
 // ============================================================================
 
-const ORACLE_DEFINITION = getOracleDefinition();
+const ORACLE_DEFINITION = getIdentityDefinition('oracle');
 
 // ============================================================================
 // Request Schemas

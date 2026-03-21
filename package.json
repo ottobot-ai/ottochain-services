@@ -38,6 +38,7 @@
     "typescript": "^5.3.0"
   },
   "dependencies": {
+    "@ottochain/sdk": "file:../ottochain-sdk",
     "@prisma/client": "^7.5.0",
     "ioredis": "^5.10.0"
   },

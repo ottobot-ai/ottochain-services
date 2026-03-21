@@ -15,12 +15,7 @@ import {
   type TransitionStateMachine,
   type FiberOrdinal,
 } from '../metagraph.js';
-import {
-  getDAODefinition,
-  getGovernanceDefinition,
-  type DAODefinitionType,
-  type GovernanceDefinitionType,
-} from '@ottochain/sdk/apps/governance';
+import { getGovernanceDefinition } from '@ottochain/sdk/apps/governance';
 
 export const governanceRoutes: RouterType = Router();
 
@@ -93,26 +88,24 @@ const VetoRequestSchema = z.object({
 // DAO State Machine Definitions (from SDK)
 // ============================================================================
 
-// SDK provides: getDAODefinition(type) for Single, Multisig, Threshold, Token
-// SDK provides: getGovernanceDefinition(type) for Legislature, Executive, etc.
+// SDK types: universal, simple, daoSingle, daoMultisig, daoToken, daoReputation
 
 /**
  * Get the appropriate state machine definition for a DAO type.
- * Maps bridge DAO types to SDK definitions.
+ * Maps bridge DAO types to SDK governance definitions.
  */
 function getDefinitionForDAOType(daoType: string): unknown {
   switch (daoType) {
     case 'Multisig':
-      return getDAODefinition('Multisig');
+      return getGovernanceDefinition('daoMultisig');
     case 'Token':
-      return getDAODefinition('Token');
+      return getGovernanceDefinition('daoToken');
     case 'Threshold':
-      return getDAODefinition('Threshold');
+      return getGovernanceDefinition('daoReputation');
     case 'Single':
-      return getDAODefinition('Single');
+      return getGovernanceDefinition('daoSingle');
     default:
-      // Fall back to Simple governance for unknown types
-      return getGovernanceDefinition('Simple');
+      return getGovernanceDefinition('simple');
   }
 }
 

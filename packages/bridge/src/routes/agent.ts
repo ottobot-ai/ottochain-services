@@ -30,7 +30,7 @@ import {
 } from '../lib/metakit/key-store.js';
 import { relaySignedTransaction } from '../lib/metakit/relay.js';
 
-const AGENT_IDENTITY_DEFINITION = getIdentityDefinition() as StateMachineDefinition;
+const AGENT_IDENTITY_DEFINITION = getIdentityDefinition('agent') as StateMachineDefinition;
 
 // TODO: Implement per-fiber rate limiting (see docs/specs/signing-modes-spec.md)
 export const agentRoutes: RouterType = Router();

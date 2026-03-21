@@ -11,6 +11,9 @@ importers:
 
   .:
     dependencies:
+      '@ottochain/sdk':
+        specifier: file:../ottochain-sdk
+        version: file:../ottochain-sdk(@stardust-collective/dag4@2.8.1)
       '@prisma/client':
         specifier: ^7.5.0
         version: 7.5.0(prisma@7.5.0(@types/react@19.2.14)(magicast@0.5.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))(typescript@5.9.3)
@@ -37,8 +40,8 @@ importers:
   packages/bridge:
     dependencies:
       '@ottochain/sdk':
-        specifier: 1.6.0
-        version: 1.6.0(@stardust-collective/dag4@2.8.1)
+        specifier: file:../../../ottochain-sdk
+        version: file:../ottochain-sdk(@stardust-collective/dag4@2.8.1)
       '@ottochain/shared':
         specifier: workspace:*
         version: link:../shared
@@ -243,8 +246,8 @@ importers:
   packages/traffic-generator:
     dependencies:
       '@ottochain/sdk':
-        specifier: 1.6.0
-        version: 1.6.0(@stardust-collective/dag4@2.8.1)
+        specifier: file:../../../ottochain-sdk
+        version: file:../ottochain-sdk(@stardust-collective/dag4@2.8.1)
       '@ottochain/shared':
         specifier: workspace:*
         version: link:../shared
@@ -799,6 +802,12 @@ packages:
 
   '@ottochain/sdk@1.6.0':
     resolution: {integrity: sha512-mq+vo2Tzo4Yxabm5XNJqUGtKbifYwX4cA7HnLQWlQ08aLpGvGkZX7jYzUmvhNIq9KB/HtsL9RCwpjQjNz1eCBg==}
+    engines: {node: '>=20.19.0'}
+    peerDependencies:
+      '@stardust-collective/dag4': ^2.6.0
+
+  '@ottochain/sdk@file:../ottochain-sdk':
+    resolution: {directory: ../ottochain-sdk, type: directory}
     engines: {node: '>=20.19.0'}
     peerDependencies:
       '@stardust-collective/dag4': ^2.6.0
@@ -3167,6 +3176,21 @@ snapshots:
   '@opentelemetry/api@1.9.0': {}
 
   '@ottochain/sdk@1.6.0(@stardust-collective/dag4@2.8.1)':
+    dependencies:
+      '@bufbuild/protobuf': 2.11.0
+      '@constellation-network/metagraph-sdk': 0.2.0
+      '@stardust-collective/dag4': 2.8.1
+      '@stardust-collective/dag4-keystore': 2.8.1
+      canonicalize: 2.1.0
+      js-sha256: 0.11.1
+      js-sha512: 0.9.0
+      zod: 3.25.76
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+
+  '@ottochain/sdk@file:../ottochain-sdk(@stardust-collective/dag4@2.8.1)':
     dependencies:
       '@bufbuild/protobuf': 2.11.0
       '@constellation-network/metagraph-sdk': 0.2.0

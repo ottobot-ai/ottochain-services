@@ -16,14 +16,14 @@
     "test:client-signing": "node --test --experimental-strip-types test/client-signing.test.ts"
   },
   "dependencies": {
+    "@ottochain/sdk": "file:../../../ottochain-sdk",
     "@ottochain/shared": "workspace:*",
-    "@ottochain/sdk": "1.6.0",
     "@stardust-collective/dag4": "^2.8.1",
     "canonicalize": "^2.1.0",
     "express": "^4.18.0",
+    "express-rate-limit": "^8.3.1",
     "js-sha256": "^0.11.1",
     "tweetnacl": "^1.0.3",
-    "express-rate-limit": "^8.3.1",
     "zod": "^3.22.0"
   },
   "devDependencies": {

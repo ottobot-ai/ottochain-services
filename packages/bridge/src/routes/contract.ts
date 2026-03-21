@@ -17,7 +17,7 @@ import {
 } from '../metagraph.js';
 import { getContractDefinition } from '@ottochain/sdk/apps/contracts';
 
-const CONTRACT_DEFINITION = getContractDefinition() as StateMachineDefinition;
+const CONTRACT_DEFINITION = getContractDefinition('agreement') as StateMachineDefinition;
 
 export const contractRoutes: RouterType = Router();
 
