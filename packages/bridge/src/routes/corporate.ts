@@ -23,10 +23,10 @@ import { toProtoDefinition } from '@ottochain/sdk';
 // Corporate State Machine Definitions (from SDK)
 // ============================================================================
 
-const CORPORATE_ENTITY_DEFINITION = toProtoDefinition(getCorporateDefinition('entity') as any);
-const CORPORATE_BOARD_DEFINITION = toProtoDefinition(getCorporateDefinition('board') as any);
-const CORPORATE_SHAREHOLDERS_DEFINITION = toProtoDefinition(getCorporateDefinition('shareholders') as any);
-const CORPORATE_SECURITIES_DEFINITION = toProtoDefinition(getCorporateDefinition('securities') as any);
+const CORPORATE_ENTITY_DEFINITION = toProtoDefinition(getCorporateDefinition('entity'));
+const CORPORATE_BOARD_DEFINITION = toProtoDefinition(getCorporateDefinition('board'));
+const CORPORATE_SHAREHOLDERS_DEFINITION = toProtoDefinition(getCorporateDefinition('shareholders'));
+const CORPORATE_SECURITIES_DEFINITION = toProtoDefinition(getCorporateDefinition('securities'));
 
 export const corporateRoutes: RouterType = Router();
 

@@ -23,7 +23,7 @@ export const oracleRoutes: RouterType = Router();
 // State Machine Definition (from SDK)
 // ============================================================================
 
-const ORACLE_DEFINITION = toProtoDefinition(getIdentityDefinition('oracle') as any);
+const ORACLE_DEFINITION = toProtoDefinition(getIdentityDefinition('oracle'));
 
 // ============================================================================
 // Request Schemas

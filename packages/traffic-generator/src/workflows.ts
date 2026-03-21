@@ -5,6 +5,7 @@
  * Traffic-gen creates fibers using SDK definitions and drives transitions.
  */
 
+import { toProtoDefinition } from '@ottochain/sdk';
 import { getIdentityDefinition } from '@ottochain/sdk/apps/identity';
 import { getContractDefinition } from '@ottochain/sdk/apps/contracts';
 import { getMarketDefinition } from '@ottochain/sdk/apps/markets';
@@ -68,14 +69,14 @@ export interface TransitionContext {
 // SDK Definitions
 // ============================================================================
 
-const IDENTITY_AGENT_DEF = getIdentityDefinition('agent') as Record<string, unknown>;
-const CONTRACT_AGREEMENT_DEF = getContractDefinition('agreement') as Record<string, unknown>;
-const CONTRACT_ESCROW_DEF = getContractDefinition('escrow') as Record<string, unknown>;
-const MARKET_PREDICTION_DEF = getMarketDefinition('prediction') as Record<string, unknown>;
-const MARKET_AUCTION_DEF = getMarketDefinition('auction') as Record<string, unknown>;
-const MARKET_CROWDFUND_DEF = getMarketDefinition('crowdfund') as Record<string, unknown>;
-const MARKET_GROUPBUY_DEF = getMarketDefinition('groupBuy') as Record<string, unknown>;
-const DAO_MULTISIG_DEF = getGovernanceDefinition('daoMultisig') as Record<string, unknown>;
+const IDENTITY_AGENT_DEF = toProtoDefinition(getIdentityDefinition('agent')) as unknown as Record<string, unknown>;
+const CONTRACT_AGREEMENT_DEF = toProtoDefinition(getContractDefinition('agreement')) as unknown as Record<string, unknown>;
+const CONTRACT_ESCROW_DEF = toProtoDefinition(getContractDefinition('escrow')) as unknown as Record<string, unknown>;
+const MARKET_PREDICTION_DEF = toProtoDefinition(getMarketDefinition('prediction')) as unknown as Record<string, unknown>;
+const MARKET_AUCTION_DEF = toProtoDefinition(getMarketDefinition('auction')) as unknown as Record<string, unknown>;
+const MARKET_CROWDFUND_DEF = toProtoDefinition(getMarketDefinition('crowdfund')) as unknown as Record<string, unknown>;
+const MARKET_GROUPBUY_DEF = toProtoDefinition(getMarketDefinition('groupBuy')) as unknown as Record<string, unknown>;
+const DAO_MULTISIG_DEF = toProtoDefinition(getGovernanceDefinition('daoMultisig')) as unknown as Record<string, unknown>;
 
 // ============================================================================
 // Workflow Definitions

@@ -195,7 +195,7 @@ marketRoutes.post('/create', async (req, res) => {
     const message = {
       CreateStateMachine: {
         fiberId: marketId,
-        definition: toProtoDefinition(getMarketDefinition(defType) as any),
+        definition: toProtoDefinition(getMarketDefinition(defType)),
         initialData,
         parentFiberId: null,
       },

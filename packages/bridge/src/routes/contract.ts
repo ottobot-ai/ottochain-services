@@ -18,7 +18,7 @@ import {
 import { getContractDefinition } from '@ottochain/sdk/apps/contracts';
 import { toProtoDefinition } from '@ottochain/sdk';
 
-const CONTRACT_DEFINITION = toProtoDefinition(getContractDefinition('agreement') as any);
+const CONTRACT_DEFINITION = toProtoDefinition(getContractDefinition('agreement'));
 
 export const contractRoutes: RouterType = Router();
 

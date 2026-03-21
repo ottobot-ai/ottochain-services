@@ -98,15 +98,15 @@ const VetoRequestSchema = z.object({
 function getDefinitionForDAOType(daoType: string): ProtoStateMachineDefinition {
   switch (daoType) {
     case 'Multisig':
-      return toProtoDefinition(getGovernanceDefinition('daoMultisig') as any);
+      return toProtoDefinition(getGovernanceDefinition('daoMultisig'));
     case 'Token':
-      return toProtoDefinition(getGovernanceDefinition('daoToken') as any);
+      return toProtoDefinition(getGovernanceDefinition('daoToken'));
     case 'Threshold':
-      return toProtoDefinition(getGovernanceDefinition('daoReputation') as any);
+      return toProtoDefinition(getGovernanceDefinition('daoReputation'));
     case 'Single':
-      return toProtoDefinition(getGovernanceDefinition('daoSingle') as any);
+      return toProtoDefinition(getGovernanceDefinition('daoSingle'));
     default:
-      return toProtoDefinition(getGovernanceDefinition('simple') as any);
+      return toProtoDefinition(getGovernanceDefinition('simple'));
   }
 }
 
