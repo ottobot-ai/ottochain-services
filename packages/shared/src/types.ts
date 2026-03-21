@@ -2,11 +2,14 @@
 
 import { z } from 'zod';
 import {
-  AgentState as SdkAgentState,
+  IdentityState as SdkIdentityState,
   Platform as SdkPlatform,
   AttestationType as SdkAttestationType,
   ContractState as SdkContractState,
 } from '@ottochain/sdk';
+
+// Alias for backward compatibility (services use AgentState internally)
+const SdkAgentState = SdkIdentityState;
 
 // Helper to extract string keys from TypeScript numeric enums
 const enumStringKeys = <T extends Record<string, string | number>>(e: T) =>
