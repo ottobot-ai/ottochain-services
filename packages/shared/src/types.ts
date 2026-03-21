@@ -2,7 +2,7 @@
 
 import { z } from 'zod';
 import {
-  IdentityState as SdkIdentityState,
+  AgentState as SdkIdentityState,
   Platform as SdkPlatform,
   AttestationType as SdkAttestationType,
   ContractState as SdkContractState,
