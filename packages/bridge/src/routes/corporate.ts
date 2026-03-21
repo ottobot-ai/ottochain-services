@@ -17,15 +17,16 @@ import {
   type FiberOrdinal,
 } from '../metagraph.js';
 import { getCorporateDefinition } from '@ottochain/sdk/apps/corporate';
+import { toProtoDefinition } from '../lib/proto-helper.js';
 
 // ============================================================================
 // Corporate State Machine Definitions (from SDK)
 // ============================================================================
 
-const CORPORATE_ENTITY_DEFINITION = getCorporateDefinition('entity') as StateMachineDefinition;
-const CORPORATE_BOARD_DEFINITION = getCorporateDefinition('board') as StateMachineDefinition;
-const CORPORATE_SHAREHOLDERS_DEFINITION = getCorporateDefinition('shareholders') as StateMachineDefinition;
-const CORPORATE_SECURITIES_DEFINITION = getCorporateDefinition('securities') as StateMachineDefinition;
+const CORPORATE_ENTITY_DEFINITION = toProtoDefinition(getCorporateDefinition('entity'));
+const CORPORATE_BOARD_DEFINITION = toProtoDefinition(getCorporateDefinition('board'));
+const CORPORATE_SHAREHOLDERS_DEFINITION = toProtoDefinition(getCorporateDefinition('shareholders'));
+const CORPORATE_SECURITIES_DEFINITION = toProtoDefinition(getCorporateDefinition('securities'));
 
 export const corporateRoutes: RouterType = Router();
 

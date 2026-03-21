@@ -16,6 +16,7 @@ import {
   type FiberOrdinal,
 } from '../metagraph.js';
 import { getGovernanceDefinition } from '@ottochain/sdk/apps/governance';
+import { toProtoDefinition } from '../lib/proto-helper.js';
 
 export const governanceRoutes: RouterType = Router();
 
@@ -97,15 +98,15 @@ const VetoRequestSchema = z.object({
 function getDefinitionForDAOType(daoType: string): unknown {
   switch (daoType) {
     case 'Multisig':
-      return getGovernanceDefinition('daoMultisig');
+      return toProtoDefinition(getGovernanceDefinition('daoMultisig'));
     case 'Token':
-      return getGovernanceDefinition('daoToken');
+      return toProtoDefinition(getGovernanceDefinition('daoToken'));
     case 'Threshold':
-      return getGovernanceDefinition('daoReputation');
+      return toProtoDefinition(getGovernanceDefinition('daoReputation'));
     case 'Single':
-      return getGovernanceDefinition('daoSingle');
+      return toProtoDefinition(getGovernanceDefinition('daoSingle'));
     default:
-      return getGovernanceDefinition('simple');
+      return toProtoDefinition(getGovernanceDefinition('simple'));
   }
 }
 
