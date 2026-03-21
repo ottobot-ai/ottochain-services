@@ -347,13 +347,13 @@ corporateRoutes.post('/board/elect', async (req, res) => {
       TransitionStateMachine: {
         fiberId: boardId,
         eventName: 'elect_director',
-        eventData: {
+        payload: {
           directorId,
           name: input.name,
           email: input.email,
           termStart: input.termStart,
           termEnd: input.termEnd,
-          class: input.class || 'UNCLASSIFIED',
+          class: input.class ?? 'UNCLASSIFIED',
           isIndependent: input.isIndependent,
           electionResolutionRef: input.electionResolutionRef,
           isFillingVacancy: input.isFillingVacancy,
@@ -406,12 +406,12 @@ corporateRoutes.post('/board/meeting', async (req, res) => {
     const targetSequenceNumber = await getFiberSequenceNumber(boardId);
     
     let eventName: string;
-    let eventData: Record<string, unknown>;
+    let payload: Record<string, unknown>;
 
     switch (input.action) {
       case 'call':
         eventName = 'call_meeting';
-        eventData = {
+        payload = {
           meetingId: randomUUID(),
           meetingType: input.meetingType || 'REGULAR',
           scheduledDate: input.scheduledDate,
@@ -423,21 +423,21 @@ corporateRoutes.post('/board/meeting', async (req, res) => {
         break;
       case 'open':
         eventName = 'open_meeting';
-        eventData = {
+        payload = {
           chairPresiding: input.chairPresiding,
           openedAt: new Date().toISOString(),
         };
         break;
       case 'record_attendance':
         eventName = 'record_attendance';
-        eventData = {
+        payload = {
           directorId: input.directorId,
           present: input.present,
         };
         break;
       case 'adjourn':
         eventName = 'adjourn_meeting';
-        eventData = {
+        payload = {
           minutesRef: input.minutesRef,
           resolutionsPassed: input.resolutionsPassed || [],
           adjournedAt: new Date().toISOString(),
@@ -451,7 +451,7 @@ corporateRoutes.post('/board/meeting', async (req, res) => {
       TransitionStateMachine: {
         fiberId: boardId,
         eventName,
-        eventData,
+        payload,
         targetSequenceNumber,
       },
     };
@@ -569,12 +569,12 @@ corporateRoutes.post('/shareholders/meeting', async (req, res) => {
     const targetSequenceNumber = await getFiberSequenceNumber(shareholdersId);
     
     let eventName: string;
-    let eventData: Record<string, unknown>;
+    let payload: Record<string, unknown>;
 
     switch (input.action) {
       case 'schedule_annual':
         eventName = 'schedule_annual';
-        eventData = {
+        payload = {
           meetingId: randomUUID(),
           scheduledDate: input.scheduledDate,
           fiscalYear: input.fiscalYear,
@@ -584,7 +584,7 @@ corporateRoutes.post('/shareholders/meeting', async (req, res) => {
         break;
       case 'schedule_special':
         eventName = 'schedule_special';
-        eventData = {
+        payload = {
           meetingId: randomUUID(),
           scheduledDate: input.scheduledDate,
           purpose: input.purpose,
@@ -594,7 +594,7 @@ corporateRoutes.post('/shareholders/meeting', async (req, res) => {
         break;
       case 'open':
         eventName = 'open_meeting';
-        eventData = {
+        payload = {
           chairPerson: input.chairPerson,
           secretaryPresent: input.secretaryPresent,
           initialQuorumCount: input.initialQuorumCount,
@@ -603,7 +603,7 @@ corporateRoutes.post('/shareholders/meeting', async (req, res) => {
         break;
       case 'certify':
         eventName = 'certify_results';
-        eventData = {
+        payload = {
           results: input.results,
           minutesRef: input.minutesRef,
           certifiedAt: new Date().toISOString(),
@@ -618,7 +618,7 @@ corporateRoutes.post('/shareholders/meeting', async (req, res) => {
       TransitionStateMachine: {
         fiberId: shareholdersId,
         eventName,
-        eventData,
+        payload,
         targetSequenceNumber,
       },
     };
@@ -718,7 +718,7 @@ corporateRoutes.post('/securities/issue', async (req, res) => {
       TransitionStateMachine: {
         fiberId: securitiesId,
         eventName: 'issue',
-        eventData: {
+        payload: {
           securityId,
           shareClass: input.shareClass,
           shareCount: input.shareCount,
@@ -790,7 +790,7 @@ corporateRoutes.post('/securities/transfer', async (req, res) => {
       TransitionStateMachine: {
         fiberId: securitiesId,
         eventName: 'transfer',
-        eventData: {
+        payload: {
           securityId: input.securityId,
           toHolderId: input.toHolderId,
           toHolderName: input.toHolderName,
