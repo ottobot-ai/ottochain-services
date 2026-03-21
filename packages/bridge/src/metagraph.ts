@@ -6,7 +6,7 @@
  */
 
 import { getConfig } from '@ottochain/shared';
-import { batchSign, generateKeyPair as sdkGenerateKeyPair, keyPairFromPrivateKey as sdkKeyPairFromPrivateKey, HttpClient } from '@ottochain/sdk';
+import { batchSign, normalizeMessage, generateKeyPair as sdkGenerateKeyPair, keyPairFromPrivateKey as sdkKeyPairFromPrivateKey, HttpClient } from '@ottochain/sdk';
 import type { KeyPair } from '@ottochain/sdk';
 import { confirmationRegistry, type FiberConfirmation } from './lib/confirmation-registry.js';
 
@@ -198,15 +198,19 @@ export async function submitTransaction(
   message: unknown,
   privateKey: string
 ): Promise<TransactionResult> {
+  // Normalize before signing: ensures Option[A]=None fields are explicit null
+  // (required for canonical JSON to match Scala's circe encoder output)
+  const normalizedMessage = normalizeMessage(message as Record<string, unknown>);
+
   // Sign using SDK's batchSign (same as e2e tests)
-  const signed = await batchSign(message, [privateKey], { isDataUpdate: true });
+  const signed = await batchSign(normalizedMessage, [privateKey], { isDataUpdate: true });
 
   // Wrap in DataTransactionRequest format expected by tessellation DL1
   const payload = { data: signed, fee: null };
 
-  const msgType = Object.keys(message as object)[0];
+  const msgType = Object.keys(normalizedMessage)[0];
   const dl1Urls = getDl1Urls();
-  const seqInfo = extractSequenceInfo(message);
+  const seqInfo = extractSequenceInfo(normalizedMessage);
 
   console.log(`[metagraph] Submitting ${msgType} to ${dl1Urls.length} DL1 node(s): ${dl1Urls.join(', ')}`);
   console.log(`[metagraph] Payload (truncated): ${JSON.stringify(payload).substring(0, 300)}...`);
