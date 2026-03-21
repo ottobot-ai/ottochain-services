@@ -16,20 +16,23 @@ import {
   type TransitionStateMachine,
   type FiberOrdinal,
 } from '../metagraph.js';
-import { getCorporateDefinition } from '@ottochain/sdk/apps/corporate';
+import { getCorporateDefinition, type CorporateType } from '@ottochain/sdk/apps/corporate';
 
 // ============================================================================
 // Corporate State Machine Definitions (from SDK)
 // ============================================================================
 
-const CORPORATE_ENTITY_DEFINITION = getCorporateDefinition('Entity');
-const CORPORATE_BOARD_DEFINITION = getCorporateDefinition('Board');
-const CORPORATE_SHAREHOLDERS_DEFINITION = getCorporateDefinition('Shareholders');
-const CORPORATE_OFFICERS_DEFINITION = getCorporateDefinition('Officers');
-const CORPORATE_SECURITIES_DEFINITION = getCorporateDefinition('Securities');
-const CORPORATE_COMPLIANCE_DEFINITION = getCorporateDefinition('Compliance');
-const CORPORATE_PROXY_DEFINITION = getCorporateDefinition('Proxy');
-const CORPORATE_RESOLUTION_DEFINITION = getCorporateDefinition('Resolution');
+// Helper to allow legacy type names not yet in the TypeScript union
+const getCorpDef = (type: string) => getCorporateDefinition(type as CorporateType);
+
+const CORPORATE_ENTITY_DEFINITION = getCorpDef('entity');
+const CORPORATE_BOARD_DEFINITION = getCorpDef('board');
+const CORPORATE_SHAREHOLDERS_DEFINITION = getCorpDef('shareholders');
+const CORPORATE_OFFICERS_DEFINITION = getCorpDef('officers');
+const CORPORATE_SECURITIES_DEFINITION = getCorpDef('securities');
+const CORPORATE_COMPLIANCE_DEFINITION = getCorpDef('compliance');
+const CORPORATE_PROXY_DEFINITION = getCorpDef('proxy');
+const CORPORATE_RESOLUTION_DEFINITION = getCorpDef('resolution');
 
 export const corporateRoutes: RouterType = Router();
 

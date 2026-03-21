@@ -18,8 +18,7 @@ import {
 import {
   getDAODefinition,
   getGovernanceDefinition,
-  type DAODefinitionType,
-  type GovernanceDefinitionType,
+  type GovernanceType,
 } from '@ottochain/sdk/apps/governance';
 
 export const governanceRoutes: RouterType = Router();
@@ -112,7 +111,7 @@ function getDefinitionForDAOType(daoType: string): unknown {
       return getDAODefinition('Single');
     default:
       // Fall back to Simple governance for unknown types
-      return getGovernanceDefinition('Simple');
+      return getGovernanceDefinition('simple');
   }
 }
 
