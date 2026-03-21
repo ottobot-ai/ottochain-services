@@ -8,7 +8,7 @@ import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKe
 // Oracle SM now lives under identity app (absorbed from oracles/)
 import { getIdentityDefinition } from '@ottochain/sdk/apps/identity';
 // Proto-generated identity types (oracle is now a type of identity)
-import { IdentityState, IdentityType } from '@ottochain/sdk/generated';
+import { EntityState, EntityType } from '@ottochain/sdk/generated';
 
 const DEFAULT_ORACLE_CONFIG = {
   minStake: 100,
