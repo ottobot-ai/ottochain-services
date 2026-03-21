@@ -267,7 +267,7 @@ async function main(): Promise<void> {
       await bridge.activateAgent(agent.privateKey, result.fiberId);
       
       agent.fiberId = result.fiberId;
-      agent.state = IdentityState.AGENT_STATE_ACTIVE;
+      agent.state = IdentityState.IDENTITY_STATE_ACTIVE;
       registeredAgents.add(agent.address);
       console.log(`  ✅ ${agent.meta.displayName}: ${result.fiberId.slice(0, 12)}...`);
     } catch (err) {
@@ -275,7 +275,7 @@ async function main(): Promise<void> {
       if (msg.includes('already') || msg.includes('exists') || msg.includes('duplicate')) {
         // Already registered - mark as active
         registeredAgents.add(agent.address);
-        agent.state = IdentityState.AGENT_STATE_ACTIVE;
+        agent.state = IdentityState.IDENTITY_STATE_ACTIVE;
         console.log(`  ✓ ${agent.meta.displayName}: already registered`);
       } else {
         console.log(`  ⚠️  ${agent.meta.displayName}: ${msg.slice(0, 60)}`);
