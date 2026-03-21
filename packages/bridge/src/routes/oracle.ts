@@ -7,7 +7,7 @@ import { randomUUID } from 'crypto';
 import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey, waitForFiber, getFiberSequenceNumber } from '../metagraph.js';
 // Oracle SM now lives under identity app (absorbed from oracles/)
 import { getIdentityDefinition } from '@ottochain/sdk/apps/identity';
-// Proto-generated oracle types
+// Proto-generated oracle types (now under identity app)
 import { OracleState } from '@ottochain/sdk/generated';
 
 const DEFAULT_ORACLE_CONFIG = {
