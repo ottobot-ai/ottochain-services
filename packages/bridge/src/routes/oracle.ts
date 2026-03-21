@@ -7,16 +7,8 @@ import { randomUUID } from 'crypto';
 import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey, waitForFiber, getFiberSequenceNumber } from '../metagraph.js';
 // Oracle SM now lives under identity app (absorbed from oracles/)
 import { getIdentityDefinition } from '@ottochain/sdk/apps/identity';
-
-// Placeholder types until proto exports are updated
-const OracleState = {
-  ORACLE_STATE_UNSPECIFIED: 0,
-  ORACLE_STATE_PENDING: 1,
-  ORACLE_STATE_ACTIVE: 2,
-  ORACLE_STATE_INACTIVE: 3,
-  ORACLE_STATE_WITHDRAWN: 4,
-  ORACLE_STATE_SLASHED: 5,
-} as const;
+// Proto-generated oracle types
+import { OracleState } from '@ottochain/sdk/generated';
 
 const DEFAULT_ORACLE_CONFIG = {
   minStake: 100,
