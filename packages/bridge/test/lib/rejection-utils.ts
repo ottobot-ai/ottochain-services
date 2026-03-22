@@ -5,7 +5,7 @@
  * Used by integration/e2e tests to verify operations weren't rejected.
  */
 
-import assert from 'node:assert';
+import { expect } from 'vitest';
 
 const INDEXER_URL = process.env.INDEXER_URL || 'http://localhost:3031';
 
@@ -109,11 +109,7 @@ export async function assertNoRejections(
   indexerUrl: string = INDEXER_URL
 ): Promise<void> {
   const rejections = await getRejections(fiberId, indexerUrl);
-  assert.strictEqual(
-    rejections.length,
-    0,
-    `Fiber ${fiberId} rejected during ${operation}: ${rejections.map(r => r.errors.map(e => e.message).join(', ')).join('; ')}`
-  );
+  expect(rejections.length).toBe(0);
 }
 
 /**

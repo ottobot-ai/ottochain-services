@@ -7,12 +7,9 @@
  *  3. "sliding window works" — old data ages out, recent data dominates
  *
  * These tests cover ResponseTimeTracker in isolation (no HTTP server needed).
- *
- * Run: node --test --experimental-strip-types test/health-metrics.test.ts
  */
 
-import { describe, it, beforeEach } from 'node:test';
-import assert from 'node:assert';
+import { describe, it, beforeEach, expect } from 'vitest';
 import { ResponseTimeTracker } from '../src/lib/response-time-tracker.ts';
 import type { TrackerOptions } from '../src/lib/response-time-tracker.ts';
 
@@ -32,9 +29,9 @@ describe('ResponseTimeTracker — cold start / no data', () => {
   it('returns null percentiles when no samples recorded', () => {
     const tracker = makeTracker();
     const result = tracker.percentiles();
-    assert.strictEqual(result.p50, null, 'p50 must be null with no data');
-    assert.strictEqual(result.p95, null, 'p95 must be null with no data');
-    assert.strictEqual(result.p99, null, 'p99 must be null with no data');
+    expect(result.p50).toBe(null);
+    expect(result.p95).toBe(null);
+    expect(result.p99).toBe(null);
   });
 
   it('returns null after clear()', () => {
@@ -43,9 +40,9 @@ describe('ResponseTimeTracker — cold start / no data', () => {
     tracker.record(200);
     tracker.clear();
     const result = tracker.percentiles();
-    assert.strictEqual(result.p50, null);
-    assert.strictEqual(result.p95, null);
-    assert.strictEqual(result.p99, null);
+    expect(result.p50).toBe(null);
+    expect(result.p95).toBe(null);
+    expect(result.p99).toBe(null);
   });
 });
 
@@ -58,9 +55,9 @@ describe('ResponseTimeTracker — percentile calculations', () => {
     const tracker = makeTracker();
     tracker.record(42);
     const { p50, p95, p99 } = tracker.percentiles();
-    assert.strictEqual(p50, 42);
-    assert.strictEqual(p95, 42);
-    assert.strictEqual(p99, 42);
+    expect(p50).toBe(42);
+    expect(p95).toBe(42);
+    expect(p99).toBe(42);
   });
 
   it('two samples: p50 = lower, p95 = p99 = higher', () => {
@@ -70,10 +67,10 @@ describe('ResponseTimeTracker — percentile calculations', () => {
     const { p50, p95, p99 } = tracker.percentiles();
     // sorted: [10, 100]
     // p50 = ceil(50/100 * 2) - 1 = ceil(1) - 1 = 0 → 10
-    assert.strictEqual(p50, 10);
+    expect(p50).toBe(10);
     // p95 = ceil(95/100 * 2) - 1 = ceil(1.9) - 1 = 2 - 1 = 1 → 100
-    assert.strictEqual(p95, 100);
-    assert.strictEqual(p99, 100);
+    expect(p95).toBe(100);
+    expect(p99).toBe(100);
   });
 
   it('calculates correct percentiles for a known dataset', () => {
@@ -86,13 +83,13 @@ describe('ResponseTimeTracker — percentile calculations', () => {
     const { p50, p95, p99 } = tracker.percentiles();
 
     // p50: ceil(50/100 * 10) - 1 = 5 - 1 = 4 → sorted[4] = 50
-    assert.strictEqual(p50, 50, `expected p50=50, got ${p50}`);
+    expect(p50).toBe(50);
 
     // p95: ceil(95/100 * 10) - 1 = ceil(9.5) - 1 = 10 - 1 = 9 → sorted[9] = 100
-    assert.strictEqual(p95, 100, `expected p95=100, got ${p95}`);
+    expect(p95).toBe(100);
 
     // p99: ceil(99/100 * 10) - 1 = ceil(9.9) - 1 = 10 - 1 = 9 → sorted[9] = 100
-    assert.strictEqual(p99, 100, `expected p99=100, got ${p99}`);
+    expect(p99).toBe(100);
   });
 
   it('handles 100 uniform samples correctly', () => {
@@ -103,20 +100,20 @@ describe('ResponseTimeTracker — percentile calculations', () => {
     const { p50, p95, p99 } = tracker.percentiles();
     // sorted: [1, 2, ..., 100]
     // p50: ceil(50) - 1 = 49 → sorted[49] = 50
-    assert.strictEqual(p50, 50);
+    expect(p50).toBe(50);
     // p95: ceil(95) - 1 = 94 → sorted[94] = 95
-    assert.strictEqual(p95, 95);
+    expect(p95).toBe(95);
     // p99: ceil(99) - 1 = 98 → sorted[98] = 99
-    assert.strictEqual(p99, 99);
+    expect(p99).toBe(99);
   });
 
   it('returns numeric (non-null) percentiles when samples present', () => {
     const tracker = makeTracker();
     [15, 25, 35, 45, 55].forEach(d => tracker.record(d));
     const { p50, p95, p99 } = tracker.percentiles();
-    assert.ok(p50 !== null && typeof p50 === 'number', 'p50 should be a number');
-    assert.ok(p95 !== null && typeof p95 === 'number', 'p95 should be a number');
-    assert.ok(p99 !== null && typeof p99 === 'number', 'p99 should be a number');
+    expect(p50 !== null && typeof p50 === 'number').toBe(true);
+    expect(p95 !== null && typeof p95 === 'number').toBe(true);
+    expect(p99 !== null && typeof p99 === 'number').toBe(true);
   });
 
   it('p50 <= p95 <= p99 (ordering invariant)', () => {
@@ -124,8 +121,8 @@ describe('ResponseTimeTracker — percentile calculations', () => {
     // Random-ish distribution
     [5, 200, 15, 800, 10, 1000, 8, 300, 12, 50].forEach(d => tracker.record(d));
     const { p50, p95, p99 } = tracker.percentiles();
-    assert.ok(p50! <= p95!, `p50 (${p50}) must be <= p95 (${p95})`);
-    assert.ok(p95! <= p99!, `p95 (${p95}) must be <= p99 (${p99})`);
+    expect(p50! <= p95!).toBe(true);
+    expect(p95! <= p99!).toBe(true);
   });
 
   it('respects MAX_SAMPLES cap (buffer does not exceed 1000)', () => {
@@ -134,11 +131,11 @@ describe('ResponseTimeTracker — percentile calculations', () => {
       tracker.record(i);
     }
     // Size is bounded at 1000; percentiles still work
-    assert.strictEqual(tracker.size, 1000, 'Buffer must not exceed MAX_SAMPLES');
+    expect(tracker.size).toBe(1000);
     const { p50, p95, p99 } = tracker.percentiles();
-    assert.ok(p50 !== null, 'Should still produce percentiles after eviction');
-    assert.ok(p95 !== null);
-    assert.ok(p99 !== null);
+    expect(p50 !== null).toBe(true);
+    expect(p95 !== null).toBe(true);
+    expect(p99 !== null).toBe(true);
   });
 
   it('custom maxSamples cap is respected', () => {
@@ -146,10 +143,10 @@ describe('ResponseTimeTracker — percentile calculations', () => {
     for (let i = 1; i <= 10; i++) {
       tracker.record(i * 10);
     }
-    assert.strictEqual(tracker.size, 5, 'Buffer must not exceed custom maxSamples');
+    expect(tracker.size).toBe(5);
     // Only the last 5 samples remain: [60, 70, 80, 90, 100]
     const { p50 } = tracker.percentiles();
-    assert.strictEqual(p50, 80, 'p50 of [60,70,80,90,100] = sorted[2] = 80');
+    expect(p50).toBe(80);
   });
 });
 
@@ -175,7 +172,7 @@ describe('ResponseTimeTracker — sliding window expiry', () => {
     const { p50 } = tracker.percentiles();
     // Only the recent [10, 20, 30, 40, 50] should be in window
     // Sorted: [10, 20, 30, 40, 50] → p50 = sorted[2] = 30
-    assert.strictEqual(p50, 30, 'p50 should reflect only recent samples after old ones expire');
+    expect(p50).toBe(30);
   });
 
   it('returns null when all samples are outside the window', () => {
@@ -188,11 +185,11 @@ describe('ResponseTimeTracker — sliding window expiry', () => {
     fakeNow += 6 * 60 * 1000; // 6 minutes
 
     const { p50, p95, p99 } = tracker.percentiles();
-    assert.strictEqual(p50, null, 'p50 should be null when window is empty');
-    assert.strictEqual(p95, null, 'p95 should be null when window is empty');
-    assert.strictEqual(p99, null, 'p99 should be null when window is empty');
+    expect(p50).toBe(null);
+    expect(p95).toBe(null);
+    expect(p99).toBe(null);
     // Buffer still has samples, but they're all expired
-    assert.strictEqual(tracker.size, 3, 'Expired samples remain in buffer until evicted by new records');
+    expect(tracker.size).toBe(3);
   });
 
   it('recent samples dominate when old data coexists in buffer', () => {
@@ -209,9 +206,9 @@ describe('ResponseTimeTracker — sliding window expiry', () => {
     [10, 20, 30, 40, 50].forEach(d => tracker.record(d));
 
     const { p50 } = tracker.percentiles();
-    assert.ok((p50 ?? 0) < 100, `p50 (${p50}) should reflect recent samples, not old outlier`);
+    expect((p50 ?? 0) < 100).toBe(true);
     // Buffer has 6 samples total but only 5 are in window
-    assert.strictEqual(tracker.size, 6, 'Old sample still in buffer');
+    expect(tracker.size).toBe(6);
   });
 
   it('custom windowMs is respected', () => {
@@ -222,7 +219,7 @@ describe('ResponseTimeTracker — sliding window expiry', () => {
 
     fakeNow += 11_000; // 11 seconds later
     const { p50 } = tracker.percentiles();
-    assert.strictEqual(p50, null, 'Sample should be expired with 10s window');
+    expect(p50).toBe(null);
   });
 });
 
@@ -245,12 +242,12 @@ describe('ResponseTimeTracker — health endpoint shape', () => {
       responseTime: perc,
     };
 
-    assert.ok('status'       in healthResponse, 'health response must have status');
-    assert.ok('service'      in healthResponse, 'health response must have service');
-    assert.ok('responseTime' in healthResponse, 'health response must have responseTime');
-    assert.ok('p50' in healthResponse.responseTime, 'responseTime must have p50');
-    assert.ok('p95' in healthResponse.responseTime, 'responseTime must have p95');
-    assert.ok('p99' in healthResponse.responseTime, 'responseTime must have p99');
+    expect('status' in healthResponse).toBe(true);
+    expect('service' in healthResponse).toBe(true);
+    expect('responseTime' in healthResponse).toBe(true);
+    expect('p50' in healthResponse.responseTime).toBe(true);
+    expect('p95' in healthResponse.responseTime).toBe(true);
+    expect('p99' in healthResponse.responseTime).toBe(true);
   });
 
   it('cold-start health response has null percentiles (not undefined)', () => {
@@ -258,8 +255,8 @@ describe('ResponseTimeTracker — health endpoint shape', () => {
     const { p50, p95, p99 } = tracker.percentiles();
     // JSON.stringify(undefined) → field omitted; JSON.stringify(null) → "null"
     // We must emit null so the field appears in the response.
-    assert.strictEqual(p50, null, 'p50 must be null (not undefined) for JSON serialisation');
-    assert.strictEqual(p95, null, 'p95 must be null (not undefined) for JSON serialisation');
-    assert.strictEqual(p99, null, 'p99 must be null (not undefined) for JSON serialisation');
+    expect(p50).toBe(null);
+    expect(p95).toBe(null);
+    expect(p99).toBe(null);
   });
 });

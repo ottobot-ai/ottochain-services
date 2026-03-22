@@ -5,8 +5,7 @@
  * integration test files have the required rejection patterns.
  */
 
-import { describe, it } from 'node:test';
-import assert from 'node:assert';
+import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,13 +28,13 @@ describe('Rejection Utilities Integration', () => {
   describe('getRejections', () => {
     it('returns empty array when indexer is not running', async () => {
       const rejections = await getRejections('test-fiber-id', 'http://localhost:19999');
-      assert.ok(Array.isArray(rejections), 'Should return array');
-      assert.strictEqual(rejections.length, 0, 'Should be empty when indexer unavailable');
+      expect(Array.isArray(rejections)).toBe(true);
+      expect(rejections.length).toBe(0);
     });
 
     it('accepts custom indexer URL', async () => {
       const rejections = await getRejections('any-fiber', 'http://localhost:19999');
-      assert.ok(Array.isArray(rejections));
+      expect(Array.isArray(rejections)).toBe(true);
     });
   });
 
@@ -52,9 +51,9 @@ describe('Rejection Utilities Integration', () => {
         async () => 'ok',
         'http://localhost:19999',
       );
-      assert.strictEqual(result.success, true);
-      assert.strictEqual(result.rejected, false);
-      assert.strictEqual(result.result, 'ok');
+      expect(result.success).toBe(true);
+      expect(result.rejected).toBe(false);
+      expect(result.result).toBe('ok');
     });
 
     it('returns failure when operation throws', async () => {
@@ -63,8 +62,8 @@ describe('Rejection Utilities Integration', () => {
         async () => { throw new Error('boom'); },
         'http://localhost:19999',
       );
-      assert.strictEqual(result.success, false);
-      assert.strictEqual(result.rejected, false);
+      expect(result.success).toBe(false);
+      expect(result.rejected).toBe(false);
     });
   });
 });
@@ -82,22 +81,18 @@ describe('Integration Test Pattern Verification', () => {
     }
 
     it('exists', () => {
-      assert.ok(content.length > 0, 'e2e.test.ts should exist');
+      expect(content.length > 0).toBe(true);
     });
 
     it('imports rejection utilities', () => {
-      assert.ok(
+      expect(
         content.includes('getRejections') || content.includes('assertNoRejections'),
-        'e2e.test.ts should import rejection checking utilities',
-      );
+      ).toBe(true);
     });
 
     it('has rejection assertions after operations', () => {
       const rejectionChecks = (content.match(/rejections/g) || []).length;
-      assert.ok(
-        rejectionChecks >= 2,
-        `e2e.test.ts should have rejection assertions (found ${rejectionChecks} references)`,
-      );
+      expect(rejectionChecks >= 2).toBe(true);
     });
   });
 
@@ -112,22 +107,18 @@ describe('Integration Test Pattern Verification', () => {
     }
 
     it('exists', () => {
-      assert.ok(content.length > 0, 'integration.test.ts should exist');
+      expect(content.length > 0).toBe(true);
     });
 
     it('imports rejection utilities', () => {
-      assert.ok(
+      expect(
         content.includes('getRejections') || content.includes('assertNoRejections'),
-        'integration.test.ts should import rejection checking utilities',
-      );
+      ).toBe(true);
     });
 
     it('has rejection assertions after operations', () => {
       const rejectionChecks = (content.match(/rejections/g) || []).length;
-      assert.ok(
-        rejectionChecks >= 2,
-        `integration.test.ts should have rejection assertions (found ${rejectionChecks} references)`,
-      );
+      expect(rejectionChecks >= 2).toBe(true);
     });
   });
 });

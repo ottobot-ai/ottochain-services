@@ -8,12 +8,10 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "lint": "eslint src --ext .ts",
-    "test": "node --test --experimental-strip-types test/confirmation-registry.test.ts test/health-metrics.test.ts test/internal-routes.test.ts test/key-store-unit.test.ts test/rejection-api-utilities.test.ts test/integration-rejection-assertions.test.ts test/contract-routes.test.ts",
-    "test:integration": "node --test --experimental-strip-types test/e2e.test.ts test/lifecycle.test.ts test/client-signing.test.ts test/cloud-agent-integration.test.ts test/sm.test.ts test/rejection-verification.test.ts test/multi-dl1-submission.test.ts test/sequence-cache.test.ts",
-    "test:e2e": "node --test --experimental-strip-types test/e2e.test.ts",
-    "test:lifecycle": "node --test --experimental-strip-types test/lifecycle.test.ts",
-    "test:coverage": "mkdir -p coverage && node --test --experimental-strip-types --experimental-test-coverage --test-reporter spec --test-reporter-destination stdout --test-reporter lcov --test-reporter-destination coverage/lcov.info test/confirmation-registry.test.ts test/health-metrics.test.ts test/internal-routes.test.ts test/key-store-unit.test.ts test/rejection-api-utilities.test.ts test/integration-rejection-assertions.test.ts test/contract-routes.test.ts",
-    "test:client-signing": "node --test --experimental-strip-types test/client-signing.test.ts"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@ottochain/sdk": "2.2.2",
@@ -30,6 +28,7 @@
     "@types/express": "^4.17.21",
     "@types/node": "^25.5.0",
     "tsx": "^4.7.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^4.1.0"
   }
 }

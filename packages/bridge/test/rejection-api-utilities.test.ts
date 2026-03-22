@@ -5,8 +5,7 @@
  * These are pure unit tests (no network required).
  */
 
-import { describe, it } from 'node:test';
-import assert from 'node:assert';
+import { describe, it, expect } from 'vitest';
 
 import {
   validateRejectionApiResponse,
@@ -19,39 +18,36 @@ describe('Rejection API Utility Functions', () => {
 
   describe('validateRejectionApiResponse', () => {
     it('returns true for valid response format', () => {
-      assert.strictEqual(
+      expect(
         validateRejectionApiResponse({ rejections: [], total: 0 }),
-        true,
-      );
+      ).toBe(true);
     });
 
     it('returns true for response with rejections', () => {
-      assert.strictEqual(
+      expect(
         validateRejectionApiResponse({
           rejections: [{ fiberId: 'abc', ordinal: 1, timestamp: '2026-01-01', errors: [] }],
           total: 1,
         }),
-        true,
-      );
+      ).toBe(true);
     });
 
     it('returns false for null', () => {
-      assert.strictEqual(validateRejectionApiResponse(null), false);
+      expect(validateRejectionApiResponse(null)).toBe(false);
     });
 
     it('returns false for missing rejections array', () => {
-      assert.strictEqual(validateRejectionApiResponse({ total: 0 }), false);
+      expect(validateRejectionApiResponse({ total: 0 })).toBe(false);
     });
 
     it('returns false for missing total', () => {
-      assert.strictEqual(validateRejectionApiResponse({ rejections: [] }), false);
+      expect(validateRejectionApiResponse({ rejections: [] })).toBe(false);
     });
 
     it('returns false for non-array rejections', () => {
-      assert.strictEqual(
+      expect(
         validateRejectionApiResponse({ rejections: 'not-array', total: 0 }),
-        false,
-      );
+      ).toBe(false);
     });
   });
 
@@ -71,25 +67,25 @@ describe('Rejection API Utility Functions', () => {
 
     for (const code of validCodes) {
       it(`recognizes "${code}" as valid`, () => {
-        assert.strictEqual(isValidRejectionErrorCode(code), true);
+        expect(isValidRejectionErrorCode(code)).toBe(true);
       });
     }
 
     it('rejects unknown error codes', () => {
-      assert.strictEqual(isValidRejectionErrorCode('SomethingRandom'), false);
+      expect(isValidRejectionErrorCode('SomethingRandom')).toBe(false);
     });
 
     it('rejects empty string', () => {
-      assert.strictEqual(isValidRejectionErrorCode(''), false);
+      expect(isValidRejectionErrorCode('')).toBe(false);
     });
   });
 
   describe('generateRejectionSummary', () => {
     it('returns zero counts for empty operations', () => {
       const summary = generateRejectionSummary([]);
-      assert.strictEqual(summary.totalOperations, 0);
-      assert.strictEqual(summary.rejectedOperations, 0);
-      assert.strictEqual(summary.rejectionRate, 0);
+      expect(summary.totalOperations).toBe(0);
+      expect(summary.rejectedOperations).toBe(0);
+      expect(summary.rejectionRate).toBe(0);
     });
 
     it('counts operations correctly', () => {
@@ -98,9 +94,9 @@ describe('Rejection API Utility Functions', () => {
         { fiberId: 'b', operation: 'activate', rejected: false },
         { fiberId: 'c', operation: 'register', rejected: true },
       ]);
-      assert.strictEqual(summary.totalOperations, 3);
-      assert.strictEqual(summary.rejectedOperations, 1);
-      assert.ok(Math.abs(summary.rejectionRate - 1 / 3) < 0.001);
+      expect(summary.totalOperations).toBe(3);
+      expect(summary.rejectedOperations).toBe(1);
+      expect(Math.abs(summary.rejectionRate - 1 / 3) < 0.001).toBe(true);
     });
 
     it('breaks down by operation type', () => {
@@ -109,17 +105,17 @@ describe('Rejection API Utility Functions', () => {
         { fiberId: 'b', operation: 'register', rejected: true },
         { fiberId: 'c', operation: 'activate', rejected: false },
       ]);
-      assert.deepStrictEqual(summary.operationBreakdown.register, { total: 2, rejected: 1 });
-      assert.deepStrictEqual(summary.operationBreakdown.activate, { total: 1, rejected: 0 });
+      expect(summary.operationBreakdown.register).toEqual({ total: 2, rejected: 1 });
+      expect(summary.operationBreakdown.activate).toEqual({ total: 1, rejected: 0 });
     });
   });
 
   describe('validateTestEnvironment', () => {
     it('returns default URLs when env vars not set', () => {
       const env = validateTestEnvironment();
-      assert.ok(env.indexerUrl);
-      assert.ok(env.bridgeUrl);
-      assert.ok(env.ml0Url);
+      expect(env.indexerUrl).toBeTruthy();
+      expect(env.bridgeUrl).toBeTruthy();
+      expect(env.ml0Url).toBeTruthy();
     });
   });
 });

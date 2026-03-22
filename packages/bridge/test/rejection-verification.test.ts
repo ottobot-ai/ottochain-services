@@ -5,8 +5,8 @@
  * Tests define expected behavior for rejection checking in bridge test suites.
  */
 
-import { describe, it, before, after } from 'node:test';
-import assert from 'node:assert';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+
 
 const BRIDGE_URL = process.env.BRIDGE_URL || 'http://localhost:3030';
 const ML0_URL = process.env.ML0_URL || 'http://localhost:9200';
@@ -31,12 +31,8 @@ describe('Bridge Rejection Verification Tests', () => {
       const operationTypes = ['register', 'activate', 'transition', 'archive'];
       for (const opType of operationTypes) {
         const opResult = testResults.find(r => r.transactionType === opType);
-        assert.ok(opResult, `Should test ${opType} operation`);
-        assert.strictEqual(
-          opResult.rejectionChecked, 
-          true, 
-          `Should check rejections after ${opType} operation`
-        );
+        expect(opResult).toBeTruthy();
+        expect(opResult.rejectionChecked).toBe(true);
       }
     });
 
@@ -45,12 +41,9 @@ describe('Bridge Rejection Verification Tests', () => {
       
       try {
         await simulateE2ETestWithRejections();
-        assert.fail('E2E test should fail when rejections are detected');
+        throw new Error('E2E test should fail when rejections are detected');
       } catch (error) {
-        assert.ok(
-          error.message.includes('rejection') || error.message.includes('REJECTED'),
-          `Error should mention rejections: ${error.message}`
-        );
+        expect(error.message.includes('rejection') || error.message.includes('REJECTED')).toBeTruthy();
       }
     });
 
@@ -59,17 +52,11 @@ describe('Bridge Rejection Verification Tests', () => {
       
       try {
         await simulateE2ETestWithDetailedRejectionInfo();
-        assert.fail('Should throw detailed rejection error');
+        throw new Error('Should throw detailed rejection error');
       } catch (error) {
         // Should include specific rejection codes and messages
-        assert.ok(
-          error.message.includes('InvalidOwner') || error.message.includes('ValidationError'),
-          'Should include specific rejection error codes'
-        );
-        assert.ok(
-          error.message.includes('fiberId'),
-          'Should include fiber ID in rejection error'
-        );
+        expect(error.message.includes('InvalidOwner') || error.message.includes('ValidationError')).toBeTruthy();
+        expect(error.message.includes('fiberId')).toBeTruthy();
       }
     });
 
@@ -79,12 +66,12 @@ describe('Bridge Rejection Verification Tests', () => {
       const fiberId = 'test-fiber-123';
       const result = await waitForFiberWithRejectionSupport(fiberId, 5000);
       
-      assert.ok(typeof result.found === 'boolean', 'Should return found status');
-      assert.ok(typeof result.rejectionChecked === 'boolean', 'Should indicate rejection was checked');
+      expect(typeof result.found === 'boolean').toBeTruthy();
+      expect(typeof result.rejectionChecked === 'boolean').toBeTruthy();
       
       if (result.rejected) {
-        assert.ok(result.rejectionDetails, 'Should provide rejection details when rejected');
-        assert.ok(Array.isArray(result.rejectionDetails.errors), 'Should include error array');
+        expect(result.rejectionDetails).toBeTruthy();
+        expect(Array.isArray(result.rejectionDetails.errors)).toBeTruthy();
       }
     });
   });
@@ -103,17 +90,10 @@ describe('Bridge Rejection Verification Tests', () => {
       for (const step of workflowSteps) {
         const result = await simulateCloudAgentStep(step);
         
-        assert.strictEqual(
-          result.rejectionChecked,
-          true,
-          `Cloud agent test should check rejections after ${step}`
-        );
+        expect(result.rejectionChecked).toBe(true);
         
         if (!result.passed) {
-          assert.ok(
-            result.failureReason.includes('rejected'),
-            `Failure should mention rejection status for ${step}`
-          );
+          expect(result.failureReason.includes('rejected')).toBeTruthy();
         }
       }
     });
@@ -124,16 +104,10 @@ describe('Bridge Rejection Verification Tests', () => {
       const workflowId = 'test-workflow-123';
       try {
         await simulateCloudAgentWorkflowWithMidRejection(workflowId);
-        assert.fail('Should detect and fail on mid-workflow rejection');
+        throw new Error('Should detect and fail on mid-workflow rejection');
       } catch (error) {
-        assert.ok(
-          error.message.includes('step 2') || error.message.includes('skill_assignment'),
-          'Should identify which step was rejected'
-        );
-        assert.ok(
-          error.message.includes(workflowId),
-          'Should include workflow ID in error'
-        );
+        expect(error.message.includes('step 2') || error.message.includes('skill_assignment')).toBeTruthy();
+        expect(error.message.includes(workflowId)).toBeTruthy();
       }
     });
 
@@ -142,17 +116,13 @@ describe('Bridge Rejection Verification Tests', () => {
       
       const summary = await generateCloudAgentTestSummary();
       
-      assert.ok(typeof summary.totalTransactions === 'number', 'Should count total transactions');
-      assert.ok(typeof summary.rejectedTransactions === 'number', 'Should count rejected transactions');
-      assert.ok(typeof summary.rejectionRate === 'number', 'Should calculate rejection rate');
-      assert.ok(Array.isArray(summary.rejectionsByType), 'Should break down rejections by type');
+      expect(typeof summary.totalTransactions === 'number').toBeTruthy();
+      expect(typeof summary.rejectedTransactions === 'number').toBeTruthy();
+      expect(typeof summary.rejectionRate === 'number').toBeTruthy();
+      expect(Array.isArray(summary.rejectionsByType)).toBeTruthy();
       
       // Successful test run should have zero rejections
-      assert.strictEqual(
-        summary.rejectedTransactions,
-        0,
-        `Expected no rejections in successful test run, but found ${summary.rejectedTransactions}`
-      );
+      expect(summary.rejectedTransactions).toBe(0);
     });
   });
 
@@ -170,14 +140,10 @@ describe('Bridge Rejection Verification Tests', () => {
       for (const transition of stateTransitions) {
         const result = await simulateStateTransitionTest(transition);
         
-        assert.strictEqual(
-          result.rejectionChecked,
-          true,
-          `Should check rejections for transition ${transition.from} → ${transition.to}`
-        );
+        expect(result.rejectionChecked).toBe(true);
         
         if (result.rejected) {
-          assert.fail(
+          expect.fail(
             `State transition ${transition.from} → ${transition.to} should not be rejected: ${result.rejectionReason}`
           );
         }
@@ -196,16 +162,9 @@ describe('Bridge Rejection Verification Tests', () => {
       for (const transition of invalidTransitions) {
         const result = await simulateInvalidStateTransition(transition);
         
-        assert.strictEqual(
-          result.rejected,
-          true,
-          `Invalid transition ${transition.from} → ${transition.to} should be rejected`
-        );
+        expect(result.rejected).toBe(true);
         
-        assert.ok(
-          result.rejectionReason && result.rejectionReason.length > 0,
-          `Should provide rejection reason for invalid transition`
-        );
+        expect(result.rejectionReason && result.rejectionReason.length > 0).toBeTruthy();
       }
     });
 
@@ -222,16 +181,13 @@ describe('Bridge Rejection Verification Tests', () => {
       const results = await simulateConcurrentOperations(fiberId, concurrentOps);
       
       // Only first operation should succeed, others should be rejected
-      assert.strictEqual(results[0].rejected, false, 'First operation should succeed');
-      assert.strictEqual(results[1].rejected, true, 'Second operation should be rejected');
-      assert.strictEqual(results[2].rejected, true, 'Third operation should be rejected');
+      expect(results[0].rejected).toBe(false);
+      expect(results[1].rejected).toBe(true);
+      expect(results[2].rejected).toBe(true);
       
       // Rejection reasons should indicate concurrency conflict
-      assert.ok(
-        results[1].rejectionReason.includes('InvalidState') || 
-        results[1].rejectionReason.includes('ConcurrencyConflict'),
-        'Should indicate invalid state or concurrency conflict'
-      );
+      expect(results[1].rejectionReason.includes('InvalidState') || 
+        results[1].rejectionReason.includes('ConcurrencyConflict')).toBeTruthy();
     });
   });
 
@@ -243,16 +199,16 @@ describe('Bridge Rejection Verification Tests', () => {
       
       // Should have helper to assert no rejections
       const noRejectionsResult = await assertNoRejectionsForBridge(fiberId);
-      assert.strictEqual(typeof noRejectionsResult, 'boolean', 'Should return boolean result');
+      expect(typeof noRejectionsResult).toBe('boolean');
       
       // Should have helper to get rejection details
       const rejectionDetails = await getBridgeRejectionDetails(fiberId);
-      assert.ok(Array.isArray(rejectionDetails), 'Should return array of rejections');
+      expect(Array.isArray(rejectionDetails)).toBeTruthy();
       
       // Should have helper to wait with rejection checking
       const waitResult = await waitForBridgeOperationWithRejectionCheck(fiberId, 'active', 10000);
-      assert.ok(typeof waitResult.success === 'boolean', 'Should return success status');
-      assert.ok(typeof waitResult.rejectionChecked === 'boolean', 'Should confirm rejection check');
+      expect(typeof waitResult.success === 'boolean').toBeTruthy();
+      expect(typeof waitResult.rejectionChecked === 'boolean').toBeTruthy();
     });
 
     it('should integrate rejection checking into existing bridge test patterns', async () => {
@@ -270,11 +226,7 @@ describe('Bridge Rejection Verification Tests', () => {
         
         // CRITICAL: Check for rejections (this should be added to existing tests)
         const rejections = await getBridgeRejectionDetails(fiberId);
-        assert.strictEqual(
-          rejections.length,
-          0,
-          `${operation} operation should not be rejected: ${rejections.map(r => r.errors.map(e => e.message).join(', ')).join('; ')}`
-        );
+        expect(rejections.length).toBe(0);
         
         return opResult;
       };

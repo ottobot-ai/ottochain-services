@@ -5,8 +5,7 @@
  * used by the contract routes. No mocking or network needed.
  */
 
-import { describe, it } from 'node:test';
-import assert from 'node:assert';
+import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 
 const VALID_KEY = '1'.repeat(64);
@@ -34,7 +33,7 @@ describe('Contract Routes — ProposeRequestSchema', () => {
       counterpartyAddress: COUNTERPARTY,
       terms: { title: 'Development Contract', payment: 1000 },
     });
-    assert.ok(result.success);
+    expect(result.success).toBeTruthy();
   });
 
   it('accepts optional title and description', () => {
@@ -45,7 +44,7 @@ describe('Contract Routes — ProposeRequestSchema', () => {
       title: 'Mobile App',
       description: 'Build an app',
     });
-    assert.ok(result.success);
+    expect(result.success).toBeTruthy();
   });
 
   it('rejects missing privateKey', () => {
@@ -53,7 +52,7 @@ describe('Contract Routes — ProposeRequestSchema', () => {
       counterpartyAddress: COUNTERPARTY,
       terms: { title: 'Test' },
     });
-    assert.ok(!result.success);
+    expect(!result.success).toBeTruthy();
   });
 
   it('rejects short privateKey', () => {
@@ -62,7 +61,7 @@ describe('Contract Routes — ProposeRequestSchema', () => {
       counterpartyAddress: COUNTERPARTY,
       terms: { title: 'Test' },
     });
-    assert.ok(!result.success);
+    expect(!result.success).toBeTruthy();
   });
 
   it('rejects missing terms', () => {
@@ -70,7 +69,7 @@ describe('Contract Routes — ProposeRequestSchema', () => {
       privateKey: VALID_KEY,
       counterpartyAddress: COUNTERPARTY,
     });
-    assert.ok(!result.success);
+    expect(!result.success).toBeTruthy();
   });
 
   it('rejects missing counterpartyAddress', () => {
@@ -78,7 +77,7 @@ describe('Contract Routes — ProposeRequestSchema', () => {
       privateKey: VALID_KEY,
       terms: { title: 'Test' },
     });
-    assert.ok(!result.success);
+    expect(!result.success).toBeTruthy();
   });
 
   it('accepts empty terms object', () => {
@@ -87,7 +86,7 @@ describe('Contract Routes — ProposeRequestSchema', () => {
       counterpartyAddress: COUNTERPARTY,
       terms: {},
     });
-    assert.ok(result.success);
+    expect(result.success).toBeTruthy();
   });
 });
 
@@ -97,7 +96,7 @@ describe('Contract Routes — ContractActionSchema', () => {
       privateKey: VALID_KEY,
       contractId: '550e8400-e29b-41d4-a716-446655440000',
     });
-    assert.ok(result.success);
+    expect(result.success).toBeTruthy();
   });
 
   it('rejects non-UUID contractId', () => {
@@ -105,7 +104,7 @@ describe('Contract Routes — ContractActionSchema', () => {
       privateKey: VALID_KEY,
       contractId: 'not-a-uuid',
     });
-    assert.ok(!result.success);
+    expect(!result.success).toBeTruthy();
   });
 
   it('accepts optional proof and reason', () => {
@@ -115,19 +114,19 @@ describe('Contract Routes — ContractActionSchema', () => {
       proof: 'https://example.com/proof',
       reason: 'Some reason',
     });
-    assert.ok(result.success);
+    expect(result.success).toBeTruthy();
   });
 
   it('rejects missing contractId', () => {
     const result = ContractActionSchema.safeParse({ privateKey: VALID_KEY });
-    assert.ok(!result.success);
+    expect(!result.success).toBeTruthy();
   });
 
   it('rejects missing privateKey', () => {
     const result = ContractActionSchema.safeParse({
       contractId: '550e8400-e29b-41d4-a716-446655440000',
     });
-    assert.ok(!result.success);
+    expect(!result.success).toBeTruthy();
   });
 });
 
@@ -137,9 +136,9 @@ describe('Contract Routes — State Machine Definitions', () => {
     const { getContractDefinition } = await import('@ottochain/sdk/apps/contracts');
     const proto = toProtoDefinition(getContractDefinition('agreement'));
 
-    assert.strictEqual(proto.initialState, 'PROPOSED');
-    assert.ok(proto.states);
-    assert.ok(proto.transitions);
+    expect(proto.initialState).toBe('PROPOSED');
+    expect(proto.states).toBeTruthy();
+    expect(proto.transitions).toBeTruthy();
   });
 
   it('agreement has expected lifecycle states', async () => {
@@ -149,7 +148,7 @@ describe('Contract Routes — State Machine Definitions', () => {
     const stateIds = Object.keys(proto.states);
 
     for (const expected of ['PROPOSED', 'ACTIVE', 'COMPLETED', 'REJECTED', 'DISPUTED']) {
-      assert.ok(stateIds.includes(expected), `Missing state: ${expected}`);
+      expect(stateIds.includes(expected)).toBe(true);
     }
   });
 
@@ -160,7 +159,7 @@ describe('Contract Routes — State Machine Definitions', () => {
     const events = proto.transitions.map((t: any) => t.eventName);
 
     for (const expected of ['accept', 'reject', 'dispute']) {
-      assert.ok(events.includes(expected), `Missing event: ${expected}`);
+      expect(events.includes(expected)).toBe(true);
     }
   });
 
@@ -170,8 +169,8 @@ describe('Contract Routes — State Machine Definitions', () => {
     const proto = toProtoDefinition(getContractDefinition('agreement'));
 
     for (const t of proto.transitions) {
-      assert.ok(t.guard !== undefined, `${t.eventName}: missing guard`);
-      assert.ok(t.effect !== undefined, `${t.eventName}: missing effect`);
+      expect(t.guard !== undefined).toBe(true);
+      expect(t.effect !== undefined).toBe(true);
     }
   });
 
@@ -182,7 +181,7 @@ describe('Contract Routes — State Machine Definitions', () => {
     const events = proto.transitions.map((t: any) => t.eventName);
 
     for (const expected of ['deposit', 'approve_release', 'dispute']) {
-      assert.ok(events.includes(expected), `Missing event: ${expected}`);
+      expect(events.includes(expected)).toBe(true);
     }
   });
 });
@@ -193,7 +192,7 @@ describe('Contract Routes — Dispute Requires Reason', () => {
       privateKey: VALID_KEY,
       contractId: '550e8400-e29b-41d4-a716-446655440000',
     });
-    assert.ok(result.success);
-    assert.strictEqual(result.data.reason, undefined);
+    expect(result.success).toBeTruthy();
+    expect(result.data!.reason).toBe(undefined);
   });
 });

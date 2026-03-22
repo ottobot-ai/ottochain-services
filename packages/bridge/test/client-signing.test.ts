@@ -24,8 +24,8 @@
  *   node --test --experimental-strip-types test/client-signing.test.ts
  */
 
-import { describe, it, before } from 'node:test';
-import assert from 'node:assert';
+import { describe, it, expect, beforeAll } from 'vitest';
+
 
 // SDK transaction helpers (from feat/signing-modes branch)
 import {
@@ -152,7 +152,7 @@ const SimpleDef = {
 describe('[B2] Client-Side Signing Endpoints', () => {
   let wallet: Wallet;
 
-  before(async () => {
+  beforeAll(async () => {
     wallet = await generateWallet();
   });
 
@@ -167,13 +167,13 @@ describe('[B2] Client-Side Signing Endpoints', () => {
         initialData: { status: 'OPEN' },
       });
 
-      assert.strictEqual(status, 200, `Expected 200, got ${status}: ${JSON.stringify(body)}`);
-      assert.ok(body.fiberId, 'Should have fiberId');
-      assert.ok(isValidUUID(body.fiberId), `fiberId should be a UUID, got: ${body.fiberId}`);
-      assert.ok(body.unsigned?.CreateStateMachine, 'Should have unsigned.CreateStateMachine');
-      assert.strictEqual(body.unsigned.CreateStateMachine.fiberId, body.fiberId, 'fiberId should match');
-      assert.deepStrictEqual(body.unsigned.CreateStateMachine.definition, SimpleDef, 'definition round-trips');
-      assert.ok(!JSON.stringify(body).includes('"privateKey"'), 'Response must not contain privateKey');
+      expect(status, 200, `Expected 200).toBe(got ${status}: ${JSON.stringify(body)}`);
+      expect(body.fiberId).toBeTruthy();
+      expect(isValidUUID(body.fiberId)).toBeTruthy();
+      expect(body.unsigned?.CreateStateMachine).toBeTruthy();
+      expect(body.unsigned.CreateStateMachine.fiberId).toBe(body.fiberId);
+      expect(body.unsigned.CreateStateMachine.definition, SimpleDef).toEqual('definition round-trips');
+      expect(!JSON.stringify(body).includes('"privateKey"')).toBeTruthy();
       console.log(`  ✓ T1.1: fiberId=${body.fiberId}`);
     });
 
@@ -185,8 +185,8 @@ describe('[B2] Client-Side Signing Endpoints', () => {
         participants,
       });
 
-      assert.strictEqual(status, 200, `Expected 200, got ${status}: ${JSON.stringify(body)}`);
-      assert.deepStrictEqual(body.unsigned.CreateStateMachine.participants, participants);
+      expect(status, 200, `Expected 200).toBe(got ${status}: ${JSON.stringify(body)}`);
+      expect(body.unsigned.CreateStateMachine.participants).toEqual(participants);
       console.log(`  ✓ T1.2: participants forwarded`);
     });
 
@@ -198,9 +198,9 @@ describe('[B2] Client-Side Signing Endpoints', () => {
         fiberId: hintId,
       });
 
-      assert.strictEqual(status, 200, `Expected 200, got ${status}: ${JSON.stringify(body)}`);
-      assert.strictEqual(body.fiberId, hintId);
-      assert.strictEqual(body.unsigned.CreateStateMachine.fiberId, hintId);
+      expect(status, 200, `Expected 200).toBe(got ${status}: ${JSON.stringify(body)}`);
+      expect(body.fiberId).toBe(hintId);
+      expect(body.unsigned.CreateStateMachine.fiberId).toBe(hintId);
       console.log(`  ✓ T1.3: fiberId hint respected`);
     });
 
@@ -209,7 +209,7 @@ describe('[B2] Client-Side Signing Endpoints', () => {
         definition: SimpleDef,
         initialData: {},
       });
-      assert.strictEqual(createRes.status, 200, 'Build create must succeed for T1.4 setup');
+      expect(createRes.status).toBe(200);
       const fiberId = createRes.body.fiberId;
 
       const { status, body } = await post<BuildTransitionResponse>('/build/sm/transition', {
@@ -218,13 +218,13 @@ describe('[B2] Client-Side Signing Endpoints', () => {
         payload: {},
       });
 
-      assert.strictEqual(status, 200, `Expected 200, got ${status}: ${JSON.stringify(body)}`);
-      assert.ok(body.unsigned?.TransitionStateMachine, 'Should have unsigned.TransitionStateMachine');
-      assert.strictEqual(body.unsigned.TransitionStateMachine.eventName, 'advance');
-      assert.ok(typeof body.unsigned.TransitionStateMachine.targetSequenceNumber === 'number', 'targetSequenceNumber must be number');
-      assert.ok(body.unsigned.TransitionStateMachine.targetSequenceNumber >= 0, 'targetSequenceNumber must be >= 0');
-      assert.ok(typeof body.currentState === 'string', 'currentState must be string');
-      assert.ok(!JSON.stringify(body).includes('"privateKey"'), 'Response must not contain privateKey');
+      expect(status, 200, `Expected 200).toBe(got ${status}: ${JSON.stringify(body)}`);
+      expect(body.unsigned?.TransitionStateMachine).toBeTruthy();
+      expect(body.unsigned.TransitionStateMachine.eventName).toBe('advance');
+      expect(typeof body.unsigned.TransitionStateMachine.targetSequenceNumber === 'number').toBeTruthy();
+      expect(body.unsigned.TransitionStateMachine.targetSequenceNumber >= 0).toBeTruthy();
+      expect(typeof body.currentState === 'string').toBeTruthy();
+      expect(!JSON.stringify(body).includes('"privateKey"')).toBeTruthy();
       console.log(`  ✓ T1.4: targetSequenceNumber=${body.unsigned.TransitionStateMachine.targetSequenceNumber}, currentState=${body.currentState}`);
     });
   });
@@ -240,7 +240,7 @@ describe('[B2] Client-Side Signing Endpoints', () => {
         definition: SimpleDef,
         initialData: { status: 'OPEN' },
       });
-      assert.strictEqual(buildStatus, 200, `Build failed: ${JSON.stringify(buildBody)}`);
+      expect(buildStatus, 200).toBe(`Build failed: ${JSON.stringify(buildBody)}`);
 
       // Sign locally (private key never leaves client)
       const keyPair = generateKeyPair();
@@ -251,10 +251,10 @@ describe('[B2] Client-Side Signing Endpoints', () => {
         signed: { value: buildBody.unsigned.CreateStateMachine, proofs: signed.proofs },
       });
 
-      assert.strictEqual(status, 200, `Submit failed: ${JSON.stringify(body)}`);
-      assert.ok(body.hash?.length > 0, 'hash should be non-empty');
-      assert.strictEqual(body.messageType, 'CreateStateMachine');
-      assert.strictEqual(body.fiberId, buildBody.fiberId);
+      expect(status, 200).toBe(`Submit failed: ${JSON.stringify(body)}`);
+      expect(body.hash?.length > 0).toBeTruthy();
+      expect(body.messageType).toBe('CreateStateMachine');
+      expect(body.fiberId).toBe(buildBody.fiberId);
       console.log(`  ✓ T2.1: hash=${body.hash}`);
     });
 
@@ -263,7 +263,7 @@ describe('[B2] Client-Side Signing Endpoints', () => {
         definition: SimpleDef,
         initialData: {},
       });
-      assert.strictEqual(buildStatus, 200);
+      expect(buildStatus).toBe(200);
 
       const { status, body } = await post<{ error: string }>('/submit', {
         signed: {
@@ -272,10 +272,9 @@ describe('[B2] Client-Side Signing Endpoints', () => {
         },
       });
 
-      assert.strictEqual(status, 422, `Expected 422, got ${status}: ${JSON.stringify(body)}`);
+      expect(status, 422, `Expected 422).toBe(got ${status}: ${JSON.stringify(body)}`);
       const errLower = (body.error ?? '').toLowerCase();
-      assert.ok(errLower.includes('reject') || errLower.includes('signature') || errLower.includes('invalid'),
-        `Error should mention rejection/signature: ${body.error}`);
+      expect(errLower.includes('reject') || errLower.includes('signature') || errLower.includes('invalid')).toBeTruthy();
       console.log(`  ✓ T2.2: invalid signature → 422`);
     });
 
@@ -284,8 +283,8 @@ describe('[B2] Client-Side Signing Endpoints', () => {
         post<BuildCreateResponse>('/build/sm/create', { definition: SimpleDef, initialData: { n: 'A' } }),
         post<BuildCreateResponse>('/build/sm/create', { definition: SimpleDef, initialData: { n: 'B' } }),
       ]);
-      assert.strictEqual(resA.status, 200);
-      assert.strictEqual(resB.status, 200);
+      expect(resA.status).toBe(200);
+      expect(resB.status).toBe(200);
 
       const keyPair = generateKeyPair();
       const signedB = await signTransaction(resB.body.unsigned.CreateStateMachine, keyPair.privateKey);
@@ -298,7 +297,7 @@ describe('[B2] Client-Side Signing Endpoints', () => {
         },
       });
 
-      assert.strictEqual(status, 422, `Expected 422 for mismatched proof, got ${status}: ${JSON.stringify(body)}`);
+      expect(status, 422, `Expected 422 for mismatched proof).toBe(got ${status}: ${JSON.stringify(body)}`);
       console.log(`  ✓ T2.3: mismatched proof → 422`);
     });
 
@@ -311,7 +310,7 @@ describe('[B2] Client-Side Signing Endpoints', () => {
         signed: { value: unknown, proofs: signed.proofs },
       });
 
-      assert.strictEqual(status, 400, `Expected 400, got ${status}: ${JSON.stringify(body)}`);
+      expect(status, 400, `Expected 400).toBe(got ${status}: ${JSON.stringify(body)}`);
       console.log(`  ✓ T2.4: unknown message type → 400`);
     });
   });
@@ -328,9 +327,9 @@ describe('[B2] Client-Side Signing Endpoints', () => {
         initialData: { status: 'OPEN' },
       });
 
-      assert.strictEqual(status, 201, `Expected 201, got ${status}: ${JSON.stringify(body)}`);
-      assert.ok(body.fiberId, 'Should have fiberId');
-      assert.ok(isValidUUID(body.fiberId), `fiberId should be UUID: ${body.fiberId}`);
+      expect(status, 201, `Expected 201).toBe(got ${status}: ${JSON.stringify(body)}`);
+      expect(body.fiberId).toBeTruthy();
+      expect(isValidUUID(body.fiberId)).toBeTruthy();
       console.log(`  ✓ T3.1: deprecated /sm/create still works`);
     });
 
@@ -341,11 +340,11 @@ describe('[B2] Client-Side Signing Endpoints', () => {
         definition: SimpleDef,
         initialData: {},
       });
-      assert.strictEqual(createRes.status, 201);
+      expect(createRes.status).toBe(201);
       const fiberId = createRes.body.fiberId;
 
       const fiber = await waitForFiber(fiberId);
-      assert.ok(fiber, `Fiber ${fiberId} did not appear on-chain`);
+      expect(fiber).toBeTruthy();
 
       const { status, body } = await post<{ hash: string }>('/sm/transition', {
         privateKey: wallet.privateKey,
@@ -354,8 +353,8 @@ describe('[B2] Client-Side Signing Endpoints', () => {
         payload: {},
       });
 
-      assert.strictEqual(status, 200, `Expected 200, got ${status}: ${JSON.stringify(body)}`);
-      assert.ok(body.hash, 'Should have hash');
+      expect(status, 200, `Expected 200).toBe(got ${status}: ${JSON.stringify(body)}`);
+      expect(body.hash).toBeTruthy();
       console.log(`  ✓ T3.2: deprecated /sm/transition still works`);
     });
   });
@@ -370,7 +369,7 @@ describe('[B2] Client-Side Signing Endpoints', () => {
         definition: SimpleDef,
         initialData: {},
       });
-      assert.strictEqual(createBuild.status, 200);
+      expect(createBuild.status).toBe(200);
       const fiberId = createBuild.body.fiberId;
 
       const keyPair = generateKeyPair();
@@ -378,10 +377,10 @@ describe('[B2] Client-Side Signing Endpoints', () => {
       const submitRes = await post<SubmitResponse>('/submit', {
         signed: { value: createBuild.body.unsigned.CreateStateMachine, proofs: signed.proofs },
       });
-      assert.strictEqual(submitRes.status, 200, `Create submit failed: ${JSON.stringify(submitRes.body)}`);
+      expect(submitRes.status, 200).toBe(`Create submit failed: ${JSON.stringify(submitRes.body)}`);
 
       const fiber = await waitForFiber(fiberId);
-      assert.ok(fiber, `Fiber ${fiberId} did not appear on-chain`);
+      expect(fiber).toBeTruthy();
 
       const { status, body } = await post<BuildTransitionResponse>('/build/sm/transition', {
         fiberId,
@@ -389,12 +388,8 @@ describe('[B2] Client-Side Signing Endpoints', () => {
         payload: {},
       });
 
-      assert.strictEqual(status, 200, `Build transition failed: ${JSON.stringify(body)}`);
-      assert.strictEqual(
-        body.unsigned.TransitionStateMachine.targetSequenceNumber,
-        0,
-        `Expected targetSequenceNumber=0, got ${body.unsigned.TransitionStateMachine.targetSequenceNumber}`
-      );
+      expect(status, 200).toBe(`Build transition failed: ${JSON.stringify(body)}`);
+      expect(body.unsigned.TransitionStateMachine.targetSequenceNumber).toBe(0);
       console.log(`  ✓ T4.1: first transition targetSequenceNumber=0`);
     });
 
@@ -403,7 +398,7 @@ describe('[B2] Client-Side Signing Endpoints', () => {
         definition: SimpleDef,
         initialData: {},
       });
-      assert.strictEqual(createBuild.status, 200);
+      expect(createBuild.status).toBe(200);
       const fiberId = createBuild.body.fiberId;
       const keyPair = generateKeyPair();
 
@@ -412,23 +407,23 @@ describe('[B2] Client-Side Signing Endpoints', () => {
       const s0 = await post<SubmitResponse>('/submit', {
         signed: { value: createBuild.body.unsigned.CreateStateMachine, proofs: signedCreate.proofs },
       });
-      assert.strictEqual(s0.status, 200);
+      expect(s0.status).toBe(200);
 
       const fiberAfterCreate = await waitForFiber(fiberId);
-      assert.ok(fiberAfterCreate, 'Fiber should appear after create');
+      expect(fiberAfterCreate).toBeTruthy();
 
       // Build + submit first transition (seq 0)
       const t0Build = await post<BuildTransitionResponse>('/build/sm/transition', {
         fiberId, eventName: 'advance', payload: {},
       });
-      assert.strictEqual(t0Build.status, 200);
-      assert.strictEqual(t0Build.body.unsigned.TransitionStateMachine.targetSequenceNumber, 0);
+      expect(t0Build.status).toBe(200);
+      expect(t0Build.body.unsigned.TransitionStateMachine.targetSequenceNumber).toBe(0);
 
       const signedT0 = await signTransaction(t0Build.body.unsigned.TransitionStateMachine, keyPair.privateKey);
       const s1 = await post<SubmitResponse>('/submit', {
         signed: { value: t0Build.body.unsigned.TransitionStateMachine, proofs: signedT0.proofs },
       });
-      assert.strictEqual(s1.status, 200);
+      expect(s1.status).toBe(200);
 
       // Wait for on-chain
       await new Promise((r) => setTimeout(r, 5000));
@@ -438,12 +433,8 @@ describe('[B2] Client-Side Signing Endpoints', () => {
         fiberId, eventName: 'close', payload: {},
       });
 
-      assert.strictEqual(status, 200, `Second build failed: ${JSON.stringify(body)}`);
-      assert.strictEqual(
-        body.unsigned.TransitionStateMachine.targetSequenceNumber,
-        1,
-        `Expected targetSequenceNumber=1, got ${body.unsigned.TransitionStateMachine.targetSequenceNumber}`
-      );
+      expect(status, 200).toBe(`Second build failed: ${JSON.stringify(body)}`);
+      expect(body.unsigned.TransitionStateMachine.targetSequenceNumber).toBe(1);
       console.log(`  ✓ T4.2: second transition targetSequenceNumber=1`);
     });
   });
@@ -459,7 +450,7 @@ describe('[B2] Client-Side Signing Endpoints', () => {
         initialData: {},
         participants: ['DAG1fake0000000000000000000000000000000000002'],
       });
-      assert.strictEqual(buildStatus, 200);
+      expect(buildStatus).toBe(200);
 
       const alice = generateKeyPair();
       const bob = generateKeyPair();
@@ -467,15 +458,15 @@ describe('[B2] Client-Side Signing Endpoints', () => {
       let signed = await signTransaction(buildBody.unsigned.CreateStateMachine, alice.privateKey);
       signed = await addTransactionSignature(signed, bob.privateKey);
 
-      assert.strictEqual(signed.proofs.length, 2, 'Should have 2 proofs');
-      assert.notStrictEqual(signed.proofs[0].id, signed.proofs[1].id, 'Proofs should differ');
+      expect(signed.proofs.length).toBe(2);
+      expect(signed.proofs[0].id, signed.proofs[1].id).not.toBe('Proofs should differ');
 
       const { status, body } = await post<SubmitResponse>('/submit', {
         signed: { value: buildBody.unsigned.CreateStateMachine, proofs: signed.proofs },
       });
 
-      assert.strictEqual(status, 200, `Multi-signed submit failed: ${JSON.stringify(body)}`);
-      assert.ok(body.hash, 'Should have hash');
+      expect(status, 200).toBe(`Multi-signed submit failed: ${JSON.stringify(body)}`);
+      expect(body.hash).toBeTruthy();
       console.log(`  ✓ T5.1: multi-signed transaction accepted`);
     });
   });

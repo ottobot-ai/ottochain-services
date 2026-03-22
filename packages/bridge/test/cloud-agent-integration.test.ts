@@ -12,8 +12,8 @@
  * Requires running OttoChain cluster (gl0, ml0, dl1)
  */
 
-import { describe, it, before, after } from 'node:test';
-import * as assert from 'node:assert';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+
 import { randomUUID } from 'crypto';
 
 const BRIDGE_URL = process.env.BRIDGE_URL || 'http://localhost:3030';
@@ -225,15 +225,15 @@ describe('Cloud Agent to OttoChain Fiber Task Completion', () => {
   let cloudAgents: CloudAgent[] = [];
   let testTasks: TaskFiber[] = [];
 
-  before(async () => {
+  beforeAll(async () => {
     console.log('🚀 Setting up cloud agent integration test environment...\n');
     
     // Check prerequisites
     const healthResponse = await fetch(`${BRIDGE_URL}/health`);
-    assert.ok(healthResponse.ok, 'Bridge should be healthy');
+    expect(healthResponse.ok).toBeTruthy();
     
     const ml0Response = await fetch(`${ML0_URL}/node/info`);
-    assert.ok(ml0Response.ok, 'ML0 should be running');
+    expect(ml0Response.ok).toBeTruthy();
     
     // Create task creator wallet
     const walletResponse = await fetch(`${BRIDGE_URL}/agent/wallet`, { method: 'POST' });
@@ -258,15 +258,15 @@ describe('Cloud Agent to OttoChain Fiber Task Completion', () => {
         console.log(`  ✅ Created ${spec.specialization} agent: ${agent.fiberId.slice(0, 8)}...`);
       }
       
-      assert.strictEqual(cloudAgents.length, 5, 'Should have 5 specialized agents');
+      expect(cloudAgents.length).toBe(5);
       console.log(`\n✅ Created ${cloudAgents.length} specialized cloud agents`);
     });
     
     it('should verify all agents are active on-chain', async () => {
       for (const agent of cloudAgents) {
         const state = await waitForState(agent.fiberId, 'ACTIVE');
-        assert.ok(state, `Agent ${agent.specialization} should be active`);
-        assert.strictEqual(state.currentState, 'ACTIVE');
+        expect(state).toBeTruthy();
+        expect(state.currentState).toBe('ACTIVE');
         
         console.log(`  ✅ ${agent.specialization}: ${state.currentState} (seq: ${state.sequenceNumber})`);
       }
@@ -336,7 +336,7 @@ describe('Cloud Agent to OttoChain Fiber Task Completion', () => {
         console.log(`  ✅ Created ${spec.complexity} ${spec.taskType} task: ${fiberId.slice(0, 8)}...`);
       }
       
-      assert.strictEqual(testTasks.length, 5, 'Should have 5 diverse tasks');
+      expect(testTasks.length).toBe(5);
       console.log(`\n✅ Created ${testTasks.length} diverse task scenarios`);
     });
   });
@@ -346,7 +346,7 @@ describe('Cloud Agent to OttoChain Fiber Task Completion', () => {
       for (const task of testTasks) {
         const bestAgent = selectBestAgent(cloudAgents, task.requiredSkills, task.complexity);
         
-        assert.ok(bestAgent, `Should find agent for ${task.taskType} task`);
+        expect(bestAgent).toBeTruthy();
         
         if (bestAgent) {
           // Simulate task assignment by adding agent to contract
@@ -359,7 +359,7 @@ describe('Cloud Agent to OttoChain Fiber Task Completion', () => {
             }),
           });
           
-          assert.ok(assignResponse.ok, 'Agent should successfully sign contract');
+          expect(assignResponse.ok).toBeTruthy();
           
           task.assignedAgent = bestAgent.fiberId;
           task.status = 'assigned';
@@ -370,7 +370,7 @@ describe('Cloud Agent to OttoChain Fiber Task Completion', () => {
       
       // Verify all tasks are assigned
       const assignedTasks = testTasks.filter(t => t.status === 'assigned');
-      assert.strictEqual(assignedTasks.length, testTasks.length, 'All tasks should be assigned');
+      expect(assignedTasks.length).toBe(testTasks.length);
       
       console.log(`\n✅ All ${testTasks.length} tasks successfully assigned to best-match agents`);
     });
@@ -459,14 +459,14 @@ describe('Cloud Agent to OttoChain Fiber Task Completion', () => {
       
       // Validate minimum success rate
       const successRate = completionStats.completed / completionStats.total;
-      assert.ok(successRate >= 0.8, 'Should have at least 80% task completion rate');
+      expect(successRate >= 0.8).toBeTruthy();
       
       console.log('\n✅ Results aggregation and validation completed');
     });
     
     it('should validate task results quality and completeness', async () => {
       for (const task of testTasks.filter(t => t.status === 'completed')) {
-        assert.ok(task.result, `Task ${task.taskType} should have result`);
+        expect(task.result).toBeTruthy();
         
         // Validate result structure based on task type
         validateTaskResult(task.taskType, task.result);
@@ -492,7 +492,7 @@ describe('Cloud Agent to OttoChain Fiber Task Completion', () => {
         
         // Verify reputation increase for active agents
         if (agent.completedTasks > 0) {
-          assert.ok(agent.reputation > 10, 'Active agents should have increased reputation');
+          expect(agent.reputation > 10).toBeTruthy();
         }
       }
       
@@ -512,7 +512,7 @@ describe('Cloud Agent to OttoChain Fiber Task Completion', () => {
       
       // Verify top performer has highest reputation
       const topAgent = rankedAgents[0];
-      assert.ok(topAgent.reputation >= rankedAgents[rankedAgents.length - 1].reputation, 'Top agent should have highest reputation');
+      expect(topAgent.reputation >= rankedAgents[rankedAgents.length - 1].reputation).toBeTruthy();
       
       console.log('\n✅ Agent ranking system validated');
     });
@@ -535,7 +535,7 @@ describe('Cloud Agent to OttoChain Fiber Task Completion', () => {
       // Should still return an agent (fallback behavior) but with low confidence
       console.log(`  ⚠️  No perfect match for blockchain-auditing, fallback: ${bestAgent?.specialization || 'none'}`);
       
-      assert.ok(true, 'System should handle missing specializations gracefully');
+      expect(true).toBeTruthy();
     });
     
     it('should handle concurrent task assignments', async () => {
@@ -547,11 +547,11 @@ describe('Cloud Agent to OttoChain Fiber Task Completion', () => {
       ]);
       
       console.log(`  ✅ Created ${concurrentTasks.length} concurrent tasks`);
-      assert.strictEqual(concurrentTasks.length, 3, 'Should handle concurrent task creation');
+      expect(concurrentTasks.length).toBe(3);
     });
   });
 
-  after(async () => {
+  afterAll(async () => {
     console.log('\n🎯 Cloud Agent Integration Test Summary:');
     console.log(`  🤖 Agents Created: ${cloudAgents.length}`);
     console.log(`  📋 Tasks Created: ${testTasks.length}`);
@@ -641,35 +641,35 @@ function validateTaskResult(taskType: string, result: unknown): void {
   const res = result as Record<string, unknown>;
   
   // Common validations
-  assert.ok(res.taskType, 'Result should have taskType');
-  assert.ok(res.completedAt, 'Result should have completedAt timestamp');
-  assert.ok(typeof res.executionTime === 'number', 'Result should have execution time');
+  expect(res.taskType).toBeTruthy();
+  expect(res.completedAt).toBeTruthy();
+  expect(typeof res.executionTime === 'number').toBeTruthy();
   
   // Type-specific validations
   switch (taskType) {
     case 'code-review':
-      assert.ok(Array.isArray(res.findings), 'Code review should have findings array');
-      assert.ok(typeof res.linesReviewed === 'number', 'Should have lines reviewed count');
+      expect(Array.isArray(res.findings)).toBeTruthy();
+      expect(typeof res.linesReviewed === 'number').toBeTruthy();
       break;
       
     case 'data-analysis':
-      assert.ok(Array.isArray(res.insights), 'Data analysis should have insights');
-      assert.ok(typeof res.dataPoints === 'number', 'Should have data points count');
+      expect(Array.isArray(res.insights)).toBeTruthy();
+      expect(typeof res.dataPoints === 'number').toBeTruthy();
       break;
       
     case 'document-generation':
-      assert.ok(Array.isArray(res.documents), 'Should have documents array');
-      assert.ok(typeof res.wordCount === 'number', 'Should have word count');
+      expect(Array.isArray(res.documents)).toBeTruthy();
+      expect(typeof res.wordCount === 'number').toBeTruthy();
       break;
       
     case 'api-integration':
-      assert.ok(Array.isArray(res.endpoints), 'Should have endpoints array');
-      assert.ok(typeof res.testsCreated === 'number', 'Should have test count');
+      expect(Array.isArray(res.endpoints)).toBeTruthy();
+      expect(typeof res.testsCreated === 'number').toBeTruthy();
       break;
       
     case 'research':
-      assert.ok(typeof res.sources === 'number', 'Should have source count');
-      assert.ok(typeof res.confidence === 'number', 'Should have confidence score');
+      expect(typeof res.sources === 'number').toBeTruthy();
+      expect(typeof res.confidence === 'number').toBeTruthy();
       break;
   }
 }

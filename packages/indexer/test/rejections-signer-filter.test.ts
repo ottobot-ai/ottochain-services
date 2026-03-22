@@ -8,8 +8,7 @@
  * Spec: docs/design/rejection-history-filters-spec.md — Group 2
  */
 
-import { describe, it } from 'node:test';
-import assert from 'node:assert';
+import { describe, it, expect } from 'vitest';
 
 const INDEXER_URL = process.env.INDEXER_URL || 'http://localhost:3031';
 
@@ -30,13 +29,11 @@ async function fetchRejections(params: Record<string, string>): Promise<{ status
 describe('Indexer: Signer Filter (AC7)', () => {
 
   it('T7: signer=<known> returns only records where signers[] contains that address exactly (AC7)', async () => {
-    // First, find a real signer address from the rejections list
     const all = await fetchRejections({ limit: '5' });
-    assert.strictEqual(all.status, 200, 'Pre-flight fetch failed');
+    expect(all.status).toBe(200);
     const allData = all.body as RejectionsResponse;
 
     if (allData.rejections.length === 0) {
-      // No data — skip test but don't fail
       console.log('T7: No rejections in DB, skipping assertion');
       return;
     }
@@ -48,36 +45,32 @@ describe('Indexer: Signer Filter (AC7)', () => {
     }
 
     const { status, body } = await fetchRejections({ signer: knownSigner });
-    assert.strictEqual(status, 200, `Expected 200, got ${status}`);
+    expect(status).toBe(200);
     const data = body as RejectionsResponse;
-    assert.ok(Array.isArray(data.rejections), 'Should return rejections array');
-    assert.ok(data.rejections.length > 0, 'Should find at least one record for known signer');
+    expect(Array.isArray(data.rejections)).toBeTruthy();
+    expect(data.rejections.length > 0).toBeTruthy();
     for (const r of data.rejections) {
-      assert.ok(
-        r.signers.includes(knownSigner),
-        `Record signers ${JSON.stringify(r.signers)} does not include ${knownSigner}`
-      );
+      expect(r.signers.includes(knownSigner)).toBeTruthy();
     }
   });
 
   it('T8: signer=<unknown> returns empty result (AC7)', async () => {
     const { status, body } = await fetchRejections({ signer: 'DAGunknownSigner99999999999999999999' });
-    assert.strictEqual(status, 200, `Expected 200, got ${status}`);
+    expect(status).toBe(200);
     const data = body as RejectionsResponse;
-    assert.strictEqual(data.rejections.length, 0, 'Should return no records for unknown signer');
-    assert.strictEqual(data.total, 0, 'Total should be 0 for unknown signer');
+    expect(data.rejections.length).toBe(0);
+    expect(data.total).toBe(0);
   });
 
   it('T9: signer + updateType combined filter applies both constraints (AC7)', async () => {
-    // Use an unknown signer but valid updateType — expect empty result
     const { status, body } = await fetchRejections({
       signer: 'DAGunknownSigner99999999999999999999',
       updateType: 'TransitionStateMachine',
     });
-    assert.strictEqual(status, 200, `Expected 200, got ${status}`);
+    expect(status).toBe(200);
     const data = body as RejectionsResponse;
-    assert.strictEqual(data.rejections.length, 0, 'Should return no records for unknown signer with any updateType');
-    assert.strictEqual(data.total, 0, 'Total should be 0');
+    expect(data.rejections.length).toBe(0);
+    expect(data.total).toBe(0);
   });
 
 });
