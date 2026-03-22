@@ -8,7 +8,7 @@
 // TypeScript 5.9 has issues resolving pnpm symlinked package exports under NodeNext.
 // The import works at runtime - types are declared in sdk-apps.d.ts as a workaround.
 // @ts-ignore Cannot find module '@ottochain/sdk/apps'
-import { contracts, markets, governance, identity, oracles } from '@ottochain/sdk/apps';
+import { contracts, markets, governance, identity } from '@ottochain/sdk/apps';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -387,7 +387,7 @@ export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
   oracle: buildDefinition(
     'oracle',
     'Oracle',
-    oracles.getOracleDefinition(),
+    identity.getIdentityDefinition('oracle'),
     false,
     generateOracleData
   ),

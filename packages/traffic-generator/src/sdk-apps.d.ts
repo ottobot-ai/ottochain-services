@@ -6,19 +6,16 @@
  */
 declare module '@ottochain/sdk/apps' {
   export namespace contracts {
-    export function getContractDefinition(): unknown;
+    export function getContractDefinition(type?: string): unknown;
     export function getEscrowDefinition(): unknown;
   }
   export namespace markets {
-    export function getMarketDefinition(type?: 'Universal'): unknown;
+    export function getMarketDefinition(type?: string): unknown;
   }
   export namespace governance {
-    export function getDAODefinition(type: 'Single' | 'Multisig' | 'Threshold' | 'Token'): unknown;
+    export function getDAODefinition(type?: string): unknown;
   }
   export namespace identity {
-    export function getIdentityDefinition(): unknown;
-  }
-  export namespace oracles {
-    export function getOracleDefinition(type?: 'Oracle'): unknown;
+    export function getIdentityDefinition(type?: string): unknown;
   }
 }
