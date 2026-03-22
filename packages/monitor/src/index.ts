@@ -589,108 +589,43 @@ async function main(): Promise<void> {
     res.sendFile(path.join(__dirname, 'rejections.html'));
   });
 
+  // Proxy helper for traffic-gen GET/POST endpoints
+  function proxyToTrafficGen(path: string) {
+    return async (req: express.Request, res: express.Response) => {
+      const trafficGenUrl = config.trafficGenUrl;
+
+      if (!trafficGenUrl) {
+        return res.status(503).json({ error: 'Traffic generator URL not configured' });
+      }
+
+      try {
+        const response = await fetch(`${trafficGenUrl}${path}`, {
+          method: req.method,
+          headers: { 'Content-Type': 'application/json' },
+          body: req.method !== 'GET' ? JSON.stringify(req.body) : undefined,
+          signal: AbortSignal.timeout(5000),
+        });
+        const data = await response.json();
+        res.status(response.status).json(data);
+      } catch (err) {
+        console.error(`Traffic gen ${req.method} ${path} error:`, err);
+        res.status(502).json({ error: 'Failed to reach traffic generator' });
+      }
+    };
+  }
+
   // GET traffic-gen status
-  app.get('/api/traffic-gen/status', async (req, res) => {
-    const trafficGenUrl = config.trafficGenUrl;
-    
-    if (!trafficGenUrl) {
-      return res.status(503).json({ error: 'Traffic generator URL not configured' });
-    }
-    
-    try {
-      const response = await fetch(`${trafficGenUrl}/status`, {
-        signal: AbortSignal.timeout(5000),
-      });
-      const data = await response.json();
-      res.status(response.status).json(data);
-    } catch (err) {
-      console.error('Traffic gen status error:', err);
-      res.status(502).json({ error: 'Failed to reach traffic generator' });
-    }
-  });
+  app.get('/api/traffic-gen/status', proxyToTrafficGen('/status'));
 
-  // GET traffic-gen weights
-  app.get('/api/traffic-gen/weights', async (req, res) => {
-    const trafficGenUrl = config.trafficGenUrl;
-    
-    if (!trafficGenUrl) {
-      return res.status(503).json({ error: 'Traffic generator URL not configured' });
-    }
-    
-    try {
-      const response = await fetch(`${trafficGenUrl}/weights`, {
-        signal: AbortSignal.timeout(5000),
-      });
-      const data = await response.json();
-      res.status(response.status).json(data);
-    } catch (err) {
-      console.error('Traffic gen weights error:', err);
-      res.status(502).json({ error: 'Failed to reach traffic generator' });
-    }
-  });
-
-  // POST traffic-gen weights
-  app.post('/api/traffic-gen/weights', async (req, res) => {
-    const trafficGenUrl = config.trafficGenUrl;
-    
-    if (!trafficGenUrl) {
-      return res.status(503).json({ error: 'Traffic generator URL not configured' });
-    }
-    
-    try {
-      const response = await fetch(`${trafficGenUrl}/weights`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(req.body),
-        signal: AbortSignal.timeout(5000),
-      });
-      const data = await response.json();
-      res.status(response.status).json(data);
-    } catch (err) {
-      console.error('Traffic gen weights update error:', err);
-      res.status(502).json({ error: 'Failed to reach traffic generator' });
-    }
-  });
+  // GET/POST traffic-gen weights
+  app.get('/api/traffic-gen/weights', proxyToTrafficGen('/weights'));
+  app.post('/api/traffic-gen/weights', proxyToTrafficGen('/weights'));
 
   // GET traffic-gen fibers
-  app.get('/api/traffic-gen/fibers', async (req, res) => {
-    const trafficGenUrl = config.trafficGenUrl;
-    
-    if (!trafficGenUrl) {
-      return res.status(503).json({ error: 'Traffic generator URL not configured' });
-    }
-    
-    try {
-      const response = await fetch(`${trafficGenUrl}/fibers`, {
-        signal: AbortSignal.timeout(5000),
-      });
-      const data = await response.json();
-      res.status(response.status).json(data);
-    } catch (err) {
-      console.error('Traffic gen fibers error:', err);
-      res.status(502).json({ error: 'Failed to reach traffic generator' });
-    }
-  });
+  app.get('/api/traffic-gen/fibers', proxyToTrafficGen('/fibers'));
 
   // GET traffic-gen agents
-  app.get('/api/traffic-gen/agents', async (req, res) => {
-    const trafficGenUrl = config.trafficGenUrl;
-    
-    if (!trafficGenUrl) {
-      return res.status(503).json({ error: 'Traffic generator URL not configured' });
-    }
-    
-    try {
-      const response = await fetch(`${trafficGenUrl}/agents`, {
-        signal: AbortSignal.timeout(5000),
-      });
-      const data = await response.json();
-      res.status(response.status).json(data);
-    } catch (err) {
-      console.error('Traffic gen agents error:', err);
-      res.status(502).json({ error: 'Failed to reach traffic generator' });
-    }
-  });
+  app.get('/api/traffic-gen/agents', proxyToTrafficGen('/agents'));
 
   // Traffic control UI
   app.get('/traffic', staticLimiter, (_, res) => {
