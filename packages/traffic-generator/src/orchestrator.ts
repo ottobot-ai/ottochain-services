@@ -1,7 +1,8 @@
 import { BridgeClient } from './bridge-client.js';
 import { IndexerClient } from './indexer-client.js';
 import { FIBER_DEFINITIONS, type FiberDefinition, type MarketStateData, type DAOStateData, type GovernanceStateData, type CorporateEntityStateData, type CorporateBoardStateData, type CorporateShareholdersStateData, type CorporateSecuritiesStateData } from './fiber-definitions.js';
-import { MARKET_SM_DEFINITION } from './market-workflows.js';
+import { getMarketDefinition } from '@ottochain/sdk/apps/markets';
+import { toProtoDefinition } from '@ottochain/sdk';
 import { Agent } from './types.js';
 
 export interface TrafficConfig {
@@ -372,7 +373,7 @@ export class FiberOrchestrator {
         const marketData = stateData as MarketStateData;
         const result = await this.bridge.createMarket(
           proposer.privateKey,
-          MARKET_SM_DEFINITION,
+          toProtoDefinition(getMarketDefinition('universal')) as unknown as Record<string, unknown>,
           marketData as unknown as Record<string, unknown>
         );
         fiberId = result.fiberId;

@@ -16,7 +16,7 @@ import {
   type TransitionStateMachine,
   type FiberOrdinal,
 } from '../metagraph.js';
-import { getCorporateDefinition } from '@ottochain/sdk/apps/corporate';
+import { getCorporateDefinition, EntityType } from '@ottochain/sdk/apps/corporate';
 import { toProtoDefinition } from '@ottochain/sdk';
 
 // ============================================================================
@@ -34,7 +34,15 @@ export const corporateRoutes: RouterType = Router();
 // Request Schemas
 // ============================================================================
 
-const EntityTypeSchema = z.enum(['C_CORP', 'S_CORP', 'B_CORP', 'LLC', 'LP', 'LLP']);
+const ENTITY_TYPES = [
+  EntityType.ENTITY_TYPE_C_CORP,
+  EntityType.ENTITY_TYPE_S_CORP,
+  EntityType.ENTITY_TYPE_B_CORP,
+  EntityType.ENTITY_TYPE_LLC,
+  EntityType.ENTITY_TYPE_LP,
+  EntityType.ENTITY_TYPE_LLP,
+] as const;
+const EntityTypeSchema = z.enum(ENTITY_TYPES);
 
 const IncorporateRequestSchema = z.object({
   privateKey: z.string().length(64),
