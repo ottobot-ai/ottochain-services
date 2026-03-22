@@ -28,6 +28,7 @@ import type { Agent } from './types.js';
 import { SdkAgentState as IdentityState } from './types.js';
 import { FiberOrchestrator, TrafficConfig } from './orchestrator.js';
 import { BridgeClient } from './bridge-client.js';
+import { FIBER_DEFINITIONS } from './fiber-definitions.js';
 import { generateFixedAgentPool, type FixedAgent } from './agents.js';
 import { startStatusServer, setStatusProvider, setWeightsProvider, setFibersProvider, setAgentsProvider, setControlCallbacks, type ActiveFiberStatus, type CompletedFiberStatus } from './status-server.js';
 
@@ -45,34 +46,43 @@ import { startStatusServer, setStatusProvider, setWeightsProvider, setFibersProv
  *  - DAOs: 0.15
  *  - Oracles: 0.15
  */
+// Weights MUST match keys in FIBER_DEFINITIONS — no speculative types.
+// If a type isn't in fiber-definitions.ts, it doesn't exist.
 const DEFAULT_FIBER_WEIGHTS: Record<string, number> = {
-  // Contract workflows (25%)
+  // Contract workflows
+  contract: 0.12,
   escrow: 0.10,
-  arbitratedEscrow: 0.08,
-  simpleOrder: 0.07,
-  
-  // Market workflows (25%)
-  predictionMarket: 0.10,
-  auctionMarket: 0.08,
-  crowdfundMarket: 0.07,
-  
-  // DAO workflows (15%)
-  tokenDAO: 0.06,
-  multisigDAO: 0.05,
-  thresholdDAO: 0.04,
-  
-  // Governance workflows (15%)
-  simpleGovernance: 0.08,
-  corporateEntity: 0.04,
-  corporateBoard: 0.03,
-  
-  // Custom/Game workflows (20%)
-  ticTacToe: 0.10,
-  voting: 0.06,
-  approval: 0.04,
+  simpleOrder: 0.08,
+
+  // Market workflows
+  market: 0.12,
+
+  // DAO workflows
+  tokenDAO: 0.08,
+  multisigDAO: 0.06,
+  thresholdDAO: 0.05,
+
+  // Identity workflows
+  oracle: 0.08,
+  identity: 0.08,
+
+  // Custom/Game workflows
+  ticTacToe: 0.13,
+  voting: 0.10,
 };
 
 function loadConfig(): TrafficConfig {
+  // Validate weights against FIBER_DEFINITIONS — fail fast, not at runtime
+  const validTypes = new Set(Object.keys(FIBER_DEFINITIONS));
+  for (const type of Object.keys(DEFAULT_FIBER_WEIGHTS)) {
+    if (!validTypes.has(type)) {
+      throw new Error(
+        `DEFAULT_FIBER_WEIGHTS references "${type}" but it doesn't exist in FIBER_DEFINITIONS. ` +
+        `Valid types: ${[...validTypes].join(', ')}`
+      );
+    }
+  }
+
   // Parse fiber weights from env or use defaults
   let fiberWeights = DEFAULT_FIBER_WEIGHTS;
   if (process.env.FIBER_WEIGHTS) {
