@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.0.0](https://github.com/ottobot-ai/ottochain-services/compare/v0.13.0...v1.0.0) (2026-03-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* align with SDK fiber apps overhaul ([#260](https://github.com/ottobot-ai/ottochain-services/issues/260))
+
+### Bug Fixes
+
+* add DATABASE_URL to traffic-gen container ([#259](https://github.com/ottobot-ai/ottochain-services/issues/259)) ([484d115](https://github.com/ottobot-ai/ottochain-services/commit/484d115436d676373232cc07455682475b77f36b))
+
+
+### Code Refactoring
+
+* align with SDK fiber apps overhaul ([#260](https://github.com/ottobot-ai/ottochain-services/issues/260)) ([ead3182](https://github.com/ottobot-ai/ottochain-services/commit/ead3182eb3915b9a8b7512cddc15321cbb52088d))
+
 ## [0.13.0](https://github.com/ottobot-ai/ottochain-services/compare/v0.12.0...v0.13.0) (2026-03-20)
 
 
