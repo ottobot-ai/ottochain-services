@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/ottobot-ai/ottochain-services/compare/v1.0.0...v1.0.1) (2026-03-22)
+
+
+### Bug Fixes
+
+* **traffic-gen:** replace oracles shim with identity.getIdentityDefinition ([d8799ed](https://github.com/ottobot-ai/ottochain-services/commit/d8799ed732265dcb4e4693c1ccbebc46de824f5a))
+
 ## [1.0.0](https://github.com/ottobot-ai/ottochain-services/compare/v0.13.0...v1.0.0) (2026-03-22)
 
 
