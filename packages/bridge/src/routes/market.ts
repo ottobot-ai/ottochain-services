@@ -6,7 +6,8 @@ import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import { submitTransaction, getStateMachine, getCheckpoint, keyPairFromPrivateKey, waitForFiber, getFiberSequenceNumber, getEpochProgress } from '../metagraph.js';
-import { MarketType, MarketState, getMarketDefinition } from '@ottochain/sdk/apps/markets';
+import { MarketType, MarketState, getMarketDefinition, type MarketDefType } from '@ottochain/sdk/apps/markets';
+import { toProtoDefinition } from '@ottochain/sdk';
 
 export const marketRoutes: RouterType = Router();
 
@@ -182,10 +183,19 @@ marketRoutes.post('/create', async (req, res) => {
       createdAt: new Date().toISOString(),
     };
 
+    // Map market type to SDK definition
+    const defTypeMap: Record<string, MarketDefType> = {
+      prediction: 'prediction',
+      auction: 'auction',
+      crowdfund: 'crowdfund',
+      group_buy: 'groupBuy',
+    };
+    const defType = defTypeMap[input.marketType] || 'universal';
+
     const message = {
       CreateStateMachine: {
         fiberId: marketId,
-        definition: getMarketDefinition(),
+        definition: toProtoDefinition(getMarketDefinition(defType)),
         initialData,
         parentFiberId: null,
       },

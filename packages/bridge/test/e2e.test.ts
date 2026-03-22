@@ -5,8 +5,8 @@
  * Requires running OttoChain cluster (gl0, ml0, dl1)
  */
 
-import { describe, it, before, after } from 'node:test';
-import assert from 'node:assert';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+
 
 const BRIDGE_URL = process.env.BRIDGE_URL || 'http://localhost:3030';
 const ML0_URL = process.env.ML0_URL || 'http://localhost:9200';
@@ -19,7 +19,7 @@ const VALID_REJECTION_CODES = ['InvalidOwner', 'ValidationError', 'InvalidState'
  * Rejection check - get all rejections for a fiber from the indexer.
  * Implements the Trello specification pattern:
  *   const rejections = await getRejections({ fiberId });
- *   assert.strictEqual(rejections.length, 0, `Fiber rejected: ...`);
+ *   expect(rejections.length, 0).toBe(`Fiber rejected: ...`);
  */
 async function getRejections({ fiberId }: { fiberId: string }): Promise<Array<{ errors: Array<{ code: string; message: string }> }>> {
   if (!process.env.INDEXER_URL) return [];
@@ -38,11 +38,7 @@ async function getRejections({ fiberId }: { fiberId: string }): Promise<Array<{ 
 /** Assert that a fiber has no rejections after an operation */
 async function assertNoRejections(fiberId: string, operation: string): Promise<void> {
   const rejections = await getRejections({ fiberId });
-  assert.strictEqual(
-    rejections.length,
-    0,
-    `Fiber ${fiberId} rejected during ${operation}: ${rejections.map(r => r.errors.map(e => `${e.code}: ${e.message}`).join(', ')).join('; ')}. Valid error codes: ${VALID_REJECTION_CODES.join(', ')}`
-  );
+  expect(rejections.length).toBe(0);
 }
 
 interface Wallet {
@@ -80,13 +76,13 @@ async function waitForFiber(fiberId: string, timeoutMs = 30000): Promise<StateMa
         if (data && data.fiberId) {
           // Rejection check via getRejections — assert fiber was not rejected
           const rejections = await getRejections({ fiberId });
-          assert.strictEqual(rejections.length, 0, `Fiber ${fiberId} rejected: ${rejections.map(r => r.errors.map(e => `${e.code}: ${e.message}`).join(', ')).join('; ')}`);
+          expect(rejections.length, 0, `Fiber ${fiberId} rejected: ${rejections.map(r => r.errors.map(e => `${e.code}: ${e.message}`).join(').toBe(')).join('; ')}`);
           return data as StateMachine;
         }
       }
     } catch (err) {
       // Re-throw assertion errors; ignore other polling errors
-      if (err instanceof assert.AssertionError) throw err;
+      if (err instanceof Error) throw err;
     }
     await new Promise(resolve => setTimeout(resolve, 2000));
   }
@@ -107,13 +103,13 @@ async function waitForState(fiberId: string, expectedState: string, timeoutMs = 
         if (data?.currentState === expectedState) {
           // Rejection check via getRejections — assert no rejections during state change
           const rejections = await getRejections({ fiberId });
-          assert.strictEqual(rejections.length, 0, `Fiber ${fiberId} rejected during state change to ${expectedState}: ${rejections.map(r => r.errors.map(e => `${e.code}: ${e.message}`).join(', ')).join('; ')}`);
+          expect(rejections.length, 0, `Fiber ${fiberId} rejected during state change to ${expectedState}: ${rejections.map(r => r.errors.map(e => `${e.code}: ${e.message}`).join(').toBe(')).join('; ')}`);
           return data;
         }
       }
     } catch (err) {
       // Re-throw assertion errors; ignore other polling errors
-      if (err instanceof assert.AssertionError) throw err;
+      if (err instanceof Error) throw err;
     }
     await new Promise(resolve => setTimeout(resolve, 2000));
   }
@@ -127,28 +123,28 @@ describe('Bridge E2E Tests', () => {
   let agent1FiberId: string;
   let agent2FiberId: string;
 
-  before(async () => {
+  beforeAll(async () => {
     // Check bridge is running
     const healthResponse = await fetch(`${BRIDGE_URL}/health`);
-    assert.ok(healthResponse.ok, 'Bridge should be healthy');
+    expect(healthResponse.ok).toBeTruthy();
     
     // Check ML0 is running
     const ml0Response = await fetch(`${ML0_URL}/node/info`);
-    assert.ok(ml0Response.ok, 'ML0 should be running');
+    expect(ml0Response.ok).toBeTruthy();
   });
 
   describe('Wallet Generation', () => {
     it('should generate a valid wallet', async () => {
       const response = await fetch(`${BRIDGE_URL}/agent/wallet`, { method: 'POST' });
-      assert.strictEqual(response.status, 200);
+      expect(response.status).toBe(200);
       
       wallet1 = await response.json() as Wallet;
       
-      assert.ok(wallet1.privateKey, 'Should have privateKey');
-      assert.ok(wallet1.publicKey, 'Should have publicKey');
-      assert.ok(wallet1.address, 'Should have address');
-      assert.strictEqual(wallet1.privateKey.length, 64, 'Private key should be 64 hex chars');
-      assert.ok(wallet1.address.startsWith('DAG'), 'Address should start with DAG');
+      expect(wallet1.privateKey).toBeTruthy();
+      expect(wallet1.publicKey).toBeTruthy();
+      expect(wallet1.address).toBeTruthy();
+      expect(wallet1.privateKey.length).toBe(64);
+      expect(wallet1.address.startsWith('DAG')).toBeTruthy();
       
       console.log(`  ✓ Generated wallet: ${wallet1.address}`);
     });
@@ -157,7 +153,7 @@ describe('Bridge E2E Tests', () => {
       const response = await fetch(`${BRIDGE_URL}/agent/wallet`, { method: 'POST' });
       wallet2 = await response.json() as Wallet;
       
-      assert.notStrictEqual(wallet1.address, wallet2.address, 'Wallets should be unique');
+      expect(wallet1.address, wallet2.address).not.toBe('Wallets should be unique');
       console.log(`  ✓ Generated second wallet: ${wallet2.address}`);
     });
   });
@@ -175,18 +171,18 @@ describe('Bridge E2E Tests', () => {
         }),
       });
       
-      assert.strictEqual(response.status, 201, 'Should return 201 Created');
+      expect(response.status).toBe(201);
       
       const result = await response.json() as RegistrationResult;
-      assert.ok(result.fiberId, 'Should have fiberId');
-      assert.ok(result.hash, 'Should have transaction hash');
-      assert.strictEqual(result.address, wallet1.address, 'Should match wallet address');
+      expect(result.fiberId).toBeTruthy();
+      expect(result.hash).toBeTruthy();
+      expect(result.address).toBe(wallet1.address);
       
       agent1FiberId = result.fiberId;
       
       // Rejection assertion: verify agent1 was accepted (no immediate rejections)
       const rejections = await getRejections({ fiberId: agent1FiberId });
-      assert.strictEqual(rejections.length, 0, `Fiber ${agent1FiberId} was unexpectedly rejected: ${rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
+      expect(rejections.length, 0).toBe(`Fiber ${agent1FiberId} was unexpectedly rejected: ${rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
       
       console.log(`  ✓ Agent confirmed on-chain: ${result.fiberId}`);
     });
@@ -194,15 +190,15 @@ describe('Bridge E2E Tests', () => {
     it('should appear on ML0 within 30s', async () => {
       const fiber = await waitForFiber(agent1FiberId);
       
-      assert.ok(fiber, 'Fiber should appear on ML0');
-      assert.strictEqual(fiber.currentState, 'REGISTERED', 'Should be in Registered state');
-      assert.strictEqual(fiber.owners[0], wallet1.address, 'Should be owned by registrant');
-      assert.strictEqual(fiber.stateData.displayName, 'E2E Test Agent 1', 'Should have correct displayName');
-      assert.strictEqual(fiber.stateData.reputation, 10, 'Should have initial reputation of 10');
+      expect(fiber).toBeTruthy();
+      expect(fiber.currentState).toBe('REGISTERED');
+      expect(fiber.owners[0]).toBe(wallet1.address);
+      expect(fiber.stateData.displayName).toBe('E2E Test Agent 1');
+      expect(fiber.stateData.reputation).toBe(10);
       
       // Rejection assertion: verify no rejections after ML0 confirmation
       const rejections = await getRejections({ fiberId: agent1FiberId });
-      assert.strictEqual(rejections.length, 0, `Fiber ${agent1FiberId} was unexpectedly rejected: ${rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
+      expect(rejections.length, 0).toBe(`Fiber ${agent1FiberId} was unexpectedly rejected: ${rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
       
       console.log(`  ✓ Fiber confirmed on ML0: state=${fiber.currentState}, reputation=${fiber.stateData.reputation}`);
     });
@@ -219,17 +215,17 @@ describe('Bridge E2E Tests', () => {
         }),
       });
       
-      assert.strictEqual(response.status, 201);
+      expect(response.status).toBe(201);
       const result = await response.json() as RegistrationResult;
       agent2FiberId = result.fiberId;
       
       // Wait for confirmation
       const fiber = await waitForFiber(agent2FiberId);
-      assert.ok(fiber, 'Second agent should appear on ML0');
+      expect(fiber).toBeTruthy();
       
       // Rejection assertion: verify no rejections for agent2
       const rejections = await getRejections({ fiberId: agent2FiberId });
-      assert.strictEqual(rejections.length, 0, `Fiber ${agent2FiberId} was unexpectedly rejected: ${rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
+      expect(rejections.length, 0).toBe(`Fiber ${agent2FiberId} was unexpectedly rejected: ${rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
       
       console.log(`  ✓ Second agent confirmed on-chain: ${agent2FiberId}`);
     });
@@ -246,14 +242,14 @@ describe('Bridge E2E Tests', () => {
         }),
       });
       
-      assert.strictEqual(response.status, 200, 'Should return 200 OK');
+      expect(response.status).toBe(200);
       
       const result = await response.json() as { hash: string; fiberId: string; status: string };
-      assert.ok(result.hash, 'Should have transaction hash');
+      expect(result.hash).toBeTruthy();
       
       // Rejection assertion: verify no immediate rejections after submission
       const rejections = await getRejections({ fiberId: agent1FiberId });
-      assert.strictEqual(rejections.length, 0, `Fiber ${agent1FiberId} was unexpectedly rejected after submission: ${rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
+      expect(rejections.length, 0).toBe(`Fiber ${agent1FiberId} was unexpectedly rejected after submission: ${rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
       
       console.log(`  ✓ Activation submitted: ${result.hash}`);
     });
@@ -261,13 +257,13 @@ describe('Bridge E2E Tests', () => {
     it('should transition to Active state on ML0', async () => {
       const fiber = await waitForState(agent1FiberId, 'ACTIVE');
       
-      assert.ok(fiber, 'Fiber should transition to Active');
-      assert.strictEqual(fiber.currentState, 'ACTIVE', 'State should be Active');
-      assert.strictEqual(fiber.sequenceNumber, 1, 'Sequence number should be 1 after activation');
+      expect(fiber).toBeTruthy();
+      expect(fiber.currentState).toBe('ACTIVE');
+      expect(fiber.sequenceNumber).toBe(1);
       
       // Rejection assertion: verify no rejections during state change to Active
       const rejections = await getRejections({ fiberId: agent1FiberId });
-      assert.strictEqual(rejections.length, 0, `Fiber ${agent1FiberId} was unexpectedly rejected during state change: ${rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
+      expect(rejections.length, 0).toBe(`Fiber ${agent1FiberId} was unexpectedly rejected during state change: ${rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
       
       console.log(`  ✓ Agent now active: state=${fiber.currentState}, seq=${fiber.sequenceNumber}`);
     });
@@ -276,29 +272,29 @@ describe('Bridge E2E Tests', () => {
   describe('Agent Query', () => {
     it('should query agent by fiberId', async () => {
       const response = await fetch(`${BRIDGE_URL}/agent/${agent1FiberId}`);
-      assert.strictEqual(response.status, 200);
+      expect(response.status).toBe(200);
       
       const agent = await response.json() as StateMachine;
-      assert.strictEqual(agent.fiberId, agent1FiberId);
-      assert.strictEqual(agent.currentState, 'ACTIVE');
+      expect(agent.fiberId).toBe(agent1FiberId);
+      expect(agent.currentState).toBe('ACTIVE');
       
       // Rejection assertion: final check that no rejections exist for the active agent
       const rejections = await getRejections({ fiberId: agent1FiberId });
-      assert.strictEqual(rejections.length, 0, `Agent ${agent1FiberId} should have no rejections in Active state: ${rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
+      expect(rejections.length, 0).toBe(`Agent ${agent1FiberId} should have no rejections in Active state: ${rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
       
       console.log(`  ✓ Queried agent: ${agent.fiberId}`);
     });
 
     it('should list all agents', async () => {
       const response = await fetch(`${BRIDGE_URL}/agent`);
-      assert.strictEqual(response.status, 200);
+      expect(response.status).toBe(200);
       
       const result = await response.json() as { count: number; agents: Record<string, unknown> };
-      assert.ok(result.count >= 2, 'Should have at least 2 agents');
+      expect(result.count >= 2).toBeTruthy();
       
       // Rejection assertion: agent2 should also have no rejections after successful registration
       const rejections = await getRejections({ fiberId: agent2FiberId });
-      assert.strictEqual(rejections.length, 0, `Agent ${agent2FiberId} should have no rejections: ${rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
+      expect(rejections.length, 0).toBe(`Agent ${agent2FiberId} should have no rejections: ${rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
       
       console.log(`  ✓ Listed ${result.count} agents`);
     });
@@ -315,7 +311,7 @@ describe('Bridge E2E Tests', () => {
         }),
       });
       
-      assert.strictEqual(response.status, 400, 'Should return 400 for invalid key');
+      expect(response.status).toBe(400);
       console.log(`  ✓ Rejected invalid private key`);
     });
 
@@ -329,7 +325,7 @@ describe('Bridge E2E Tests', () => {
         }),
       });
       
-      assert.strictEqual(response.status, 404, 'Should return 404 for non-existent agent');
+      expect(response.status).toBe(404);
       console.log(`  ✓ Rejected activation of non-existent agent`);
     });
 
@@ -338,13 +334,13 @@ describe('Bridge E2E Tests', () => {
       // Valid codes from metagraph: InvalidOwner, ValidationError, InvalidState,
       //   ConcurrencyConflict, InsufficientBalance
       const knownCodes = VALID_REJECTION_CODES;
-      assert.ok(knownCodes.includes('InvalidOwner'), 'InvalidOwner should be a valid rejection code');
-      assert.ok(knownCodes.includes('ValidationError'), 'ValidationError should be a valid rejection code');
-      assert.ok(knownCodes.includes('InvalidState'), 'InvalidState should be a valid rejection code');
+      expect(knownCodes.includes('InvalidOwner')).toBeTruthy();
+      expect(knownCodes.includes('ValidationError')).toBeTruthy();
+      expect(knownCodes.includes('InvalidState')).toBeTruthy();
       
       // Assertion: verify agent1 has no unexpected rejections (final state check)
       const rejections = await getRejections({ fiberId: agent1FiberId });
-      assert.strictEqual(rejections.length, 0, `Agent1 should have no rejections in final state: ${rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
+      expect(rejections.length, 0).toBe(`Agent1 should have no rejections in final state: ${rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
       
       console.log(`  ✓ Rejection error codes validated, agent1 has ${rejections.length} rejections`);
     });
@@ -353,11 +349,11 @@ describe('Bridge E2E Tests', () => {
       // Comprehensive rejection check — assert all agents completed lifecycle without rejections
       // Agent 1: went through full register → active lifecycle
       const agent1Rejections = await getRejections({ fiberId: agent1FiberId });
-      assert.strictEqual(agent1Rejections.length, 0, `Agent1 ${agent1FiberId} should have no lifecycle rejections: ${agent1Rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
+      expect(agent1Rejections.length, 0).toBe(`Agent1 ${agent1FiberId} should have no lifecycle rejections: ${agent1Rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
       
       // Agent 2: went through register only
       const agent2Rejections = await getRejections({ fiberId: agent2FiberId });
-      assert.strictEqual(agent2Rejections.length, 0, `Agent2 ${agent2FiberId} should have no lifecycle rejections: ${agent2Rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
+      expect(agent2Rejections.length, 0).toBe(`Agent2 ${agent2FiberId} should have no lifecycle rejections: ${agent2Rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
       
       console.log(`  ✓ All test agents have zero rejections after full lifecycle`);
     });
@@ -368,8 +364,8 @@ describe('Bridge E2E Tests', () => {
       const agent2Rejections = await getRejections({ fiberId: agent2FiberId });
       
       // Both agents should have zero rejections — assert coverage for both fibers
-      assert.strictEqual(agent1Rejections.length, 0, `Agent1 rejection count should be zero: ${agent1Rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
-      assert.strictEqual(agent2Rejections.length, 0, `Agent2 rejection count should be zero: ${agent2Rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
+      expect(agent1Rejections.length, 0).toBe(`Agent1 rejection count should be zero: ${agent1Rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
+      expect(agent2Rejections.length, 0).toBe(`Agent2 rejection count should be zero: ${agent2Rejections.map(r => r.errors.map(e => e.code).join(',')).join(';')}`);
       
       console.log(`  ✓ Rejection API returns valid format for both agents`);
     });
@@ -381,7 +377,7 @@ describe('Bridge E2E Tests', () => {
     let oracleWallet: Wallet;
     let marketId: string;
 
-    before(async () => {
+    beforeAll(async () => {
       // Generate fresh wallets for market tests
       const [mw, pw, ow] = await Promise.all([
         fetch(`${BRIDGE_URL}/wallet/generate`, { method: 'POST' }).then(r => r.json()),
@@ -418,9 +414,9 @@ describe('Bridge E2E Tests', () => {
         }),
       });
 
-      assert.strictEqual(response.status, 201, 'Should return 201 Created');
+      expect(response.status).toBe(201);
       const result = await response.json() as { marketId: string; hash: string };
-      assert.ok(result.marketId, 'Should have marketId');
+      expect(result.marketId).toBeTruthy();
       marketId = result.marketId;
       
       console.log(`  ✓ Created market: ${marketId}`);
@@ -428,13 +424,13 @@ describe('Bridge E2E Tests', () => {
 
     it('should appear on ML0 with epoch deadline', async () => {
       const fiber = await waitForFiber(marketId);
-      assert.ok(fiber, 'Market should appear on ML0');
-      assert.strictEqual(fiber.currentState, 'PROPOSED', 'Should be PROPOSED');
+      expect(fiber).toBeTruthy();
+      expect(fiber.currentState).toBe('PROPOSED');
       
       // Verify deadline is stored as number (epoch ms), not string
       const deadline = fiber.stateData.deadline as number;
-      assert.strictEqual(typeof deadline, 'number', 'Deadline should be epoch ms (number)');
-      assert.ok(deadline > Date.now(), 'Deadline should be in the future');
+      expect(typeof deadline).toBe('number');
+      expect(deadline > Date.now()).toBeTruthy();
       
       console.log(`  ✓ Market on ML0, deadline=${deadline} (epoch ms)`);
     });
@@ -449,16 +445,16 @@ describe('Bridge E2E Tests', () => {
         }),
       });
 
-      assert.strictEqual(response.status, 200);
+      expect(response.status).toBe(200);
       const result = await response.json() as { status: string };
-      assert.strictEqual(result.status, 'OPEN');
+      expect(result.status).toBe('OPEN');
       
       console.log(`  ✓ Market opened`);
     });
 
     it('should transition to OPEN on ML0', async () => {
       const fiber = await waitForState(marketId, 'OPEN');
-      assert.ok(fiber, 'Market should transition to OPEN');
+      expect(fiber).toBeTruthy();
       
       console.log(`  ✓ Market state: ${fiber.currentState}`);
     });
@@ -475,9 +471,9 @@ describe('Bridge E2E Tests', () => {
         }),
       });
 
-      assert.strictEqual(response.status, 200);
+      expect(response.status).toBe(200);
       const result = await response.json() as { hash: string; amount: number };
-      assert.strictEqual(result.amount, 100);
+      expect(result.amount).toBe(100);
       
       console.log(`  ✓ Committed 100 on YES`);
     });
@@ -489,7 +485,7 @@ describe('Bridge E2E Tests', () => {
       const response = await fetch(`${BRIDGE_URL}/market/${marketId}`);
       const market = await response.json() as StateMachine;
       
-      assert.strictEqual(market.stateData.totalCommitted, 100, 'Total should be 100');
+      expect(market.stateData.totalCommitted).toBe(100);
       
       console.log(`  ✓ Commitment reflected: totalCommitted=${market.stateData.totalCommitted}`);
     });
@@ -504,16 +500,16 @@ describe('Bridge E2E Tests', () => {
         }),
       });
 
-      assert.strictEqual(response.status, 200);
+      expect(response.status).toBe(200);
       const result = await response.json() as { status: string };
-      assert.strictEqual(result.status, 'CLOSED');
+      expect(result.status).toBe('CLOSED');
       
       console.log(`  ✓ Market closed`);
     });
 
     it('should transition to CLOSED on ML0', async () => {
       const fiber = await waitForState(marketId, 'CLOSED');
-      assert.ok(fiber, 'Market should transition to CLOSED');
+      expect(fiber).toBeTruthy();
       
       console.log(`  ✓ Market state: ${fiber.currentState}`);
     });
@@ -530,19 +526,19 @@ describe('Bridge E2E Tests', () => {
         }),
       });
 
-      assert.strictEqual(response.status, 200);
+      expect(response.status).toBe(200);
       const result = await response.json() as { outcome: string };
-      assert.strictEqual(result.outcome, 'YES');
+      expect(result.outcome).toBe('YES');
       
       console.log(`  ✓ Oracle resolved: YES`);
     });
 
     it('should transition to RESOLVING on ML0', async () => {
       const fiber = await waitForState(marketId, 'RESOLVING');
-      assert.ok(fiber, 'Market should transition to RESOLVING');
+      expect(fiber).toBeTruthy();
       
       const resolutions = fiber.stateData.resolutions as Array<{ outcome: string }>;
-      assert.ok(resolutions.length >= 1, 'Should have at least 1 resolution');
+      expect(resolutions.length >= 1).toBeTruthy();
       
       console.log(`  ✓ Market resolving: ${resolutions.length} resolution(s)`);
     });
@@ -558,17 +554,17 @@ describe('Bridge E2E Tests', () => {
         }),
       });
 
-      assert.strictEqual(response.status, 200);
+      expect(response.status).toBe(200);
       const result = await response.json() as { status: string };
-      assert.strictEqual(result.status, 'SETTLED');
+      expect(result.status).toBe('SETTLED');
       
       console.log(`  ✓ Market finalized`);
     });
 
     it('should transition to SETTLED on ML0', async () => {
       const fiber = await waitForState(marketId, 'SETTLED');
-      assert.ok(fiber, 'Market should transition to SETTLED');
-      assert.strictEqual(fiber.stateData.finalOutcome, 'YES', 'Final outcome should be YES');
+      expect(fiber).toBeTruthy();
+      expect(fiber.stateData.finalOutcome).toBe('YES');
       
       console.log(`  ✓ Market settled: outcome=${fiber.stateData.finalOutcome}`);
     });
@@ -583,7 +579,7 @@ describe('Bridge E2E Tests', () => {
         }),
       });
 
-      assert.strictEqual(response.status, 200);
+      expect(response.status).toBe(200);
       
       console.log(`  ✓ Winner claimed`);
     });
@@ -597,7 +593,7 @@ describe('Bridge E2E Tests', () => {
       
       const claims = market.stateData.claims as Record<string, unknown> | Array<{ agent: string }>;
       const claimCount = Array.isArray(claims) ? claims.length : Object.keys(claims).length;
-      assert.ok(claimCount >= 1, 'Should have at least 1 claim');
+      expect(claimCount >= 1).toBeTruthy();
       
       console.log(`  ✓ Claim recorded: ${claimCount} claim(s)`);
     });

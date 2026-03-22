@@ -8,28 +8,27 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "lint": "eslint src --ext .ts",
-    "test": "node --test --experimental-strip-types test/*.test.ts",
-    "test:unit": "node --test --experimental-strip-types test/sequence-cache.test.ts",
-    "test:e2e": "node --test --experimental-strip-types test/e2e.test.ts",
-    "test:lifecycle": "node --test --experimental-strip-types test/lifecycle.test.ts",
-    "test:coverage": "mkdir -p coverage && node --test --experimental-strip-types --experimental-test-coverage --test-reporter lcov --test-reporter-destination coverage/lcov.info test/*.test.ts || true",
-    "test:client-signing": "node --test --experimental-strip-types test/client-signing.test.ts"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@ottochain/sdk": "2.2.5",
     "@ottochain/shared": "workspace:*",
-    "@ottochain/sdk": "1.6.0",
     "@stardust-collective/dag4": "^2.8.1",
     "canonicalize": "^2.1.0",
     "express": "^4.18.0",
+    "express-rate-limit": "^8.3.1",
     "js-sha256": "^0.11.1",
     "tweetnacl": "^1.0.3",
-    "express-rate-limit": "^8.3.1",
     "zod": "^3.22.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/node": "^25.5.0",
     "tsx": "^4.7.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^4.1.0"
   }
 }

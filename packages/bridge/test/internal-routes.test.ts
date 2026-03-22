@@ -2,12 +2,9 @@
  * Unit tests for /internal bridge routes
  *
  * Tests the indexer-notify endpoint and pending-confirmations diagnostic endpoint.
- *
- * Run: node --test --experimental-strip-types test/internal-routes.test.ts
  */
 
-import { describe, it, before, after } from 'node:test';
-import assert from 'node:assert/strict';
+import { describe, it, beforeAll, afterAll, expect } from 'vitest';
 import http from 'node:http';
 import express from 'express';
 import { Router } from 'express';
@@ -116,25 +113,25 @@ describe('POST /internal/indexer-notify', () => {
   let registry: ConfirmationRegistry;
   let server: http.Server;
 
-  before(async () => {
+  beforeAll(async () => {
     registry = new ConfirmationRegistry();
     server = buildApp(registry);
     await new Promise<void>(r => server.listen(0, '127.0.0.1', r));
   });
 
-  after(async () => {
+  afterAll(async () => {
     await new Promise<void>((r, e) => server.close(err => err ? e(err) : r()));
   });
 
   it('returns 400 for empty body', async () => {
     const res = await post(server, '/internal/indexer-notify', {});
-    assert.equal(res.status, 400);
-    assert.equal(res.body.error, 'Invalid payload');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid payload');
   });
 
   it('returns 400 when fibers array is empty', async () => {
     const res = await post(server, '/internal/indexer-notify', { snapshotOrdinal: 1, fibers: [] });
-    assert.equal(res.status, 400);
+    expect(res.status).toBe(400);
   });
 
   it('returns 400 for invalid fiberId (not UUID)', async () => {
@@ -142,7 +139,7 @@ describe('POST /internal/indexer-notify', () => {
       snapshotOrdinal: 1,
       fibers: [{ fiberId: 'not-a-uuid', currentState: 'ACTIVE', ordinal: 1, status: 'ACTIVE' }],
     });
-    assert.equal(res.status, 400);
+    expect(res.status).toBe(400);
   });
 
   it('resolves 0 waiters when no one is registered', async () => {
@@ -150,11 +147,11 @@ describe('POST /internal/indexer-notify', () => {
       snapshotOrdinal: 10,
       fibers: [{ fiberId: 'aaaaaaaa-0000-0000-0000-000000000001', currentState: 'ACTIVE', ordinal: 10, status: 'ACTIVE' }],
     });
-    assert.equal(res.status, 200);
-    assert.equal(res.body.accepted, true);
-    assert.equal(res.body.fibersReceived, 1);
-    assert.equal(res.body.waiterssResolved, 0);
-    assert.equal(res.body.pendingWaiters, 0);
+    expect(res.status).toBe(200);
+    expect(res.body.accepted).toBe(true);
+    expect(res.body.fibersReceived).toBe(1);
+    expect(res.body.waiterssResolved).toBe(0);
+    expect(res.body.pendingWaiters).toBe(0);
   });
 
   it('resolves a registered waiter', async () => {
@@ -166,13 +163,13 @@ describe('POST /internal/indexer-notify', () => {
       fibers: [{ fiberId, currentState: 'COMPLETED', ordinal: 20, status: 'ARCHIVED' }],
     });
 
-    assert.equal(res.status, 200);
-    assert.equal(res.body.waiterssResolved, 1);
+    expect(res.status).toBe(200);
+    expect(res.body.waiterssResolved).toBe(1);
 
     const conf = await waitPromise;
-    assert.equal(conf.fiberId, fiberId);
-    assert.equal(conf.currentState, 'COMPLETED');
-    assert.equal(conf.ordinal, 20);
+    expect(conf.fiberId).toBe(fiberId);
+    expect(conf.currentState).toBe('COMPLETED');
+    expect(conf.ordinal).toBe(20);
   });
 
   it('resolves multiple waiters in a single call', async () => {
@@ -187,11 +184,11 @@ describe('POST /internal/indexer-notify', () => {
       fibers: ids.map(fiberId => ({ fiberId, currentState: 'ACTIVE', ordinal: 30, status: 'ACTIVE' })),
     });
 
-    assert.equal(res.status, 200);
-    assert.equal(res.body.waiterssResolved, 2);
+    expect(res.status).toBe(200);
+    expect(res.body.waiterssResolved).toBe(2);
 
     await Promise.all(promises);
-    assert.equal(registry.size, 0);
+    expect(registry.size).toBe(0);
   });
 
   it('handles a mix of registered and unregistered fibers', async () => {
@@ -208,9 +205,9 @@ describe('POST /internal/indexer-notify', () => {
       ],
     });
 
-    assert.equal(res.status, 200);
-    assert.equal(res.body.fibersReceived, 2);
-    assert.equal(res.body.waiterssResolved, 1);
+    expect(res.status).toBe(200);
+    expect(res.body.fibersReceived).toBe(2);
+    expect(res.body.waiterssResolved).toBe(1);
   });
 });
 
@@ -222,21 +219,21 @@ describe('GET /internal/pending-confirmations', () => {
   let registry: ConfirmationRegistry;
   let server: http.Server;
 
-  before(async () => {
+  beforeAll(async () => {
     registry = new ConfirmationRegistry();
     server = buildApp(registry);
     await new Promise<void>(r => server.listen(0, '127.0.0.1', r));
   });
 
-  after(async () => {
+  afterAll(async () => {
     await new Promise<void>((r, e) => server.close(err => err ? e(err) : r()));
   });
 
   it('returns empty list when no waiters', async () => {
     const res = await get(server, '/internal/pending-confirmations');
-    assert.equal(res.status, 200);
-    assert.equal(res.body.count, 0);
-    assert.deepEqual(res.body.pending, []);
+    expect(res.status).toBe(200);
+    expect(res.body.count).toBe(0);
+    expect(res.body.pending).toEqual([]);
   });
 
   it('lists pending fiber IDs', async () => {
@@ -244,9 +241,9 @@ describe('GET /internal/pending-confirmations', () => {
     registry.register(id, 5_000);
 
     const res = await get(server, '/internal/pending-confirmations');
-    assert.equal(res.status, 200);
-    assert.equal(res.body.count, 1);
-    assert.ok((res.body.pending as string[]).includes(id));
+    expect(res.status).toBe(200);
+    expect(res.body.count).toBe(1);
+    expect((res.body.pending as string[]).includes(id)).toBe(true);
 
     // Cleanup
     registry.cancel(id);

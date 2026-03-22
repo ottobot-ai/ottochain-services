@@ -5,8 +5,8 @@
  * Requires running OttoChain cluster (gl0, ml0, dl1) and bridge.
  */
 
-import { describe, it, before, after } from 'node:test';
-import assert from 'node:assert';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+
 
 const BRIDGE_URL = process.env.BRIDGE_URL || 'http://localhost:3030';
 const ML0_URL = process.env.ML0_URL || 'http://localhost:9200';
@@ -299,14 +299,14 @@ describe('State Machine E2E Tests', () => {
   let participant2Wallet: Wallet;
   let marketFiberId: string;
 
-  before(async () => {
+  beforeAll(async () => {
     // Check bridge is running
     const healthResponse = await fetch(`${BRIDGE_URL}/health`);
-    assert.ok(healthResponse.ok, 'Bridge should be healthy');
+    expect(healthResponse.ok).toBeTruthy();
 
     // Check ML0 is running
     const ml0Response = await fetch(`${ML0_URL}/node/info`);
-    assert.ok(ml0Response.ok, 'ML0 should be running');
+    expect(ml0Response.ok).toBeTruthy();
 
     // Generate test wallets
     creatorWallet = await generateWallet();
@@ -351,13 +351,13 @@ describe('State Machine E2E Tests', () => {
         }),
       });
 
-      assert.strictEqual(response.status, 201, 'Should return 201 Created');
+      expect(response.status).toBe(201);
 
       const result = (await response.json()) as CreateSMResult;
-      assert.ok(result.fiberId, 'Should have fiberId');
-      assert.ok(result.hash, 'Should have transaction hash');
-      assert.strictEqual(result.creator, creatorWallet.address, 'Should match creator address');
-      assert.strictEqual(result.schema, 'Market', 'Should have Market schema');
+      expect(result.fiberId).toBeTruthy();
+      expect(result.hash).toBeTruthy();
+      expect(result.creator).toBe(creatorWallet.address);
+      expect(result.schema).toBe('Market');
 
       marketFiberId = result.fiberId;
       console.log(`  ✓ Created Market: ${result.fiberId}`);
@@ -367,13 +367,13 @@ describe('State Machine E2E Tests', () => {
     it('should appear on ML0 in PROPOSED state', async () => {
       const fiber = await waitForFiber(marketFiberId);
 
-      assert.ok(fiber, 'Fiber should appear on ML0');
-      assert.strictEqual(fiber.currentState, 'PROPOSED', 'Should be in PROPOSED state');
-      assert.strictEqual(fiber.stateData.schema, 'Market', 'Should have Market schema');
-      assert.strictEqual(fiber.stateData.creator, creatorWallet.address, 'Should be created by creator');
-      assert.strictEqual(fiber.stateData.marketType, 'prediction', 'Should be prediction market');
-      assert.strictEqual(fiber.stateData.status, 'PROPOSED', 'Status should be PROPOSED');
-      assert.strictEqual(fiber.stateData.totalCommitted, 0, 'totalCommitted should be 0');
+      expect(fiber).toBeTruthy();
+      expect(fiber.currentState).toBe('PROPOSED');
+      expect(fiber.stateData.schema).toBe('Market');
+      expect(fiber.stateData.creator).toBe(creatorWallet.address);
+      expect(fiber.stateData.marketType).toBe('prediction');
+      expect(fiber.stateData.status).toBe('PROPOSED');
+      expect(fiber.stateData.totalCommitted).toBe(0);
 
       console.log(`  ✓ Fiber confirmed on ML0: state=${fiber.currentState}`);
     });
@@ -389,7 +389,7 @@ describe('State Machine E2E Tests', () => {
         }),
       });
 
-      assert.strictEqual(response.status, 400, 'Should return 400 for invalid definition');
+      expect(response.status).toBe(400);
       console.log(`  ✓ Rejected invalid definition`);
     });
 
@@ -404,7 +404,7 @@ describe('State Machine E2E Tests', () => {
         }),
       });
 
-      assert.strictEqual(response.status, 400, 'Should return 400 for invalid private key');
+      expect(response.status).toBe(400);
       console.log(`  ✓ Rejected invalid private key`);
     });
   });
@@ -421,13 +421,13 @@ describe('State Machine E2E Tests', () => {
         }),
       });
 
-      assert.strictEqual(response.status, 200, 'Should return 200 OK');
+      expect(response.status).toBe(200);
 
       const result = (await response.json()) as TransitionResult;
-      assert.strictEqual(result.fiberId, marketFiberId, 'Should match fiberId');
-      assert.strictEqual(result.eventName, 'open', 'Should be open event');
-      assert.strictEqual(result.previousState, 'PROPOSED', 'Previous state should be PROPOSED');
-      assert.ok(result.hash, 'Should have transaction hash');
+      expect(result.fiberId).toBe(marketFiberId);
+      expect(result.eventName).toBe('open');
+      expect(result.previousState).toBe('PROPOSED');
+      expect(result.hash).toBeTruthy();
 
       console.log(`  ✓ Transition submitted: ${result.eventName}`);
       console.log(`    Hash: ${result.hash}`);
@@ -436,11 +436,11 @@ describe('State Machine E2E Tests', () => {
     it('should transition to OPEN state on ML0', async () => {
       const fiber = await waitForState(marketFiberId, 'OPEN');
 
-      assert.ok(fiber, 'Fiber should transition to OPEN');
-      assert.strictEqual(fiber.currentState, 'OPEN', 'State should be OPEN');
-      assert.strictEqual(fiber.stateData.status, 'OPEN', 'Status should be OPEN');
-      assert.ok(fiber.stateData.openedAt, 'Should have openedAt timestamp');
-      assert.strictEqual(fiber.sequenceNumber, 1, 'Sequence number should be 1');
+      expect(fiber).toBeTruthy();
+      expect(fiber.currentState).toBe('OPEN');
+      expect(fiber.stateData.status).toBe('OPEN');
+      expect(fiber.stateData.openedAt).toBeTruthy();
+      expect(fiber.sequenceNumber).toBe(1);
 
       console.log(`  ✓ Market opened: seq=${fiber.sequenceNumber}`);
     });
@@ -460,11 +460,11 @@ describe('State Machine E2E Tests', () => {
         }),
       });
 
-      assert.strictEqual(response.status, 200, 'Should return 200 OK');
+      expect(response.status).toBe(200);
 
       const result = (await response.json()) as TransitionResult;
-      assert.strictEqual(result.eventName, 'commit', 'Should be commit event');
-      assert.strictEqual(result.previousState, 'OPEN', 'Previous state should be OPEN');
+      expect(result.eventName).toBe('commit');
+      expect(result.previousState).toBe('OPEN');
 
       console.log(`  ✓ Participant 1 committed 100`);
     });
@@ -474,17 +474,17 @@ describe('State Machine E2E Tests', () => {
       await new Promise((resolve) => setTimeout(resolve, 5000));
 
       const response = await fetch(`${BRIDGE_URL}/sm/${marketFiberId}`);
-      assert.strictEqual(response.status, 200);
+      expect(response.status).toBe(200);
 
       const fiber = (await response.json()) as StateMachine;
-      assert.strictEqual(fiber.currentState, 'OPEN', 'Should still be OPEN');
-      assert.strictEqual(fiber.stateData.totalCommitted, 100, 'totalCommitted should be 100');
+      expect(fiber.currentState).toBe('OPEN');
+      expect(fiber.stateData.totalCommitted).toBe(100);
 
       const commitments = fiber.stateData.commitments as Record<string, { amount: number; data: { outcome: string } }>;
       const p1Commitment = commitments[participant1Wallet.address];
-      assert.ok(p1Commitment, 'Should have participant 1 commitment');
-      assert.strictEqual(p1Commitment.amount, 100, 'Commitment amount should be 100');
-      assert.strictEqual(p1Commitment.data?.outcome, 'YES', 'Outcome should be YES');
+      expect(p1Commitment).toBeTruthy();
+      expect(p1Commitment.amount).toBe(100);
+      expect(p1Commitment.data?.outcome).toBe('YES');
 
       console.log(`  ✓ Commitment verified: ${participant1Wallet.address.slice(0, 12)}... = 100`);
     });
@@ -504,13 +504,13 @@ describe('State Machine E2E Tests', () => {
         }),
       });
 
-      assert.strictEqual(response.status, 200, 'Should return 200 OK');
+      expect(response.status).toBe(200);
       console.log(`  ✓ Participant 2 committed 250`);
 
       // Wait and verify
       await new Promise((resolve) => setTimeout(resolve, 5000));
       const fiber = await waitForFiber(marketFiberId);
-      assert.strictEqual(fiber?.stateData.totalCommitted, 350, 'totalCommitted should be 350');
+      expect(fiber?.stateData.totalCommitted).toBe(350);
       console.log(`  ✓ Total committed: 350`);
     });
 
@@ -525,10 +525,10 @@ describe('State Machine E2E Tests', () => {
         }),
       });
 
-      assert.strictEqual(response.status, 200, 'Should return 200 OK');
+      expect(response.status).toBe(200);
 
       const result = (await response.json()) as TransitionResult;
-      assert.strictEqual(result.eventName, 'close', 'Should be close event');
+      expect(result.eventName).toBe('close');
 
       console.log(`  ✓ Close transition submitted`);
     });
@@ -536,10 +536,10 @@ describe('State Machine E2E Tests', () => {
     it('should transition to CLOSED state on ML0', async () => {
       const fiber = await waitForState(marketFiberId, 'CLOSED');
 
-      assert.ok(fiber, 'Fiber should transition to CLOSED');
-      assert.strictEqual(fiber.currentState, 'CLOSED', 'State should be CLOSED');
-      assert.strictEqual(fiber.stateData.status, 'CLOSED', 'Status should be CLOSED');
-      assert.ok(fiber.stateData.closedAt, 'Should have closedAt timestamp');
+      expect(fiber).toBeTruthy();
+      expect(fiber.currentState).toBe('CLOSED');
+      expect(fiber.stateData.status).toBe('CLOSED');
+      expect(fiber.stateData.closedAt).toBeTruthy();
 
       console.log(`  ✓ Market closed: state=${fiber.currentState}`);
     });
@@ -581,12 +581,12 @@ describe('State Machine E2E Tests', () => {
 
       // Transition might succeed at bridge level but fail on-chain due to guard
       // The bridge doesn't validate guards, the metagraph does
-      assert.ok(openResponse.ok, 'Bridge accepts the request');
+      expect(openResponse.ok).toBeTruthy();
 
       // Wait and verify state didn't change
       await new Promise((resolve) => setTimeout(resolve, 5000));
       const fiber = await waitForFiber(newMarket.fiberId);
-      assert.strictEqual(fiber?.currentState, 'PROPOSED', 'Should still be PROPOSED (guard prevented transition)');
+      expect(fiber?.currentState).toBe('PROPOSED');
 
       console.log(`  ✓ Guard prevented non-creator from opening market`);
     });
@@ -602,7 +602,7 @@ describe('State Machine E2E Tests', () => {
         }),
       });
 
-      assert.strictEqual(response.status, 404, 'Should return 404 for non-existent fiber');
+      expect(response.status).toBe(404);
       console.log(`  ✓ Rejected transition for non-existent fiber`);
     });
   });
@@ -610,14 +610,14 @@ describe('State Machine E2E Tests', () => {
   describe('GET /sm/:fiberId - Query State Machine', () => {
     it('should return state machine by ID', async () => {
       const response = await fetch(`${BRIDGE_URL}/sm/${marketFiberId}`);
-      assert.strictEqual(response.status, 200);
+      expect(response.status).toBe(200);
 
       const fiber = (await response.json()) as StateMachine;
-      assert.strictEqual(fiber.fiberId, marketFiberId, 'Should match fiberId');
-      assert.strictEqual(fiber.currentState, 'CLOSED', 'Should be in CLOSED state');
-      assert.strictEqual(fiber.definition.metadata.name, 'Market', 'Definition should be Market');
-      assert.ok(fiber.stateData.commitments, 'Should have commitments');
-      assert.strictEqual(fiber.stateData.totalCommitted, 350, 'totalCommitted should be 350');
+      expect(fiber.fiberId).toBe(marketFiberId);
+      expect(fiber.currentState).toBe('CLOSED');
+      expect(fiber.definition.metadata.name).toBe('Market');
+      expect(fiber.stateData.commitments).toBeTruthy();
+      expect(fiber.stateData.totalCommitted).toBe(350);
 
       console.log(`  ✓ Queried market: ${fiber.fiberId}`);
       console.log(`    State: ${fiber.currentState}, Total: ${fiber.stateData.totalCommitted}`);
@@ -625,7 +625,7 @@ describe('State Machine E2E Tests', () => {
 
     it('should return 404 for non-existent ID', async () => {
       const response = await fetch(`${BRIDGE_URL}/sm/00000000-0000-0000-0000-000000000000`);
-      assert.strictEqual(response.status, 404, 'Should return 404');
+      expect(response.status).toBe(404);
       console.log(`  ✓ Returned 404 for non-existent ID`);
     });
   });
@@ -633,27 +633,27 @@ describe('State Machine E2E Tests', () => {
   describe('GET /sm?schema=Market - List State Machines', () => {
     it('should list all state machines', async () => {
       const response = await fetch(`${BRIDGE_URL}/sm`);
-      assert.strictEqual(response.status, 200);
+      expect(response.status).toBe(200);
 
       const result = (await response.json()) as ListResult;
-      assert.ok(result.total >= 1, 'Should have at least 1 state machine');
-      assert.ok(result.count >= 1, 'Count should be at least 1');
-      assert.ok(result.stateMachines, 'Should have stateMachines object');
+      expect(result.total >= 1).toBeTruthy();
+      expect(result.count >= 1).toBeTruthy();
+      expect(result.stateMachines).toBeTruthy();
 
       console.log(`  ✓ Listed ${result.count} state machines (total: ${result.total})`);
     });
 
     it('should filter by schema=Market', async () => {
       const response = await fetch(`${BRIDGE_URL}/sm?schema=Market`);
-      assert.strictEqual(response.status, 200);
+      expect(response.status).toBe(200);
 
       const result = (await response.json()) as ListResult;
-      assert.ok(result.count >= 1, 'Should have at least 1 Market');
+      expect(result.count >= 1).toBeTruthy();
 
       // Verify all returned items are Markets
       for (const [id, sm] of Object.entries(result.stateMachines)) {
         const isMarket = sm.stateData?.schema === 'Market' || sm.definition?.metadata?.name === 'Market';
-        assert.ok(isMarket, `${id} should be a Market`);
+        expect(isMarket).toBeTruthy();
       }
 
       console.log(`  ✓ Filtered by schema=Market: ${result.count} markets`);
@@ -661,14 +661,14 @@ describe('State Machine E2E Tests', () => {
 
     it('should filter by status=CLOSED', async () => {
       const response = await fetch(`${BRIDGE_URL}/sm?schema=Market&status=CLOSED`);
-      assert.strictEqual(response.status, 200);
+      expect(response.status).toBe(200);
 
       const result = (await response.json()) as ListResult;
 
       // Verify all returned items are CLOSED
       for (const [id, sm] of Object.entries(result.stateMachines)) {
         const isClosed = sm.stateData?.status === 'CLOSED' || sm.currentState === 'CLOSED';
-        assert.ok(isClosed, `${id} should be CLOSED`);
+        expect(isClosed).toBeTruthy();
       }
 
       console.log(`  ✓ Filtered by status=CLOSED: ${result.count} closed markets`);
@@ -676,14 +676,14 @@ describe('State Machine E2E Tests', () => {
 
     it('should filter by creator', async () => {
       const response = await fetch(`${BRIDGE_URL}/sm?creator=${creatorWallet.address}`);
-      assert.strictEqual(response.status, 200);
+      expect(response.status).toBe(200);
 
       const result = (await response.json()) as ListResult;
-      assert.ok(result.count >= 1, 'Should have at least 1 market from creator');
+      expect(result.count >= 1).toBeTruthy();
 
       // Verify all returned items are from creator
       for (const [id, sm] of Object.entries(result.stateMachines)) {
-        assert.strictEqual(sm.stateData?.creator, creatorWallet.address, `${id} should be from creator`);
+        expect(sm.stateData?.creator, creatorWallet.address).toBe(`${id} should be from creator`);
       }
 
       console.log(`  ✓ Filtered by creator: ${result.count} markets`);
@@ -691,13 +691,13 @@ describe('State Machine E2E Tests', () => {
 
     it('should filter by marketType=prediction', async () => {
       const response = await fetch(`${BRIDGE_URL}/sm?marketType=prediction`);
-      assert.strictEqual(response.status, 200);
+      expect(response.status).toBe(200);
 
       const result = (await response.json()) as ListResult;
 
       // Verify all returned items are predictions
       for (const [id, sm] of Object.entries(result.stateMachines)) {
-        assert.strictEqual(sm.stateData?.marketType, 'prediction', `${id} should be prediction market`);
+        expect(sm.stateData?.marketType, 'prediction').toBe(`${id} should be prediction market`);
       }
 
       console.log(`  ✓ Filtered by marketType=prediction: ${result.count} prediction markets`);
@@ -705,12 +705,12 @@ describe('State Machine E2E Tests', () => {
 
     it('should support pagination', async () => {
       const response = await fetch(`${BRIDGE_URL}/sm?limit=1&offset=0`);
-      assert.strictEqual(response.status, 200);
+      expect(response.status).toBe(200);
 
       const result = (await response.json()) as ListResult;
-      assert.strictEqual(result.limit, 1, 'Limit should be 1');
-      assert.strictEqual(result.offset, 0, 'Offset should be 0');
-      assert.ok(result.count <= 1, 'Count should be at most 1');
+      expect(result.limit).toBe(1);
+      expect(result.offset).toBe(0);
+      expect(result.count <= 1).toBeTruthy();
 
       console.log(`  ✓ Pagination works: limit=1, offset=0, got ${result.count}`);
     });
@@ -719,7 +719,7 @@ describe('State Machine E2E Tests', () => {
   describe('POST /sm/:fiberId/commit - Convenience Endpoint', () => {
     let openMarketId: string;
 
-    before(async () => {
+    beforeAll(async () => {
       // Create a new market for commit tests
       const createResponse = await fetch(`${BRIDGE_URL}/sm/create`, {
         method: 'POST',
@@ -771,13 +771,13 @@ describe('State Machine E2E Tests', () => {
         }),
       });
 
-      assert.strictEqual(response.status, 200, 'Should return 200 OK');
+      expect(response.status).toBe(200);
 
       const result = (await response.json()) as CommitResult;
-      assert.strictEqual(result.fiberId, openMarketId, 'Should match fiberId');
-      assert.strictEqual(result.agent, participant1Wallet.address, 'Should match agent address');
-      assert.strictEqual(result.amount, 500, 'Should match amount');
-      assert.ok(result.hash, 'Should have transaction hash');
+      expect(result.fiberId).toBe(openMarketId);
+      expect(result.agent).toBe(participant1Wallet.address);
+      expect(result.amount).toBe(500);
+      expect(result.hash).toBeTruthy();
 
       console.log(`  ✓ Committed via convenience endpoint: ${result.amount}`);
     });
@@ -788,7 +788,7 @@ describe('State Machine E2E Tests', () => {
       const response = await fetch(`${BRIDGE_URL}/sm/${openMarketId}`);
       const fiber = (await response.json()) as StateMachine;
 
-      assert.strictEqual(fiber.stateData.totalCommitted, 500, 'totalCommitted should be 500');
+      expect(fiber.stateData.totalCommitted).toBe(500);
 
       console.log(`  ✓ State updated: totalCommitted=${fiber.stateData.totalCommitted}`);
     });
@@ -804,11 +804,11 @@ describe('State Machine E2E Tests', () => {
         }),
       });
 
-      assert.strictEqual(response.status, 400, 'Should return 400 for closed market');
+      expect(response.status).toBe(400);
 
       const error = await response.json();
-      assert.ok(error.error.includes('not open'), 'Should mention market not open');
-      assert.strictEqual(error.currentState, 'CLOSED', 'Should report current state');
+      expect(error.error.includes('not open')).toBeTruthy();
+      expect(error.currentState).toBe('CLOSED');
 
       console.log(`  ✓ Rejected commit on closed market`);
     });
@@ -823,7 +823,7 @@ describe('State Machine E2E Tests', () => {
         }),
       });
 
-      assert.strictEqual(response.status, 400, 'Should return 400 for invalid amount');
+      expect(response.status).toBe(400);
       console.log(`  ✓ Rejected commit with invalid amount`);
     });
 
@@ -836,7 +836,7 @@ describe('State Machine E2E Tests', () => {
         }),
       });
 
-      assert.strictEqual(response.status, 400, 'Should return 400 for missing privateKey');
+      expect(response.status).toBe(400);
       console.log(`  ✓ Rejected commit with missing privateKey`);
     });
 
@@ -850,7 +850,7 @@ describe('State Machine E2E Tests', () => {
         }),
       });
 
-      assert.strictEqual(response.status, 404, 'Should return 404 for non-existent market');
+      expect(response.status).toBe(404);
       console.log(`  ✓ Rejected commit on non-existent market`);
     });
   });

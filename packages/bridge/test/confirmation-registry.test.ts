@@ -2,12 +2,9 @@
  * Unit tests for ConfirmationRegistry
  *
  * Tests push-based fiber confirmation registry used for indexer → bridge callbacks.
- *
- * Run: node --test --experimental-strip-types test/confirmation-registry.test.ts
  */
 
-import { describe, it, beforeEach } from 'node:test';
-import assert from 'node:assert/strict';
+import { describe, it, beforeEach, expect } from 'vitest';
 import { ConfirmationRegistry } from '../src/lib/confirmation-registry.ts';
 import type { FiberConfirmation } from '../src/lib/confirmation-registry.ts';
 
@@ -37,14 +34,14 @@ describe('ConfirmationRegistry — register + notify', () => {
     const conf = makeConf(fiberId);
     const resolved = registry.notify(conf);
 
-    assert.equal(resolved, true);
+    expect(resolved).toBe(true);
     const result = await promise;
-    assert.deepEqual(result, conf);
+    expect(result).toEqual(conf);
   });
 
   it('returns false from notify() when no waiter is registered', () => {
     const resolved = registry.notify(makeConf('aaaaaaaa-0000-0000-0000-000000000002'));
-    assert.equal(resolved, false);
+    expect(resolved).toBe(false);
   });
 
   it('resolves with the exact confirmation payload', async () => {
@@ -59,7 +56,7 @@ describe('ConfirmationRegistry — register + notify', () => {
     registry.notify(conf);
 
     const result = await promise;
-    assert.deepEqual(result, conf);
+    expect(result).toEqual(conf);
   });
 
   it('notifying an already-resolved fiber returns false', async () => {
@@ -70,7 +67,7 @@ describe('ConfirmationRegistry — register + notify', () => {
 
     // Second notify — waiter is gone
     const resolved = registry.notify(makeConf(fiberId));
-    assert.equal(resolved, false);
+    expect(resolved).toBe(false);
   });
 });
 
@@ -86,7 +83,7 @@ describe('ConfirmationRegistry — size + pendingIds', () => {
   });
 
   it('starts at size 0', () => {
-    assert.equal(registry.size, 0);
+    expect(registry.size).toBe(0);
   });
 
   it('tracks size correctly across register/notify', async () => {
@@ -94,24 +91,24 @@ describe('ConfirmationRegistry — size + pendingIds', () => {
     const id2 = 'aaaaaaaa-0000-0000-0000-000000000012';
 
     const p1 = registry.register(id1, 5_000);
-    assert.equal(registry.size, 1);
+    expect(registry.size).toBe(1);
 
     const p2 = registry.register(id2, 5_000);
-    assert.equal(registry.size, 2);
+    expect(registry.size).toBe(2);
 
     registry.notify(makeConf(id1));
     await p1;
-    assert.equal(registry.size, 1);
+    expect(registry.size).toBe(1);
 
     registry.notify(makeConf(id2));
     await p2;
-    assert.equal(registry.size, 0);
+    expect(registry.size).toBe(0);
   });
 
   it('lists pending fiber IDs', () => {
     const id = 'aaaaaaaa-0000-0000-0000-000000000021';
     registry.register(id, 5_000);
-    assert.ok(registry.pendingIds().includes(id));
+    expect(registry.pendingIds().includes(id)).toBe(true);
   });
 
   it('removes ID from pendingIds after resolution', async () => {
@@ -119,7 +116,7 @@ describe('ConfirmationRegistry — size + pendingIds', () => {
     const p = registry.register(id, 5_000);
     registry.notify(makeConf(id));
     await p;
-    assert.ok(!registry.pendingIds().includes(id));
+    expect(registry.pendingIds().includes(id)).toBe(false);
   });
 });
 
@@ -128,18 +125,15 @@ describe('ConfirmationRegistry — size + pendingIds', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('ConfirmationRegistry — timeout', () => {
-  it('rejects after timeoutMs elapses', async () => {
+  it('rejects after timeoutMs elapses', { timeout: 5000 }, async () => {
     const registry = new ConfirmationRegistry();
     const fiberId = 'aaaaaaaa-0000-0000-0000-000000000031';
 
-    const promise = registry.register(fiberId, 50); // 50ms — real timer
+    const promise = registry.register(fiberId, 100); // 100ms — real timer
 
-    await assert.rejects(promise, (err: Error) => {
-      assert.ok(/timeout/i.test(err.message), `Expected timeout message, got: ${err.message}`);
-      return true;
-    });
+    await expect(promise).rejects.toThrow(/timeout/i);
 
-    assert.equal(registry.size, 0);
+    expect(registry.size).toBe(0);
   });
 });
 
@@ -156,22 +150,25 @@ describe('ConfirmationRegistry — cancel', () => {
 
   it('cancel() removes the waiter', () => {
     const fiberId = 'aaaaaaaa-0000-0000-0000-000000000041';
-    registry.register(fiberId, 5_000);
-    assert.equal(registry.size, 1);
+    const p = registry.register(fiberId, 5_000);
+    // Attach a no-op catch so the dangling promise doesn't cause unhandled rejection
+    p.catch(() => {});
+    expect(registry.size).toBe(1);
 
     registry.cancel(fiberId);
-    assert.equal(registry.size, 0);
+    expect(registry.size).toBe(0);
   });
 
   it('subsequent notify returns false after cancel', () => {
     const fiberId = 'aaaaaaaa-0000-0000-0000-000000000042';
-    registry.register(fiberId, 5_000);
+    const p = registry.register(fiberId, 5_000);
+    p.catch(() => {});
     registry.cancel(fiberId);
-    assert.equal(registry.notify(makeConf(fiberId)), false);
+    expect(registry.notify(makeConf(fiberId))).toBe(false);
   });
 
   it('cancel() is safe to call when fiberId not registered', () => {
-    assert.doesNotThrow(() => registry.cancel('aaaaaaaa-0000-0000-0000-deadbeef0000'));
+    expect(() => registry.cancel('aaaaaaaa-0000-0000-0000-deadbeef0000')).not.toThrow();
   });
 });
 
@@ -196,9 +193,9 @@ describe('ConfirmationRegistry — multiple concurrent waiters', () => {
     registry.notify(makeConf(ids[1], 2));
 
     const results = await Promise.all(promises);
-    assert.equal(results[0].ordinal, 1);
-    assert.equal(results[1].ordinal, 2);
-    assert.equal(results[2].ordinal, 3);
-    assert.equal(registry.size, 0);
+    expect(results[0].ordinal).toBe(1);
+    expect(results[1].ordinal).toBe(2);
+    expect(results[2].ordinal).toBe(3);
+    expect(registry.size).toBe(0);
   });
 });

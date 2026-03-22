@@ -7,8 +7,7 @@
  * Spec: docs/design/rejection-history-filters-spec.md — Group 1
  */
 
-import { describe, it } from 'node:test';
-import assert from 'node:assert';
+import { describe, it, expect } from 'vitest';
 
 const INDEXER_URL = process.env.INDEXER_URL || 'http://localhost:3031';
 
@@ -33,16 +32,12 @@ describe('Indexer: Timestamp Range Filter (AC1–AC5)', () => {
       timestamp_from: '2026-02-01T00:00:00Z',
       limit: '10',
     });
-    assert.strictEqual(status, 200, `Expected 200, got ${status}`);
+    expect(status).toBe(200);
     const data = body as RejectionsResponse;
-    assert.ok(Array.isArray(data.rejections), 'Should return rejections array');
-    // Verify all returned records have timestamp >= lower bound
+    expect(Array.isArray(data.rejections)).toBeTruthy();
     const lowerBound = new Date('2026-02-01T00:00:00Z');
     for (const r of data.rejections as Array<{ timestamp: string }>) {
-      assert.ok(
-        new Date(r.timestamp) >= lowerBound,
-        `Record timestamp ${r.timestamp} is before lower bound 2026-02-01`
-      );
+      expect(new Date(r.timestamp) >= lowerBound).toBeTruthy();
     }
   });
 
@@ -51,15 +46,12 @@ describe('Indexer: Timestamp Range Filter (AC1–AC5)', () => {
       timestamp_to: '2026-02-10T23:59:59Z',
       limit: '10',
     });
-    assert.strictEqual(status, 200, `Expected 200, got ${status}`);
+    expect(status).toBe(200);
     const data = body as RejectionsResponse;
-    assert.ok(Array.isArray(data.rejections), 'Should return rejections array');
+    expect(Array.isArray(data.rejections)).toBeTruthy();
     const upperBound = new Date('2026-02-10T23:59:59Z');
     for (const r of data.rejections as Array<{ timestamp: string }>) {
-      assert.ok(
-        new Date(r.timestamp) <= upperBound,
-        `Record timestamp ${r.timestamp} is after upper bound 2026-02-10`
-      );
+      expect(new Date(r.timestamp) <= upperBound).toBeTruthy();
     }
   });
 
@@ -69,48 +61,38 @@ describe('Indexer: Timestamp Range Filter (AC1–AC5)', () => {
       timestamp_to: '2026-02-10T23:59:59Z',
       limit: '10',
     });
-    assert.strictEqual(status, 200, `Expected 200, got ${status}`);
+    expect(status).toBe(200);
     const data = body as RejectionsResponse;
-    assert.ok(Array.isArray(data.rejections), 'Should return rejections array');
+    expect(Array.isArray(data.rejections)).toBeTruthy();
     const lower = new Date('2026-02-01T00:00:00Z');
     const upper = new Date('2026-02-10T23:59:59Z');
     for (const r of data.rejections as Array<{ timestamp: string }>) {
       const ts = new Date(r.timestamp);
-      assert.ok(ts >= lower && ts <= upper,
-        `Record timestamp ${r.timestamp} is outside [Feb 1, Feb 10] interval`
-      );
+      expect(ts >= lower && ts <= upper).toBeTruthy();
     }
   });
 
   it('T4: invalid timestamp_from returns 400 Bad Request (AC4)', async () => {
     const { status, body } = await fetchRejections({ timestamp_from: 'not-a-date' });
-    assert.strictEqual(status, 400, `Expected 400, got ${status}`);
+    expect(status).toBe(400);
     const data = body as { error: string };
-    assert.ok(
-      typeof data.error === 'string' && data.error.includes('timestamp_from'),
-      `Expected error mentioning "timestamp_from", got: ${JSON.stringify(data)}`
-    );
+    expect(typeof data.error === 'string' && data.error.includes('timestamp_from')).toBeTruthy();
   });
 
   it('T5: invalid timestamp_to returns 400 Bad Request (AC4)', async () => {
     const { status, body } = await fetchRejections({ timestamp_to: 'also-not-a-date' });
-    assert.strictEqual(status, 400, `Expected 400, got ${status}`);
+    expect(status).toBe(400);
     const data = body as { error: string };
-    assert.ok(
-      typeof data.error === 'string' && data.error.includes('timestamp_to'),
-      `Expected error mentioning "timestamp_to", got: ${JSON.stringify(data)}`
-    );
+    expect(typeof data.error === 'string' && data.error.includes('timestamp_to')).toBeTruthy();
   });
 
   it('T6: future timestamp_from returns empty result set (AC5)', async () => {
     const { status, body } = await fetchRejections({ timestamp_from: '2030-01-01T00:00:00Z' });
-    assert.strictEqual(status, 200, `Expected 200, got ${status}`);
+    expect(status).toBe(200);
     const data = body as RejectionsResponse;
-    assert.deepStrictEqual(
-      { rejections: data.rejections, total: data.total, hasMore: data.hasMore },
-      { rejections: [], total: 0, hasMore: false },
-      'Future timestamp_from should return empty result'
-    );
+    expect(data.rejections).toEqual([]);
+    expect(data.total).toBe(0);
+    expect(data.hasMore).toBe(false);
   });
 
 });

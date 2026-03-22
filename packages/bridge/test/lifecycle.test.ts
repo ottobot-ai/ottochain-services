@@ -14,8 +14,8 @@
  *   node --test --experimental-strip-types test/lifecycle.test.ts
  */
 
-import { describe, it, before } from 'node:test';
-import assert from 'node:assert';
+import { describe, it, expect, beforeAll } from 'vitest';
+
 
 const BRIDGE_URL = process.env.BRIDGE_URL || 'http://localhost:3030';
 const ML0_URL    = process.env.ML0_URL    || 'http://localhost:9200';
@@ -108,7 +108,7 @@ describe('Contract Lifecycle: propose → accept → complete × 2 → finalize'
   let counterparty: Wallet;
   let contractId:   string;
 
-  before(async () => {
+  beforeAll(async () => {
     proposer     = await makeWallet();
     counterparty = await makeWallet();
     console.log(`  Proposer:     ${proposer.address}`);
@@ -133,10 +133,10 @@ describe('Contract Lifecycle: propose → accept → complete × 2 → finalize'
       }
     );
 
-    assert.ok(result.contractId,                   'Missing contractId');
-    assert.strictEqual(result.proposer,     proposer.address,     'Wrong proposer');
-    assert.strictEqual(result.counterparty, counterparty.address, 'Wrong counterparty');
-    assert.ok(result.hash,                         'Missing hash');
+    expect(result.contractId,                   'Missing contractId').toBeTruthy();
+    expect(result.proposer,     proposer.address).toBe(    'Wrong proposer');
+    expect(result.counterparty).toBe(counterparty.address);
+    expect(result.hash,                         'Missing hash').toBeTruthy();
 
     contractId = result.contractId;
     console.log(`  ✓ Contract proposed: ${contractId}`);
@@ -144,8 +144,8 @@ describe('Contract Lifecycle: propose → accept → complete × 2 → finalize'
 
   it('should appear on ML0 in PROPOSED state', async () => {
     const fiber = await waitForFiber(contractId);
-    assert.ok(fiber,                      'Contract not found on ML0');
-    assert.strictEqual(fiber!.currentState, 'PROPOSED', `Wrong state: ${fiber!.currentState}`);
+    expect(fiber,                      'Contract not found on ML0').toBeTruthy();
+    expect(fiber!.currentState, 'PROPOSED').toBe(`Wrong state: ${fiber!.currentState}`);
     console.log(`  ✓ Contract PROPOSED on ML0`);
   });
 
@@ -158,7 +158,7 @@ describe('Contract Lifecycle: propose → accept → complete × 2 → finalize'
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ privateKey: proposer.privateKey, contractId }),
     });
-    assert.strictEqual(res.status, 403, 'Expected 403 for wrong accepter');
+    expect(res.status).toBe(403);
     console.log(`  ✓ Correctly rejected self-acceptance`);
   });
 
@@ -169,14 +169,14 @@ describe('Contract Lifecycle: propose → accept → complete × 2 → finalize'
       { privateKey: counterparty.privateKey, contractId }
     );
 
-    assert.ok(result.hash,                          'Missing hash');
-    assert.strictEqual(result.contractId, contractId, 'Wrong contractId');
+    expect(result.hash,                          'Missing hash').toBeTruthy();
+    expect(result.contractId).toBe(contractId);
     console.log(`  ✓ Contract accepted: ${result.hash}`);
   });
 
   it('should transition to ACTIVE on ML0', async () => {
     const fiber = await waitForState(contractId, 'ACTIVE');
-    assert.ok(fiber, 'Contract did not reach ACTIVE state within timeout');
+    expect(fiber).toBeTruthy();
     console.log(`  ✓ Contract ACTIVE on ML0`);
   });
 
@@ -189,9 +189,9 @@ describe('Contract Lifecycle: propose → accept → complete × 2 → finalize'
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ privateKey: proposer.privateKey, contractId }),
     });
-    assert.strictEqual(res.status, 400, 'Expected 400 when not all parties have completed');
+    expect(res.status).toBe(400);
     const body = await res.json() as { error: string };
-    assert.ok(body.error.includes('completion'), `Wrong error: ${body.error}`);
+    expect(body.error.includes('completion')).toBeTruthy();
     console.log(`  ✓ Correctly blocked finalization before completions`);
   });
 
@@ -204,7 +204,7 @@ describe('Contract Lifecycle: propose → accept → complete × 2 → finalize'
         proof: 'proposer-evidence-hash-abc123',
       }
     );
-    assert.ok(result.hash, 'Missing hash');
+    expect(result.hash).toBeTruthy();
     console.log(`  ✓ Proposer submitted completion`);
   });
 
@@ -218,7 +218,7 @@ describe('Contract Lifecycle: propose → accept → complete × 2 → finalize'
         proof: 'counterparty-evidence-hash-def456',
       }
     );
-    assert.ok(result.hash, 'Missing hash');
+    expect(result.hash).toBeTruthy();
     console.log(`  ✓ Counterparty submitted completion`);
   });
 
@@ -235,12 +235,9 @@ describe('Contract Lifecycle: propose → accept → complete × 2 → finalize'
       }
       await new Promise(r => setTimeout(r, 1500));
     }
-    assert.ok(fiber, 'Contract not found on ML0');
+    expect(fiber).toBeTruthy();
     const completions = fiber!.stateData.completions as unknown[];
-    assert.ok(
-      Array.isArray(completions) && completions.length >= 2,
-      `Expected ≥2 completions, got: ${JSON.stringify(completions)}`
-    );
+    expect(Array.isArray(completions) && completions.length >= 2).toBeTruthy();
     console.log(`  ✓ Both completions recorded (${completions.length})`);
   });
 
@@ -252,14 +249,14 @@ describe('Contract Lifecycle: propose → accept → complete × 2 → finalize'
       '/contract/finalize',
       { privateKey: proposer.privateKey, contractId }
     );
-    assert.ok(result.hash, 'Missing hash');
-    assert.strictEqual(result.status, 'COMPLETED', `Wrong status: ${result.status}`);
+    expect(result.hash).toBeTruthy();
+    expect(result.status, 'COMPLETED').toBe(`Wrong status: ${result.status}`);
     console.log(`  ✓ Contract finalized: ${result.hash}`);
   });
 
   it('should transition to COMPLETED on ML0', async () => {
     const fiber = await waitForState(contractId, 'COMPLETED');
-    assert.ok(fiber, 'Contract did not reach COMPLETED state within timeout');
+    expect(fiber).toBeTruthy();
     console.log(`  ✓ Contract COMPLETED on ML0 — full lifecycle verified ✨`);
   });
 });
@@ -273,7 +270,7 @@ describe('Contract Lifecycle: propose → reject', () => {
   let counterparty: Wallet;
   let contractId:   string;
 
-  before(async () => {
+  beforeAll(async () => {
     proposer     = await makeWallet();
     counterparty = await makeWallet();
   });
@@ -293,7 +290,7 @@ describe('Contract Lifecycle: propose → reject', () => {
 
   it('should appear on ML0 in PROPOSED state', async () => {
     const fiber = await waitForFiber(contractId);
-    assert.strictEqual(fiber!.currentState, 'PROPOSED');
+    expect(fiber!.currentState).toBe('PROPOSED');
   });
 
   it('should allow counterparty to reject', async () => {
@@ -306,13 +303,13 @@ describe('Contract Lifecycle: propose → reject', () => {
         reason: 'Terms not acceptable',
       }
     );
-    assert.ok(result.hash, 'Missing hash');
+    expect(result.hash).toBeTruthy();
     console.log(`  ✓ Contract rejected`);
   });
 
   it('should transition to REJECTED on ML0', async () => {
     const fiber = await waitForState(contractId, 'REJECTED');
-    assert.ok(fiber, 'Contract did not reach REJECTED state');
+    expect(fiber).toBeTruthy();
     console.log(`  ✓ Contract REJECTED on ML0`);
   });
 });
@@ -327,7 +324,7 @@ describe('Agent Lifecycle: register → activate → vouch', () => {
   let agentFiberId: string;
   let voucherFiberId: string;
 
-  before(async () => {
+  beforeAll(async () => {
     agentWallet   = await makeWallet();
     voucherWallet = await makeWallet();
     console.log(`  Agent:   ${agentWallet.address}`);
@@ -344,16 +341,16 @@ describe('Agent Lifecycle: register → activate → vouch', () => {
         platformUserId: 'test-lifecycle-001',
       }
     );
-    assert.ok(result.fiberId, 'Missing fiberId');
-    assert.strictEqual(result.address, agentWallet.address, 'Wrong address');
+    expect(result.fiberId).toBeTruthy();
+    expect(result.address).toBe(agentWallet.address);
     agentFiberId = result.fiberId;
     console.log(`  ✓ Agent registered: ${agentFiberId}`);
   });
 
   it('should appear on ML0 in REGISTERED state', async () => {
     const fiber = await waitForFiber(agentFiberId);
-    assert.ok(fiber, 'Agent not found on ML0');
-    assert.strictEqual(fiber!.currentState, 'REGISTERED');
+    expect(fiber).toBeTruthy();
+    expect(fiber!.currentState).toBe('REGISTERED');
     console.log(`  ✓ Agent REGISTERED on ML0`);
   });
 
@@ -363,13 +360,13 @@ describe('Agent Lifecycle: register → activate → vouch', () => {
       '/agent/activate',
       { privateKey: agentWallet.privateKey, fiberId: agentFiberId }
     );
-    assert.ok(result.hash, 'Missing hash');
+    expect(result.hash).toBeTruthy();
     console.log(`  ✓ Agent activated`);
   });
 
   it('should transition to ACTIVE on ML0', async () => {
     const fiber = await waitForState(agentFiberId, 'ACTIVE');
-    assert.ok(fiber, 'Agent did not reach ACTIVE state');
+    expect(fiber).toBeTruthy();
     console.log(`  ✓ Agent ACTIVE on ML0`);
   });
 
@@ -385,7 +382,7 @@ describe('Agent Lifecycle: register → activate → vouch', () => {
     await settle();
     await post('/agent/activate', { privateKey: voucherWallet.privateKey, fiberId: voucherFiberId });
     const fiber = await waitForState(voucherFiberId, 'ACTIVE');
-    assert.ok(fiber, 'Voucher not ACTIVE');
+    expect(fiber).toBeTruthy();
     console.log(`  ✓ Voucher registered + activated: ${voucherFiberId}`);
   });
 
@@ -403,10 +400,7 @@ describe('Agent Lifecycle: register → activate → vouch', () => {
 
     // Accept either success or "already vouched" (idempotent)
     const body = await res.json() as Record<string, unknown>;
-    assert.ok(
-      res.status === 200 || res.status === 400,
-      `Unexpected status ${res.status}: ${JSON.stringify(body)}`
-    );
+    expect(res.status === 200 || res.status === 400).toBeTruthy();
     console.log(`  ✓ Vouch submitted (status=${res.status})`);
   });
 });

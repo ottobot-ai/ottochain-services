@@ -4,12 +4,9 @@
  * Tests encrypt/decrypt round-trips, dev-mode fallback, and error handling.
  * These run without Prisma — testing only the pure crypto layer
  * (encryptKey/decryptKey read process.env at call-time, so env manipulation works).
- *
- * Run: node --test --experimental-strip-types packages/bridge/test/key-store-unit.test.ts
  */
 
-import { describe, it, beforeEach, afterEach } from 'node:test';
-import assert from 'node:assert';
+import { describe, it, beforeEach, afterEach, expect } from 'vitest';
 
 // Import from the standalone crypto module (no Prisma/metagraph deps)
 import {
@@ -43,26 +40,26 @@ describe('encryptKey / decryptKey — round-trip with AES-256-GCM', () => {
     setEncKey(VALID_ENC_KEY);
 
     const { encrypted, iv, tag } = encryptKey(SAMPLE_PRIVATE_KEY);
-    assert.ok(!encrypted.startsWith('UNENCRYPTED:'), 'Should not use dev-mode marker');
-    assert.ok(iv.length > 0, 'IV should be present');
-    assert.ok(tag.length === 32, 'Auth tag should be 16 bytes = 32 hex chars');
+    expect(encrypted.startsWith('UNENCRYPTED:')).toBe(false);
+    expect(iv.length > 0).toBe(true);
+    expect(tag.length).toBe(32);
 
     const decrypted = decryptKey(encrypted, iv, tag);
-    assert.strictEqual(decrypted, SAMPLE_PRIVATE_KEY);
+    expect(decrypted).toBe(SAMPLE_PRIVATE_KEY);
   });
 
   it('ciphertext does not contain the plaintext key', () => {
     setEncKey(VALID_ENC_KEY);
     const { encrypted } = encryptKey(SAMPLE_PRIVATE_KEY);
-    assert.ok(!encrypted.includes(SAMPLE_PRIVATE_KEY), 'Encrypted output must not leak plaintext');
+    expect(encrypted.includes(SAMPLE_PRIVATE_KEY)).toBe(false);
   });
 
   it('uses a fresh random IV each encryption (non-deterministic)', () => {
     setEncKey(VALID_ENC_KEY);
     const r1 = encryptKey(SAMPLE_PRIVATE_KEY);
     const r2 = encryptKey(SAMPLE_PRIVATE_KEY);
-    assert.notStrictEqual(r1.iv, r2.iv, 'Each call should produce a unique IV');
-    assert.notStrictEqual(r1.encrypted, r2.encrypted, 'Each call should produce unique ciphertext');
+    expect(r1.iv).not.toBe(r2.iv);
+    expect(r1.encrypted).not.toBe(r2.encrypted);
   });
 
   it('different encryption keys produce different ciphertexts', () => {
@@ -72,7 +69,7 @@ describe('encryptKey / decryptKey — round-trip with AES-256-GCM', () => {
     setEncKey(ANOTHER_VALID_ENC_KEY);
     const r2 = encryptKey(SAMPLE_PRIVATE_KEY);
 
-    assert.notStrictEqual(r1.encrypted, r2.encrypted);
+    expect(r1.encrypted).not.toBe(r2.encrypted);
   });
 });
 
@@ -84,9 +81,9 @@ describe('encryptKey / decryptKey — dev mode (no BRIDGE_KEY_ENCRYPTION_KEY)', 
     const key = 'dev-only-private-key';
     const { encrypted, iv, tag } = encryptKey(key);
 
-    assert.ok(encrypted.startsWith('UNENCRYPTED:'), 'Must use dev-mode marker');
-    assert.strictEqual(iv, '', 'IV should be empty');
-    assert.strictEqual(tag, '', 'Tag should be empty');
+    expect(encrypted.startsWith('UNENCRYPTED:')).toBe(true);
+    expect(iv).toBe('');
+    expect(tag).toBe('');
   });
 
   it('decrypts dev-mode UNENCRYPTED: marker correctly (no env key needed)', () => {
@@ -95,7 +92,7 @@ describe('encryptKey / decryptKey — dev mode (no BRIDGE_KEY_ENCRYPTION_KEY)', 
     const { encrypted, iv, tag } = encryptKey(key);
 
     const decrypted = decryptKey(encrypted, iv, tag);
-    assert.strictEqual(decrypted, key);
+    expect(decrypted).toBe(key);
   });
 });
 
@@ -107,14 +104,8 @@ describe('decryptKey — error handling', () => {
     const { encrypted, iv } = encryptKey(SAMPLE_PRIVATE_KEY);
     const tamperedTag = '00'.repeat(16); // 32 hex chars of zeros
 
-    assert.throws(
-      () => decryptKey(encrypted, iv, tamperedTag),
-      // Node crypto throws "Unsupported state or unable to authenticate data"
-      (err: unknown) => {
-        const msg = (err as Error).message ?? '';
-        return /Unsupported state|authentication|decrypt/i.test(msg);
-      },
-      'Should throw when GCM auth tag does not match (tamper detected)'
+    expect(() => decryptKey(encrypted, iv, tamperedTag)).toThrow(
+      /Unsupported state|authentication|decrypt/i
     );
   });
 
@@ -124,17 +115,12 @@ describe('decryptKey — error handling', () => {
     const { encrypted, iv, tag } = encryptKey(SAMPLE_PRIVATE_KEY);
 
     clearEncKey();
-    assert.throws(
-      () => decryptKey(encrypted, iv, tag),
-      /BRIDGE_KEY_ENCRYPTION_KEY not set/,
-      'Should throw when env key missing for encrypted (non-dev-mode) data'
-    );
+    expect(() => decryptKey(encrypted, iv, tag)).toThrow(/BRIDGE_KEY_ENCRYPTION_KEY not set/);
   });
 
   it('throws when encryption key has wrong length', () => {
     setEncKey('tooshort');
-    assert.throws(
-      () => encryptKey(SAMPLE_PRIVATE_KEY),
+    expect(() => encryptKey(SAMPLE_PRIVATE_KEY)).toThrow(
       /BRIDGE_KEY_ENCRYPTION_KEY must be 64 hex characters/
     );
   });
@@ -142,17 +128,14 @@ describe('decryptKey — error handling', () => {
 
 describe('Public key length constants', () => {
   it('UNCOMPRESSED_PUBLIC_KEY_HEX_LENGTH is 130', () => {
-    assert.strictEqual(UNCOMPRESSED_PUBLIC_KEY_HEX_LENGTH, 130);
+    expect(UNCOMPRESSED_PUBLIC_KEY_HEX_LENGTH).toBe(130);
   });
 
   it('NORMALIZED_PUBLIC_KEY_HEX_LENGTH is 128', () => {
-    assert.strictEqual(NORMALIZED_PUBLIC_KEY_HEX_LENGTH, 128);
+    expect(NORMALIZED_PUBLIC_KEY_HEX_LENGTH).toBe(128);
   });
 
   it('normalized length = uncompressed - 2 (strip 04 prefix)', () => {
-    assert.strictEqual(
-      UNCOMPRESSED_PUBLIC_KEY_HEX_LENGTH - 2,
-      NORMALIZED_PUBLIC_KEY_HEX_LENGTH
-    );
+    expect(UNCOMPRESSED_PUBLIC_KEY_HEX_LENGTH - 2).toBe(NORMALIZED_PUBLIC_KEY_HEX_LENGTH);
   });
 });

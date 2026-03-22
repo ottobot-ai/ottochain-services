@@ -4,12 +4,9 @@
  * Tests the fan-out behavior when METAGRAPH_DL1_URLS is set to multiple nodes.
  * Verifies: parallel submission, first-success semantics, failure logging, and
  * getFiberSequenceNumber using the max value across nodes.
- *
- * Run: node --test --experimental-strip-types test/multi-dl1-submission.test.ts
  */
 
-import { describe, it, before, after } from 'node:test';
-import assert from 'node:assert/strict';
+import { describe, it, expect } from 'vitest';
 
 // Import the real parseDl1Urls from metagraph.ts
 import { parseDl1Urls } from '../src/metagraph.ts';
@@ -19,12 +16,12 @@ import { parseDl1Urls } from '../src/metagraph.ts';
 describe('getDl1Urls() — URL parsing', () => {
   it('returns single URL when METAGRAPH_DL1_URLS is not set', () => {
     const urls = parseDl1Urls(undefined, 'http://localhost:9400');
-    assert.deepEqual(urls, ['http://localhost:9400']);
+    expect(urls).toEqual(['http://localhost:9400']);
   });
 
   it('returns single URL when METAGRAPH_DL1_URLS is empty string', () => {
     const urls = parseDl1Urls('', 'http://localhost:9400');
-    assert.deepEqual(urls, ['http://localhost:9400']);
+    expect(urls).toEqual(['http://localhost:9400']);
   });
 
   it('parses comma-separated DL1 URLs', () => {
@@ -32,12 +29,12 @@ describe('getDl1Urls() — URL parsing', () => {
       'http://n1:9400,http://n2:9400,http://n3:9400',
       'http://localhost:9400'
     );
-    assert.deepEqual(urls, ['http://n1:9400', 'http://n2:9400', 'http://n3:9400']);
+    expect(urls).toEqual(['http://n1:9400', 'http://n2:9400', 'http://n3:9400']);
   });
 
   it('trims whitespace from URLs', () => {
     const urls = parseDl1Urls(' http://n1:9400 , http://n2:9400 ', 'http://localhost:9400');
-    assert.deepEqual(urls, ['http://n1:9400', 'http://n2:9400']);
+    expect(urls).toEqual(['http://n1:9400', 'http://n2:9400']);
   });
 
   it('deduplicates URLs', () => {
@@ -45,12 +42,12 @@ describe('getDl1Urls() — URL parsing', () => {
       'http://n1:9400,http://n1:9400,http://n2:9400',
       'http://localhost:9400'
     );
-    assert.deepEqual(urls, ['http://n1:9400', 'http://n2:9400']);
+    expect(urls).toEqual(['http://n1:9400', 'http://n2:9400']);
   });
 
   it('handles single URL in METAGRAPH_DL1_URLS', () => {
     const urls = parseDl1Urls('http://prod-dl1:9400', 'http://localhost:9400');
-    assert.deepEqual(urls, ['http://prod-dl1:9400']);
+    expect(urls).toEqual(['http://prod-dl1:9400']);
   });
 });
 
@@ -64,12 +61,10 @@ describe('Multi-DL1 fan-out logic', () => {
     const tryNode = async (url: string): Promise<{ hash: string; acceptedBy: string }> => {
       callCount++;
       if (url === 'http://n1:9400') {
-        // Simulate slow first node
         await new Promise(resolve => setTimeout(resolve, 50));
         return { hash: 'hash-from-n1', acceptedBy: url };
       }
       if (url === 'http://n2:9400') {
-        // Fast second node
         return { hash: 'hash-from-n2', acceptedBy: url };
       }
       throw new Error('n3 rejected');
@@ -78,11 +73,9 @@ describe('Multi-DL1 fan-out logic', () => {
     const urls = ['http://n1:9400', 'http://n2:9400', 'http://n3:9400'];
     const result = await Promise.any(urls.map(tryNode));
 
-    // n2 should win (fastest success)
-    assert.equal(result.acceptedBy, 'http://n2:9400');
-    assert.equal(result.hash, 'hash-from-n2');
-    // All 3 calls were initiated
-    assert.equal(callCount, 3);
+    expect(result.acceptedBy).toBe('http://n2:9400');
+    expect(result.hash).toBe('hash-from-n2');
+    expect(callCount).toBe(3);
   });
 
   it('Promise.any rejects with AggregateError when all nodes fail', async () => {
@@ -91,14 +84,14 @@ describe('Multi-DL1 fan-out logic', () => {
     };
 
     const urls = ['http://n1:9400', 'http://n2:9400', 'http://n3:9400'];
-    await assert.rejects(
-      () => Promise.any(urls.map(tryNode)),
-      (err: unknown) => {
-        assert.ok(err instanceof AggregateError, 'Should be AggregateError');
-        assert.equal((err as AggregateError).errors.length, 3);
-        return true;
-      }
-    );
+    await expect(Promise.any(urls.map(tryNode))).rejects.toBeInstanceOf(AggregateError);
+
+    // Also verify error count
+    try {
+      await Promise.any(urls.map(tryNode));
+    } catch (err) {
+      expect((err as AggregateError).errors.length).toBe(3);
+    }
   });
 
   it('first success wins even when other nodes fail', async () => {
@@ -110,7 +103,7 @@ describe('Multi-DL1 fan-out logic', () => {
 
     const urls = ['http://n1:9400', 'http://n2:9400', 'http://n3:9400'];
     const result = await Promise.any(urls.map(tryNode));
-    assert.equal(result.acceptedBy, 'http://n2:9400');
+    expect(result.acceptedBy).toBe('http://n2:9400');
   });
 });
 
@@ -119,11 +112,10 @@ describe('Multi-DL1 fan-out logic', () => {
 describe('getFiberSequenceNumber — multi-node max', () => {
 
   it('takes max sequence across all nodes', async () => {
-    // Simulate: node1 is stale (seq=3), node2 is ahead (seq=10), node3 unreachable (0)
     const nodeSeqs: Record<string, number> = {
       'http://n1:9400': 3,
       'http://n2:9400': 10,
-      'http://n3:9400': -1, // simulate error
+      'http://n3:9400': -1,
     };
 
     const queryOne = async (url: string): Promise<number> => {
@@ -136,7 +128,7 @@ describe('getFiberSequenceNumber — multi-node max', () => {
     const results = await Promise.all(urls.map((url) => queryOne(url).catch(() => 0)));
     const maxSeq = Math.max(0, ...results);
 
-    assert.equal(maxSeq, 10, 'Should use max seq across all reachable nodes');
+    expect(maxSeq).toBe(10);
   });
 
   it('returns 0 when all nodes are unreachable', async () => {
@@ -146,15 +138,14 @@ describe('getFiberSequenceNumber — multi-node max', () => {
     const urls = ['http://n1:9400', 'http://n2:9400'];
     const results = await Promise.all(urls.map((url) => queryOne(url).catch(() => 0)));
     const maxSeq = Math.max(0, ...results);
-    assert.equal(maxSeq, 0);
+    expect(maxSeq).toBe(0);
   });
 
   it('uses cached value when higher than all DL1 nodes', async () => {
-    // Cache says we submitted seq=15, DL1 nodes show seq=10 (not applied yet)
     const dl1Seq = 10;
-    const cached = 16; // next expected after submitting seq=15
+    const cached = 16;
     const seq = Math.max(dl1Seq, cached);
-    assert.equal(seq, 16, 'Cache should win when higher than DL1');
+    expect(seq).toBe(16);
   });
 });
 
@@ -168,16 +159,18 @@ describe('Error message formatting', () => {
       throw new Error(`${url} rejected: 503 Service Unavailable`);
     };
 
+    let aggErr: AggregateError | undefined;
     try {
       await Promise.any(urls.map(tryNode));
-      assert.fail('Should have thrown');
-    } catch (aggErr) {
-      assert.ok(aggErr instanceof AggregateError);
-      const reasons = (aggErr as AggregateError).errors.map((e: Error) => e.message).join('; ');
-      const finalMsg = `Metagraph submission failed on all ${urls.length} DL1 node(s): ${reasons}`;
-      assert.ok(finalMsg.includes('all 2 DL1'), finalMsg);
-      assert.ok(finalMsg.includes('http://n1:9400'), finalMsg);
-      assert.ok(finalMsg.includes('http://n2:9400'), finalMsg);
+    } catch (err) {
+      aggErr = err as AggregateError;
     }
+
+    expect(aggErr).toBeInstanceOf(AggregateError);
+    const reasons = (aggErr!).errors.map((e: Error) => e.message).join('; ');
+    const finalMsg = `Metagraph submission failed on all ${urls.length} DL1 node(s): ${reasons}`;
+    expect(finalMsg).toContain('all 2 DL1');
+    expect(finalMsg).toContain('http://n1:9400');
+    expect(finalMsg).toContain('http://n2:9400');
   });
 });
