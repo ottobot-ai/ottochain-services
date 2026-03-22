@@ -128,11 +128,11 @@ describe('ConfirmationRegistry — size + pendingIds', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('ConfirmationRegistry — timeout', () => {
-  it('rejects after timeoutMs elapses', async () => {
+  it('rejects after timeoutMs elapses', { timeout: 5000 }, async () => {
     const registry = new ConfirmationRegistry();
     const fiberId = 'aaaaaaaa-0000-0000-0000-000000000031';
 
-    const promise = registry.register(fiberId, 50); // 50ms — real timer
+    const promise = registry.register(fiberId, 100); // 100ms — real timer
 
     await assert.rejects(promise, (err: Error) => {
       assert.ok(/timeout/i.test(err.message), `Expected timeout message, got: ${err.message}`);
@@ -156,7 +156,9 @@ describe('ConfirmationRegistry — cancel', () => {
 
   it('cancel() removes the waiter', () => {
     const fiberId = 'aaaaaaaa-0000-0000-0000-000000000041';
-    registry.register(fiberId, 5_000);
+    const p = registry.register(fiberId, 5_000);
+    // Attach a no-op catch so the dangling promise doesn't cause unhandled rejection
+    p.catch(() => {});
     assert.equal(registry.size, 1);
 
     registry.cancel(fiberId);
@@ -165,7 +167,8 @@ describe('ConfirmationRegistry — cancel', () => {
 
   it('subsequent notify returns false after cancel', () => {
     const fiberId = 'aaaaaaaa-0000-0000-0000-000000000042';
-    registry.register(fiberId, 5_000);
+    const p = registry.register(fiberId, 5_000);
+    p.catch(() => {});
     registry.cancel(fiberId);
     assert.equal(registry.notify(makeConf(fiberId)), false);
   });
