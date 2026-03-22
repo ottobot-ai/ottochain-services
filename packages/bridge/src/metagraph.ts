@@ -202,15 +202,6 @@ export async function submitTransaction(
   // (required for canonical JSON to match Metakit's circe encoder output)
   const normalizedMessage = normalizeMessage(message as Record<string, unknown>);
 
-  // Strip fields that don't exist in Scala case classes — they'd be lost
-  // during Metakit's decode→re-encode cycle, causing signature mismatch.
-  // SDK 2.2.3 normalizeMessage adds 'participants' but CreateStateMachine
-  // only has: fiberId, definition, initialData, parentFiberId.
-  if ('CreateStateMachine' in normalizedMessage) {
-    const csm = normalizedMessage.CreateStateMachine as Record<string, unknown>;
-    delete csm.participants;
-  }
-
   // Sign using SDK's batchSign (same as e2e tests)
   const signed = await batchSign(normalizedMessage, [privateKey], { isDataUpdate: true });
 
