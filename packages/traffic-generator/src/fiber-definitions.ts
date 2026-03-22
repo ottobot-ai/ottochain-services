@@ -5,10 +5,10 @@
  * The sdkDefinition field should be passed directly to /fiber/create.
  */
 
-// TypeScript 5.9 has issues resolving pnpm symlinked package exports under NodeNext.
-// The import works at runtime - types are declared in sdk-apps.d.ts as a workaround.
-// @ts-ignore Cannot find module '@ottochain/sdk/apps'
-import { contracts, markets, governance, identity } from '@ottochain/sdk/apps';
+import { getContractDefinition, getEscrowDefinition } from '@ottochain/sdk/apps/contracts';
+import { getMarketDefinition } from '@ottochain/sdk/apps/markets';
+import { getGovernanceDefinition } from '@ottochain/sdk/apps/governance';
+import { getIdentityDefinition } from '@ottochain/sdk/apps/identity';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -339,7 +339,7 @@ export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
   contract: buildDefinition(
     'contract',
     'Contract',
-    contracts.getContractDefinition(),
+    getContractDefinition(),
     false,
     generateContractData
   ),
@@ -347,7 +347,7 @@ export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
   escrow: buildDefinition(
     'escrow',
     'Contract',
-    contracts.getEscrowDefinition(),
+    getEscrowDefinition(),
     false,
     generateEscrowData
   ),
@@ -355,7 +355,7 @@ export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
   market: buildDefinition(
     'market',
     'Market',
-    markets.getMarketDefinition('Universal'),
+    getMarketDefinition('universal'),
     true,
     generateMarketData
   ),
@@ -363,7 +363,7 @@ export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
   tokenDAO: buildDefinition(
     'tokenDAO',
     'DAO',
-    governance.getDAODefinition('Token'),
+    getGovernanceDefinition('daoToken'),
     true,
     generateTokenDAOData
   ),
@@ -371,7 +371,7 @@ export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
   multisigDAO: buildDefinition(
     'multisigDAO',
     'DAO',
-    governance.getDAODefinition('Multisig'),
+    getGovernanceDefinition('daoMultisig'),
     true,
     generateMultisigDAOData
   ),
@@ -379,7 +379,7 @@ export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
   thresholdDAO: buildDefinition(
     'thresholdDAO',
     'DAO',
-    governance.getDAODefinition('Threshold'),
+    getGovernanceDefinition('daoReputation'),
     true,
     generateThresholdDAOData
   ),
@@ -387,7 +387,7 @@ export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
   oracle: buildDefinition(
     'oracle',
     'Oracle',
-    identity.getIdentityDefinition('oracle'),
+    getIdentityDefinition('oracle'),
     false,
     generateOracleData
   ),
@@ -395,7 +395,7 @@ export const FIBER_DEFINITIONS: Record<string, FiberDefinition> = {
   identity: buildDefinition(
     'identity',
     'AgentIdentity',
-    identity.getIdentityDefinition(),
+    getIdentityDefinition('agent'),
     false,
     generateIdentityData
   ),
