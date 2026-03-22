@@ -12,7 +12,7 @@
     "test:integration": "node --test --experimental-strip-types test/e2e.test.ts test/lifecycle.test.ts test/client-signing.test.ts test/cloud-agent-integration.test.ts test/sm.test.ts test/rejection-verification.test.ts test/multi-dl1-submission.test.ts test/sequence-cache.test.ts",
     "test:e2e": "node --test --experimental-strip-types test/e2e.test.ts",
     "test:lifecycle": "node --test --experimental-strip-types test/lifecycle.test.ts",
-    "test:coverage": "mkdir -p coverage && node --test --experimental-strip-types --experimental-test-coverage --test-reporter lcov --test-reporter-destination coverage/lcov.info test/confirmation-registry.test.ts test/health-metrics.test.ts test/internal-routes.test.ts test/key-store-unit.test.ts test/rejection-api-utilities.test.ts test/integration-rejection-assertions.test.ts test/contract-routes.test.ts",
+    "test:coverage": "mkdir -p coverage && node --test --experimental-strip-types --experimental-test-coverage --test-reporter spec --test-reporter-destination stdout --test-reporter lcov --test-reporter-destination coverage/lcov.info test/confirmation-registry.test.ts test/health-metrics.test.ts test/internal-routes.test.ts test/key-store-unit.test.ts test/rejection-api-utilities.test.ts test/integration-rejection-assertions.test.ts test/contract-routes.test.ts",
     "test:client-signing": "node --test --experimental-strip-types test/client-signing.test.ts"
   },
   "dependencies": {
