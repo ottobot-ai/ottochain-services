@@ -241,10 +241,10 @@ async function main(): Promise<void> {
     failed: orchestrator.getStats().failedFibers,
   }));
   
-  setAgentsProvider(() => ({
-    registered: orchestrator.getRegisteredAgents(),
-    count: orchestrator.getRegisteredAgents().length,
-  }));
+  setAgentsProvider(() => {
+    const registered = orchestrator.getRegisteredAgents();
+    return { registered, count: registered.length };
+  });
   
   setControlCallbacks({
     onWeightsUpdate: (weights) => orchestrator.updateWeights(weights),
