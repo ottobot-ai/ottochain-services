@@ -17,6 +17,7 @@ import { tokenRoutes } from './routes/token.js';
 import { internalRoutes } from './routes/internal.js';     // Internal service-to-service API
 import { buildRoutes } from './routes/build.js';
 import { submitRoutes } from './routes/submit.js';
+import { delegationRoutes } from './routes/delegation.js';
 import { responseTimeTracker } from './lib/response-time-tracker.js';
 import { confirmationRegistry } from './lib/confirmation-registry.js';
 
@@ -74,6 +75,7 @@ app.use('/oracle', oracleRoutes);         // Oracle API (registration, attestati
 app.use('/corporate', corporateRoutes);   // Corporate governance API (entities, board, shareholders)
 app.use('/token', tokenRoutes);           // Token API (create, transfer, split, merge, burn, expire)
 app.use('/internal', internalRoutes);     // Internal service-to-service (indexer → bridge callbacks)
+app.use('/delegation', delegationRoutes); // Delegation API (create, submit, revoke)
 
 // Start server
 const config = getConfig();
@@ -145,4 +147,8 @@ app.listen(port, () => {
   console.log(`             POST http://localhost:${port}/token/expire`);
   console.log(`             GET  http://localhost:${port}/token/:tokenId`);
   console.log(`             GET  http://localhost:${port}/token`);
+  console.log(`   Deleg:    POST http://localhost:${port}/delegation/create`);
+  console.log(`             POST http://localhost:${port}/delegation/submit`);
+  console.log(`             POST http://localhost:${port}/delegation/revoke`);
+  console.log(`             GET  http://localhost:${port}/delegation/:delegationId`);
 });
