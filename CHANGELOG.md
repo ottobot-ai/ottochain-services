@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.2](https://github.com/ottobot-ai/ottochain-services/compare/v1.0.1...v1.0.2) (2026-03-27)
+
+
+### Bug Fixes
+
+* **traffic-gen:** align fiber weights with actual FIBER_DEFINITIONS ([#272](https://github.com/ottobot-ai/ottochain-services/issues/272)) ([30f0ca8](https://github.com/ottobot-ai/ottochain-services/commit/30f0ca85c146780038900d8111879ed5a9650493))
+* **traffic-gen:** avoid double-call to getRegisteredAgents in provider ([#270](https://github.com/ottobot-ai/ottochain-services/issues/270)) ([c73bee6](https://github.com/ottobot-ai/ottochain-services/commit/c73bee6e21ec1a11b300643026e90d87ab83cbcf)), closes [#179](https://github.com/ottobot-ai/ottochain-services/issues/179)
+
 ## [1.0.1](https://github.com/ottobot-ai/ottochain-services/compare/v1.0.0...v1.0.1) (2026-03-22)
 
 
