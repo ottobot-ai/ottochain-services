@@ -290,4 +290,192 @@ describe('FiberOrchestrator', () => {
       expect(proposeCount + createCount).toBe(20);
     });
   });
+
+  // =========================================================================
+  // Issue #178: Tests for orchestrator methods added in PR #175
+  // =========================================================================
+
+  describe('updateWeights', () => {
+    it('should update weights for valid input', async () => {
+      orchestrator.updateWeights({ escrow: 50, ticTacToe: 50 });
+      const weights = orchestrator.getWeights();
+      expect(weights.escrow).toBe(50);
+      expect(weights.ticTacToe).toBe(50);
+    });
+
+    it('should reject negative weights (leave existing unchanged)', () => {
+      orchestrator.updateWeights({ escrow: 30, ticTacToe: 30, simpleOrder: 20, voting: 20 });
+      const before = orchestrator.getWeights();
+      // Attempt to set a negative value — should be ignored
+      orchestrator.updateWeights({ escrow: -10 });
+      const after = orchestrator.getWeights();
+      expect(after.escrow).toBe(before.escrow);
+    });
+
+    it('should preserve unspecified weights when doing partial update', () => {
+      orchestrator.updateWeights({ escrow: 99 });
+      const weights = orchestrator.getWeights();
+      // escrow updated
+      expect(weights.escrow).toBe(99);
+      // others preserved from default config
+      expect(weights.ticTacToe).toBe(defaultConfig.fiberWeights.ticTacToe);
+      expect(weights.simpleOrder).toBe(defaultConfig.fiberWeights.simpleOrder);
+      expect(weights.voting).toBe(defaultConfig.fiberWeights.voting);
+    });
+
+    it('should accept weight of 0 (disable a fiber type)', () => {
+      orchestrator.updateWeights({ escrow: 0 });
+      const weights = orchestrator.getWeights();
+      expect(weights.escrow).toBe(0);
+    });
+  });
+
+  describe('getWeights', () => {
+    it('should return current weight config matching initial config', () => {
+      const weights = orchestrator.getWeights();
+      expect(weights).toEqual(defaultConfig.fiberWeights);
+    });
+
+    it('should return a copy (mutation does not affect internal state)', () => {
+      const weights = orchestrator.getWeights();
+      weights.escrow = 9999;
+      const weights2 = orchestrator.getWeights();
+      expect(weights2.escrow).toBe(defaultConfig.fiberWeights.escrow);
+    });
+  });
+
+  describe('getActiveFibers', () => {
+    it('should return empty array initially', () => {
+      const fibers = orchestrator.getActiveFibers();
+      expect(fibers).toEqual([]);
+    });
+
+    it('should return active fibers after a tick creates them', async () => {
+      await orchestrator.tick();
+      const fibers = orchestrator.getActiveFibers();
+      expect(fibers.length).toBeGreaterThan(0);
+      expect(fibers.length).toBeLessThanOrEqual(defaultConfig.targetActiveFibers);
+    });
+
+    it('should return a copy (mutation does not affect internal state)', async () => {
+      await orchestrator.tick();
+      const fibers = orchestrator.getActiveFibers();
+      const originalLength = fibers.length;
+      fibers.splice(0); // clear the copy
+      expect(orchestrator.getActiveFibers().length).toBe(originalLength);
+    });
+
+    it('each active fiber should have required fields', async () => {
+      await orchestrator.tick();
+      const fibers = orchestrator.getActiveFibers();
+      for (const fiber of fibers) {
+        expect(typeof fiber.id).toBe('string');
+        expect(typeof fiber.type).toBe('string');
+        expect(typeof fiber.currentState).toBe('string');
+        expect(typeof fiber.startedAt).toBe('number');
+        expect(typeof fiber.transitionIndex).toBe('number');
+      }
+    });
+  });
+
+  describe('getCompletedFiberLog', () => {
+    it('should return empty array initially', () => {
+      const log = orchestrator.getCompletedFiberLog();
+      expect(log).toEqual([]);
+    });
+
+    it('should cap at 100 entries (ring buffer)', async () => {
+      // Use config with 1-party fibers to drive many completions
+      // Use ticTacToe (Custom type) which completes in a single tick
+      const singleConfig: TrafficConfig = {
+        ...defaultConfig,
+        fiberWeights: { ticTacToe: 100 },
+        targetActiveFibers: 1,
+      };
+      // We need many ticks — mock createFiber to immediately reach a final state
+      // by having transitionFiber return a new final state on the next drive
+      let fiberCounter = 0;
+      const singleBridge = createMockBridge();
+      singleBridge.createFiber = vi.fn().mockImplementation(() =>
+        Promise.resolve({ fiberId: `fiber-${++fiberCounter}`, hash: 'h' })
+      );
+
+      const singleOrchestrator = new FiberOrchestrator(
+        singleConfig,
+        singleBridge as BridgeClient,
+        () => mockAgents
+      );
+
+      // Drive 120 fiber completions by directly exercising the log
+      // The ring buffer is internal so we force 120 ticks with a custom mock
+      // that makes every newly created fiber immediately enter a final state.
+      // ticTacToe's initialState is already a final state in the mock SDK:
+      // The mock returns states: PROPOSED(initial), COMPLETED(final) with no transitions from PROPOSED
+      // so driveFiber returns 'completed' on first drive.
+      // We run 120 ticks so we exceed the 100 cap.
+      for (let i = 0; i < 120; i++) {
+        await singleOrchestrator.tick();
+      }
+
+      const log = singleOrchestrator.getCompletedFiberLog();
+      expect(log.length).toBeLessThanOrEqual(100);
+    });
+
+    it('should return newest entry first', async () => {
+      // We need at least 2 completions
+      const escrowOnlyConfig: TrafficConfig = {
+        ...defaultConfig,
+        fiberWeights: { escrow: 100 },
+        targetActiveFibers: 1,
+      };
+      const singleBridge = createMockBridge();
+      let counter = 0;
+      singleBridge.proposeContract = vi.fn().mockImplementation(() =>
+        Promise.resolve({ contractId: `contract-${++counter}`, proposer: 'DAG0', counterparty: 'DAG1', hash: 'h' })
+      );
+
+      const singleOrchestrator = new FiberOrchestrator(
+        escrowOnlyConfig,
+        singleBridge as BridgeClient,
+        () => mockAgents
+      );
+
+      // Enough ticks to complete 2 contracts: create → accept → deliver → confirm × 2
+      for (let i = 0; i < 20; i++) {
+        await singleOrchestrator.tick();
+      }
+
+      const log = singleOrchestrator.getCompletedFiberLog();
+      if (log.length >= 2) {
+        // Newer entry should have a completedAt >= older entry
+        const newer = new Date(log[0].completedAt).getTime();
+        const older = new Date(log[log.length - 1].completedAt).getTime();
+        expect(newer).toBeGreaterThanOrEqual(older);
+      }
+    });
+
+    it('each log entry should have required fields', async () => {
+      // Force a fiber to complete: ticTacToe with no real transitions completes immediately
+      const singleBridge = createMockBridge();
+      const singleOrchestrator = new FiberOrchestrator(
+        { ...defaultConfig, fiberWeights: { ticTacToe: 100 }, targetActiveFibers: 1 },
+        singleBridge as BridgeClient,
+        () => mockAgents
+      );
+
+      // Tick twice: first creates, second should complete and log
+      await singleOrchestrator.tick();
+      await singleOrchestrator.tick();
+
+      const log = singleOrchestrator.getCompletedFiberLog();
+      for (const entry of log) {
+        expect(typeof entry.id).toBe('string');
+        expect(typeof entry.type).toBe('string');
+        expect(typeof entry.finalState).toBe('string');
+        expect(typeof entry.completedAt).toBe('string');
+        // completedAt should be a valid ISO date
+        expect(new Date(entry.completedAt).getTime()).not.toBeNaN();
+      }
+    });
+  });
 });

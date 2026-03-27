@@ -263,11 +263,30 @@ export function startStatusServer(port: number = 3033): Promise<void> {
           res.end(JSON.stringify({ error: 'Weights update not implemented' }));
           return;
         }
+        let body: unknown;
         try {
-          const body = await parseBody(req) as Record<string, number>;
-          onWeightsUpdate(body);
+          body = await parseBody(req);
+        } catch (_err) {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+          return;
+        }
+        // Validate: must be an object with numeric non-negative values
+        if (
+          typeof body !== 'object' ||
+          body === null ||
+          Array.isArray(body) ||
+          Object.values(body as Record<string, unknown>).some(v => typeof v !== 'number' || (v as number) < 0)
+        ) {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: 'Weights must be non-negative numbers' }));
+          return;
+        }
+        try {
+          const weights = body as Record<string, number>;
+          onWeightsUpdate(weights);
           res.writeHead(200);
-          res.end(JSON.stringify({ success: true, message: 'Weights updated', weights: body }));
+          res.end(JSON.stringify({ success: true, message: 'Weights updated', weights }));
         } catch (err) {
           res.writeHead(500);
           res.end(JSON.stringify({ error: err instanceof Error ? err.message : 'Failed to update weights' }));
