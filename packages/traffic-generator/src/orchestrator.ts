@@ -2,13 +2,8 @@ import { BridgeClient } from './bridge-client.js';
 import { IndexerClient } from './indexer-client.js';
 import { FIBER_DEFINITIONS, type FiberDefinition, type MarketStateData, type DAOStateData, type GovernanceStateData, type CorporateEntityStateData, type CorporateBoardStateData, type CorporateShareholdersStateData, type CorporateSecuritiesStateData } from './fiber-definitions.js';
 import { getMarketDefinition } from '@ottochain/sdk/apps/markets';
-import { toProtoDefinition, type ProtoStateMachineDefinition } from '@ottochain/sdk';
+import { toProtoDefinition } from '@ottochain/sdk';
 import { Agent } from './types.js';
-
-/** Type-safe conversion for bridge API calls that expect Record<string, unknown>. */
-function asRecord(obj: ProtoStateMachineDefinition): Record<string, unknown> {
-  return obj as unknown as Record<string, unknown>;
-}
 
 export interface TrafficConfig {
   generationIntervalMs: number;
@@ -378,8 +373,8 @@ export class FiberOrchestrator {
         const marketData = stateData as MarketStateData;
         const result = await this.bridge.createMarket(
           proposer.privateKey,
-          asRecord(toProtoDefinition(getMarketDefinition('universal'))),
-          marketData
+          toProtoDefinition(getMarketDefinition('universal')) as unknown as Record<string, unknown>,
+          marketData as unknown as Record<string, unknown>
         );
         fiberId = result.fiberId;
         console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${marketData.marketType}, creator: ${proposer.address.slice(0, 10)})`);
@@ -389,7 +384,7 @@ export class FiberOrchestrator {
         const result = await this.bridge.createDAO(
           proposer.privateKey,
           daoData.daoType,
-          daoData
+          daoData as unknown as Record<string, unknown>
         );
         fiberId = result.fiberId;
         console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${daoData.daoType}, ${daoData.members.length} members)`);
@@ -398,7 +393,7 @@ export class FiberOrchestrator {
         const govData = stateData as GovernanceStateData;
         const result = await this.bridge.createGovernance(
           proposer.privateKey,
-          govData
+          govData as unknown as Record<string, unknown>
         );
         fiberId = result.fiberId;
         console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${Object.keys(govData.members).length} members)`);
@@ -407,7 +402,7 @@ export class FiberOrchestrator {
         const entityData = stateData as CorporateEntityStateData;
         const result = await this.bridge.createCorporateEntity(
           proposer.privateKey,
-          entityData
+          entityData as unknown as Record<string, unknown>
         );
         fiberId = result.fiberId;
         console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${entityData.legalName}, ${entityData.entityType})`);
@@ -416,7 +411,7 @@ export class FiberOrchestrator {
         const boardData = stateData as CorporateBoardStateData;
         const result = await this.bridge.createCorporateBoard(
           proposer.privateKey,
-          boardData
+          boardData as unknown as Record<string, unknown>
         );
         fiberId = result.fiberId;
         console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${boardData.directors.length} directors, ${boardData.seats.authorized} seats)`);
@@ -425,7 +420,7 @@ export class FiberOrchestrator {
         const shareholdersData = stateData as CorporateShareholdersStateData;
         const result = await this.bridge.createCorporateShareholders(
           proposer.privateKey,
-          shareholdersData
+          shareholdersData as unknown as Record<string, unknown>
         );
         fiberId = result.fiberId;
         console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${shareholdersData.meetingType}, ${shareholdersData.eligibleVoters.length} voters)`);
@@ -434,7 +429,7 @@ export class FiberOrchestrator {
         const securitiesData = stateData as CorporateSecuritiesStateData;
         const result = await this.bridge.createCorporateSecurities(
           proposer.privateKey,
-          securitiesData
+          securitiesData as unknown as Record<string, unknown>
         );
         fiberId = result.fiberId;
         console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${securitiesData.shareClassName}, ${securitiesData.shareCount} shares)`);
