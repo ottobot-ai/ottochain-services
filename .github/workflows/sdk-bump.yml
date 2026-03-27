@@ -107,7 +107,7 @@ jobs:
 
     steps:
       - name: Wait for CI and merge
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.OTTOBOT_PAT }}
           script: |
