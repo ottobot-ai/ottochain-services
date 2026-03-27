@@ -5,6 +5,7 @@
  */
 
 import type { Agent, Contract } from './types.js';
+import type { ProtoStateMachineDefinition } from '@ottochain/sdk';
 
 export interface BridgeConfig {
   bridgeUrl: string;
@@ -319,7 +320,7 @@ export class BridgeClient {
    */
   async createMarket(
     privateKey: string,
-    definition: Record<string, unknown>,
+    definition: ProtoStateMachineDefinition | Record<string, unknown>,
     initialData: Record<string, unknown>
   ): Promise<{ fiberId: string; hash: string }> {
     return this.createFiber(privateKey, definition, initialData);
@@ -1426,7 +1427,7 @@ export class BridgeClient {
 
   async createFiber(
     privateKey: string,
-    definition: Record<string, unknown>,
+    definition: ProtoStateMachineDefinition | Record<string, unknown>,
     initialData: Record<string, unknown>,
     options?: { fiberId?: string; parentFiberId?: string }
   ): Promise<{ fiberId: string; hash: string; schema?: string }> {

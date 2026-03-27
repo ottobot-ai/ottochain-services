@@ -1,7 +1,8 @@
 import { BridgeClient } from './bridge-client.js';
 import { IndexerClient } from './indexer-client.js';
 import { FIBER_DEFINITIONS, type FiberDefinition, type MarketStateData, type DAOStateData, type GovernanceStateData, type CorporateEntityStateData, type CorporateBoardStateData, type CorporateShareholdersStateData, type CorporateSecuritiesStateData } from './fiber-definitions.js';
-import { MARKET_SM_DEFINITION } from './market-workflows.js';
+import { getMarketDefinition } from '@ottochain/sdk/apps/markets';
+import { toProtoDefinition } from '@ottochain/sdk';
 import { Agent } from './types.js';
 
 export interface TrafficConfig {
@@ -372,8 +373,8 @@ export class FiberOrchestrator {
         const marketData = stateData as MarketStateData;
         const result = await this.bridge.createMarket(
           proposer.privateKey,
-          MARKET_SM_DEFINITION,
-          marketData as unknown as Record<string, unknown>
+          toProtoDefinition(getMarketDefinition('universal')),
+          marketData
         );
         fiberId = result.fiberId;
         console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${marketData.marketType}, creator: ${proposer.address.slice(0, 10)})`);
@@ -383,7 +384,7 @@ export class FiberOrchestrator {
         const result = await this.bridge.createDAO(
           proposer.privateKey,
           daoData.daoType,
-          daoData as unknown as Record<string, unknown>
+          daoData
         );
         fiberId = result.fiberId;
         console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${daoData.daoType}, ${daoData.members.length} members)`);
@@ -392,7 +393,7 @@ export class FiberOrchestrator {
         const govData = stateData as GovernanceStateData;
         const result = await this.bridge.createGovernance(
           proposer.privateKey,
-          govData as unknown as Record<string, unknown>
+          govData
         );
         fiberId = result.fiberId;
         console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${Object.keys(govData.members).length} members)`);
@@ -401,7 +402,7 @@ export class FiberOrchestrator {
         const entityData = stateData as CorporateEntityStateData;
         const result = await this.bridge.createCorporateEntity(
           proposer.privateKey,
-          entityData as unknown as Record<string, unknown>
+          entityData
         );
         fiberId = result.fiberId;
         console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${entityData.legalName}, ${entityData.entityType})`);
@@ -410,7 +411,7 @@ export class FiberOrchestrator {
         const boardData = stateData as CorporateBoardStateData;
         const result = await this.bridge.createCorporateBoard(
           proposer.privateKey,
-          boardData as unknown as Record<string, unknown>
+          boardData
         );
         fiberId = result.fiberId;
         console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${boardData.directors.length} directors, ${boardData.seats.authorized} seats)`);
@@ -419,7 +420,7 @@ export class FiberOrchestrator {
         const shareholdersData = stateData as CorporateShareholdersStateData;
         const result = await this.bridge.createCorporateShareholders(
           proposer.privateKey,
-          shareholdersData as unknown as Record<string, unknown>
+          shareholdersData
         );
         fiberId = result.fiberId;
         console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${shareholdersData.meetingType}, ${shareholdersData.eligibleVoters.length} voters)`);
@@ -428,7 +429,7 @@ export class FiberOrchestrator {
         const securitiesData = stateData as CorporateSecuritiesStateData;
         const result = await this.bridge.createCorporateSecurities(
           proposer.privateKey,
-          securitiesData as unknown as Record<string, unknown>
+          securitiesData
         );
         fiberId = result.fiberId;
         console.log(`  ✅ Created ${def.name}: ${fiberId.slice(0, 12)}... (${securitiesData.shareClassName}, ${securitiesData.shareCount} shares)`);
