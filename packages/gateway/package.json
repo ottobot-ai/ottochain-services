@@ -14,7 +14,7 @@
     "@as-integrations/express4": "^1.1.2",
     "@graphql-tools/schema": "^10.0.31",
     "@ottochain/shared": "workspace:*",
-    "@prisma/client": "^7.5.0",
+    "@prisma/client": "^7.6.0",
     "cors": "^2.8.6",
     "express": "^4.18.0",
     "graphql": "^16.13.1",
