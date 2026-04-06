@@ -275,7 +275,7 @@ jobs:
       # ══════════════════════════════════════════════════════════════════
 
       - name: Install just
-        uses: extractions/setup-just@v3
+        uses: extractions/setup-just@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
