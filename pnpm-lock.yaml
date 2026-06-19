@@ -12,8 +12,8 @@ importers:
   .:
     dependencies:
       '@ottochain/sdk':
-        specifier: 2.2.5
-        version: 2.2.5(@stardust-collective/dag4@2.8.1)
+        specifier: 2.4.0
+        version: 2.4.0(@stardust-collective/dag4@2.8.1)
       '@prisma/client':
         specifier: ^7.5.0
         version: 7.5.0(prisma@7.5.0(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))(typescript@5.9.3)
@@ -40,8 +40,8 @@ importers:
   packages/bridge:
     dependencies:
       '@ottochain/sdk':
-        specifier: 2.2.5
-        version: 2.2.5(@stardust-collective/dag4@2.8.1)
+        specifier: 2.4.0
+        version: 2.4.0(@stardust-collective/dag4@2.8.1)
       '@ottochain/shared':
         specifier: workspace:*
         version: link:../shared
@@ -150,8 +150,8 @@ importers:
   packages/indexer:
     dependencies:
       '@ottochain/sdk':
-        specifier: 2.2.5
-        version: 2.2.5(@stardust-collective/dag4@2.8.1)
+        specifier: 2.4.0
+        version: 2.4.0(@stardust-collective/dag4@2.8.1)
       '@ottochain/shared':
         specifier: workspace:*
         version: link:../shared
@@ -221,8 +221,8 @@ importers:
   packages/shared:
     dependencies:
       '@ottochain/sdk':
-        specifier: 2.2.5
-        version: 2.2.5(@stardust-collective/dag4@2.8.1)
+        specifier: 2.4.0
+        version: 2.4.0(@stardust-collective/dag4@2.8.1)
       '@prisma/adapter-pg':
         specifier: ^7.5.0
         version: 7.5.0
@@ -252,8 +252,8 @@ importers:
   packages/traffic-generator:
     dependencies:
       '@ottochain/sdk':
-        specifier: 2.2.5
-        version: 2.2.5(@stardust-collective/dag4@2.8.1)
+        specifier: 2.4.0
+        version: 2.4.0(@stardust-collective/dag4@2.8.1)
       '@ottochain/shared':
         specifier: workspace:*
         version: link:../shared
@@ -393,8 +393,8 @@ packages:
     resolution: {integrity: sha512-6zABk/ECA/QYSCQ1NGiVwwbQerUCZ+TQbp64Q3AgmfNvurHH0j8TtXa1qbShXA6qqkpAj4V5W8pP6mLe1mcMqA==}
     engines: {node: '>=18'}
 
-  '@bufbuild/protobuf@2.11.0':
-    resolution: {integrity: sha512-sBXGT13cpmPR5BMgHE6UEEfEaShh5Ror6rfN3yEK5si7QVrtZg8LEPQb0VVhiLRUslD2yLnXtnRzG035J/mZXQ==}
+  '@bufbuild/protobuf@2.12.0':
+    resolution: {integrity: sha512-B/XlCaFIP8LOwzo+bz5uFzATYokcwCKQcghqnlfwSmM5eX/qTkvDBnDPs+gXtX/RyjxJ4DRikECcPJbyALA8FA==}
 
   '@chevrotain/cst-dts-gen@10.5.0':
     resolution: {integrity: sha512-lhmC/FyqQ2o7pGK4Om+hzuDrm9rhFYIJ/AXoQBeongmn870Xeb0L6oGEiuR8nohFNL5sMaQEJWCxr1oIVIVXrw==}
@@ -408,8 +408,16 @@ packages:
   '@chevrotain/utils@10.5.0':
     resolution: {integrity: sha512-hBzuU5+JjB2cqNZyszkDHZgOSrUUT8V3dhgRl8Q9Gp6dAj/H5+KILGjbhDpc3Iy9qmqlm/akuOI2ut9VUtzJxQ==}
 
-  '@constellation-network/metagraph-sdk@0.2.0':
-    resolution: {integrity: sha512-QpQwk3JW0fsP/sc/ke12TYEKUkFdEmOhcNLY3C41vncb6Pjxc+PoAJsNbp18BfXsjphZXeOL83aps6XRA07OPQ==}
+  '@constellation-network/metagraph-sdk-core@1.8.0-rc.5':
+    resolution: {integrity: sha512-B+3afI/xOOE/mH7NbdUwXiX9GuA/rFMWci1OHnU+kFKTfVV1sHnxsIelKhm/bcG/N/AsxzQ8IpesJwKZr4FPpA==}
+    engines: {node: '>=20.19.0'}
+
+  '@constellation-network/metagraph-sdk-jlvm@1.8.0-rc.5':
+    resolution: {integrity: sha512-IHiGMdlyyW9v4b8kyRQNCAwdKBKd5CI8EzUgJtk/JlO19eHZ69hYjPDDX4Pkwe7OqClAY8WBqDXC/5ZLn2+15A==}
+    engines: {node: '>=20.19.0'}
+
+  '@constellation-network/metagraph-sdk@1.8.0-rc.5':
+    resolution: {integrity: sha512-/3zAJ+IaSl8l9MMVkjudAjeoh1QiR4r47jt+aIuy4b0o2sL1rueDGC5itTDb8+qY/A499JoWk+2abR4zZni9TA==}
     engines: {node: '>=20.19.0'}
 
   '@electric-sql/pglite-socket@0.0.20':
@@ -659,8 +667,8 @@ packages:
     resolution: {integrity: sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg==}
     engines: {node: '>=8.0.0'}
 
-  '@ottochain/sdk@2.2.5':
-    resolution: {integrity: sha512-3NUNIHH40mPzGcdlDrwQsPJO/CgGG/xOxtBL7RLiiN7ng/osfhX6PwgzBsQSjBd9omJ3SV98mYZ3xCT+lLE4BA==}
+  '@ottochain/sdk@2.4.0':
+    resolution: {integrity: sha512-+yBkZd8HKFEJNHWxj1nYGLx+Ix+WahndUZRUR2R61FM7pZN+61nNxzJuktlm3PMZbIDVqLQ1PHHlhupgARKq8Q==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
       '@stardust-collective/dag4': ^2.6.0
@@ -1147,6 +1155,11 @@ packages:
 
   canonicalize@2.1.0:
     resolution: {integrity: sha512-F705O3xrsUtgt98j7leetNhTWPe+5S72rlL5O4jA1pKqBVQ/dT1O1D6PFxmSXvc0SUOinWS57DKx0I3CHrXJHQ==}
+    hasBin: true
+
+  canonicalize@3.0.0:
+    resolution: {integrity: sha512-yYLfHyDMIXRyRqsKBRLX023riFLpXY2YOfdtqKXZRZy9qsfOJ9U+4F9YZL7MEzL5+ziN2x2nlBvY/Voi3EBljA==}
+    engines: {node: '>=18'}
     hasBin: true
 
   caseless@0.12.0:
@@ -2705,6 +2718,9 @@ packages:
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
+  zod@4.4.3:
+    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
+
 snapshots:
 
   '@apollo/cache-control-types@1.0.3(graphql@16.13.1)':
@@ -2834,7 +2850,7 @@ snapshots:
 
   '@bcoe/v8-coverage@1.0.2': {}
 
-  '@bufbuild/protobuf@2.11.0': {}
+  '@bufbuild/protobuf@2.12.0': {}
 
   '@chevrotain/cst-dts-gen@10.5.0':
     dependencies:
@@ -2851,12 +2867,21 @@ snapshots:
 
   '@chevrotain/utils@10.5.0': {}
 
-  '@constellation-network/metagraph-sdk@0.2.0':
+  '@constellation-network/metagraph-sdk-core@1.8.0-rc.5':
     dependencies:
       '@noble/curves': 2.0.1
       '@noble/hashes': 2.0.1
       bs58: 6.0.0
-      canonicalize: 2.1.0
+
+  '@constellation-network/metagraph-sdk-jlvm@1.8.0-rc.5':
+    dependencies:
+      '@noble/curves': 2.0.1
+      '@noble/hashes': 2.0.1
+
+  '@constellation-network/metagraph-sdk@1.8.0-rc.5':
+    dependencies:
+      '@constellation-network/metagraph-sdk-core': 1.8.0-rc.5
+      '@noble/hashes': 2.0.1
 
   '@electric-sql/pglite-socket@0.0.20(@electric-sql/pglite@0.3.15)':
     dependencies:
@@ -3026,16 +3051,18 @@ snapshots:
 
   '@opentelemetry/api@1.9.0': {}
 
-  '@ottochain/sdk@2.2.5(@stardust-collective/dag4@2.8.1)':
+  '@ottochain/sdk@2.4.0(@stardust-collective/dag4@2.8.1)':
     dependencies:
-      '@bufbuild/protobuf': 2.11.0
-      '@constellation-network/metagraph-sdk': 0.2.0
+      '@bufbuild/protobuf': 2.12.0
+      '@constellation-network/metagraph-sdk': 1.8.0-rc.5
+      '@constellation-network/metagraph-sdk-jlvm': 1.8.0-rc.5
+      '@noble/hashes': 1.8.0
       '@stardust-collective/dag4': 2.8.1
       '@stardust-collective/dag4-keystore': 2.8.1
-      canonicalize: 2.1.0
+      canonicalize: 3.0.0
       js-sha256: 0.11.1
       js-sha512: 0.9.0
-      zod: 3.25.76
+      zod: 4.4.3
     transitivePeerDependencies:
       - bufferutil
       - supports-color
@@ -3627,6 +3654,8 @@ snapshots:
       get-intrinsic: 1.3.0
 
   canonicalize@2.1.0: {}
+
+  canonicalize@3.0.0: {}
 
   caseless@0.12.0: {}
 
@@ -5227,3 +5256,5 @@ snapshots:
       graphmatch: 1.1.1
 
   zod@3.25.76: {}
+
+  zod@4.4.3: {}
