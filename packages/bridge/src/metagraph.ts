@@ -6,7 +6,7 @@
  */
 
 import { getConfig } from '@ottochain/shared';
-import { batchSign, normalizeMessage, generateKeyPair as sdkGenerateKeyPair, keyPairFromPrivateKey as sdkKeyPairFromPrivateKey, HttpClient } from '@ottochain/sdk';
+import { batchSign, generateKeyPair as sdkGenerateKeyPair, keyPairFromPrivateKey as sdkKeyPairFromPrivateKey, HttpClient } from '@ottochain/sdk';
 import type { KeyPair } from '@ottochain/sdk';
 import { confirmationRegistry, type FiberConfirmation } from './lib/confirmation-registry.js';
 
@@ -198,9 +198,10 @@ export async function submitTransaction(
   message: unknown,
   privateKey: string
 ): Promise<TransactionResult> {
-  // Normalize before signing: ensures Option[A]=None fields are explicit null
-  // (required for canonical JSON to match Metakit's circe encoder output)
-  const normalizedMessage = normalizeMessage(message as Record<string, unknown>);
+  // The SDK's batchSign/signDataUpdate applies dropNulls internally on the
+  // dataUpdate path (sdk #197) to match Metakit's content-hash rule, so we pass
+  // the raw message — normalization happens inside batchSign.
+  const normalizedMessage = message as Record<string, unknown>;
 
   // Sign using SDK's batchSign (same as e2e tests)
   const signed = await batchSign(normalizedMessage, [privateKey], { isDataUpdate: true });
