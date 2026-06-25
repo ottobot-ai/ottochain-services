@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.3](https://github.com/ottobot-ai/ottochain-services/compare/v1.0.2...v1.0.3) (2026-06-25)
+
+
+### Miscellaneous
+
+* adopt @ottochain/sdk v2.4.0 — Metakit 1.8 drop-null content-hash convention ([#296](https://github.com/ottobot-ai/ottochain-services/issues/296))
+* batch dependabot dependency + GitHub Actions updates ([#298](https://github.com/ottobot-ai/ottochain-services/issues/298))
+
 ## [1.0.2](https://github.com/ottobot-ai/ottochain-services/compare/v1.0.1...v1.0.2) (2026-03-27)
 
 
