@@ -10,7 +10,7 @@
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {
-    "@ottochain/sdk": "2.2.5",
+    "@ottochain/sdk": "2.4.0",
     "@prisma/adapter-pg": "^7.6.0",
     "@prisma/client": "^7.6.0",
     "ioredis": "^5.9.3",
