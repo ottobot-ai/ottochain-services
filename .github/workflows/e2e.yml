@@ -324,7 +324,7 @@ jobs:
           else
             chmod -R +x docker/bin/
             SKIP_METAGRAPH_ASSEMBLY=true PUBLISH=false \
-              ./docker/bin/compose-runner.sh --up --skip-assembly --metagraph=/tmp/metagraph-dummy --dl1 \
+              ./docker/bin/compose-runner.sh --up --skip-assembly --hypergraph-release=v4.0.0-rc.10 --metagraph=/tmp/metagraph-dummy --dl1 \
               --env=/tmp/metagraph-extra.env
           fi
 
