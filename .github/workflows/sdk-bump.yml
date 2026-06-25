@@ -48,7 +48,7 @@ jobs:
           node-version: '22'
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@v5
 
       - name: Update SDK version in all packages
         run: |
@@ -107,7 +107,7 @@ jobs:
 
     steps:
       - name: Wait for CI and merge
-        uses: actions/github-script@v9
+        uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.OTTOBOT_PAT }}
           script: |
