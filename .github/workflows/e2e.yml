@@ -24,10 +24,6 @@ on:
 
 env:
   NODE_VERSION: '20'
-  # TEMPORARY e2e pin: validate services (SDK 2.4.0 / Metakit 1.8) against metagraph 0.7.16
-  # while the deployed version in ottochain-deploy/versions.yaml is still 0.7.13 (Metakit 1.7).
-  # Remove once deploy PR ottobot-ai/ottochain-deploy#232 lands 0.7.16.
-  METAGRAPH_VERSION_OVERRIDE: '0.7.16'
 
 jobs:
   integration-test:
@@ -213,10 +209,6 @@ jobs:
             -o versions.yaml
 
           OTTOCHAIN_VER=$(grep -A1 'ottochain:' versions.yaml | grep 'version:' | head -1 | sed 's/.*"\(.*\)".*/\1/')
-          if [ -n "${METAGRAPH_VERSION_OVERRIDE:-}" ]; then
-            echo "⚠️ e2e override: metagraph ${OTTOCHAIN_VER} → ${METAGRAPH_VERSION_OVERRIDE} (SDK 2.4.0 / Metakit 1.8 validation)"
-            OTTOCHAIN_VER="${METAGRAPH_VERSION_OVERRIDE}"
-          fi
           TESS_VER=$(grep -A1 'tessellation:' versions.yaml | grep 'version:' | head -1 | sed 's/.*"\(.*\)".*/\1/')
           [[ "$TESS_VER" != v* ]] && TESS_VER="v${TESS_VER}"
 
