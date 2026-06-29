@@ -76,7 +76,7 @@ jobs:
           df -h /
 
       - name: Checkout ottochain-services@main
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: main
 
@@ -105,7 +105,7 @@ jobs:
           echo "Testing: OttoChain v${VERSION} with Tessellation ${TESS_VER}"
 
       - name: Checkout tessellation ${{ steps.versions.outputs.tessellation }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: Constellation-Labs/tessellation
           path: tessellation
