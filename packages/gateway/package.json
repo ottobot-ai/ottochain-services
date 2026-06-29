@@ -12,7 +12,7 @@
   "dependencies": {
     "@apollo/server": "^5.5.0",
     "@as-integrations/express4": "^1.1.2",
-    "@graphql-tools/schema": "^10.0.31",
+    "@graphql-tools/schema": "^10.0.34",
     "@ottochain/shared": "workspace:*",
     "@prisma/client": "^7.6.0",
     "cors": "^2.8.6",
