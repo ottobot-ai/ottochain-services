@@ -40,7 +40,7 @@
   "dependencies": {
     "@ottochain/sdk": "2.4.0",
     "@prisma/client": "^7.6.0",
-    "ioredis": "^5.10.0"
+    "ioredis": "^5.11.1"
   },
   "pnpm": {
     "overrides": {
