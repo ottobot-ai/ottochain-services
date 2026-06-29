@@ -23,7 +23,7 @@
     "graphql-ws": "^6.0.8",
     "ioredis": "^5.9.3",
     "ws": "^8.16.0",
-    "zod": "^3.22.0"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
