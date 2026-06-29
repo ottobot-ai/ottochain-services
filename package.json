@@ -31,7 +31,7 @@
     "postinstall": "prisma generate"
   },
   "devDependencies": {
-    "@types/node": "^25.5.0",
+    "@types/node": "^26.0.1",
     "prisma": "^7.6.0",
     "tsx": "^4.7.0",
     "tweetnacl": "^1.0.3",
