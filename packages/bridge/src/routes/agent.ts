@@ -655,6 +655,44 @@ agentRoutes.post('/vouch', async (req, res) => {
   }
 });
 
+// ============================================================================
+// Agent Discovery
+// ============================================================================
+
+import { discoverAgents, type RawAgentStateMachine } from '../lib/agent-discovery.js';
+
+const DiscoverQuerySchema = z.object({
+  capability: z.string().optional(),
+  minReputation: z.coerce.number().min(0).default(0),
+  state: z.string().default('ACTIVE'),
+  limit: z.coerce.number().min(1).max(50).default(10),
+});
+
+/**
+ * Discover agents by capability and reputation
+ * GET /agent/discover?capability=research&minReputation=5&state=ACTIVE&limit=10
+ */
+agentRoutes.get('/discover', async (req, res) => {
+  try {
+    const query = DiscoverQuerySchema.safeParse(req.query);
+    if (!query.success) {
+      return res.status(400).json({ error: 'Invalid query parameters', details: query.error.flatten() });
+    }
+
+    const checkpoint = await getCheckpoint() as {
+      state: { stateMachines: Record<string, RawAgentStateMachine> };
+    };
+
+    const result = discoverAgents(checkpoint.state.stateMachines ?? {}, query.data);
+
+    res.json({ ...result, query: query.data });
+  } catch (err) {
+    console.error('[agent/discover] Error:', err);
+    const errorMessage = err instanceof Error ? err.message : 'Discovery failed';
+    res.status(500).json({ error: errorMessage });
+  }
+});
+
 /**
  * Get agent state by fiber ID
  * GET /agent/:fiberId
