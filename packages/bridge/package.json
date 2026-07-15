@@ -14,7 +14,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@ottochain/sdk": "2.4.0",
+    "@ottochain/sdk": "2.7.0",
     "@ottochain/shared": "workspace:*",
     "@stardust-collective/dag4": "^2.8.1",
     "canonicalize": "^2.1.0",
